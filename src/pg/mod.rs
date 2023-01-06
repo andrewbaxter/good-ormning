@@ -1,533 +1,496 @@
-use crate::{
-    MigrateNodeVersion,
-    MigrateNodeVersionComparison,
-    BuildContext,
+use proc_macro2::{
+    TokenStream,
+    Ident,
 };
-use enum_dispatch::{
-    enum_dispatch,
+use quote::{
+    quote,
+    format_ident,
+    ToTokens,
+};
+use std::{
+    collections::HashMap,
+};
+use crate::pg::types::Type;
+use self::{
+    schema::{
+        TableId,
+        TableDef,
+        FieldId,
+        TableIndexId,
+        Node,
+        Id,
+        NodeTable_,
+        FieldDef,
+        NodeField_,
+        TableConstraintDef,
+        TableConstraintId,
+        NodeTableConstraint_,
+        TableConstraintTypeDef,
+        NodeTableIndex_,
+        TableIndexDef,
+        PgMigrateCtx,
+    },
+    queries::{
+        utils::{
+            QueryCtx,
+            Query,
+        },
+    },
+};
+use {
+    types::SimpleType,
+    schema::{
+        MigrateNode,
+    },
 };
 
-struct Tokens(String);
+pub mod types;
+pub mod schema;
+pub mod queries;
 
-impl ToString for Tokens {
-    fn to_string(&self) -> String {
-        self.0.clone()
-    }
+pub enum QueryPlural {
+    None,
+    MaybeOne,
+    One,
+    Many,
 }
 
-impl Tokens {
-    fn new() -> Tokens {
-        Tokens(String::new())
-    }
-
-    fn s(&mut self, s: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(s);
-        self
-    }
-
-    fn id(&mut self, i: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("\"{}\"", i));
-        self
-    }
-
-    fn f(&mut self, f: impl FnOnce(&mut Self)) -> &mut Self {
-        f(self);
-        self
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum SimpleType {
-    Auto,
-    U32,
-    U64,
-    I32,
-    I64,
-    F32,
-    F64,
-    Bool,
-    String,
-    Bytes,
-    LocalTime,
-    UtcTime,
-    Enum(Vec<String>),
-    JsonBytes(String),
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum Type {
-    NonOpt(SimpleType, String),
-    Opt(SimpleType),
-}
-
-impl Type {
-    fn simple(&self) -> &SimpleType {
-        match self {
-            Type::NonOpt(t, _) => t,
-            Type::Opt(t) => t,
-        }
-    }
-}
-
-fn to_sql_type(t: &SimpleType) -> &'static str {
-    match t {
-        SimpleType::Auto => "serial",
-        SimpleType::U32 => "int",
-        SimpleType::U64 => "bigint",
-        SimpleType::I32 => "int",
-        SimpleType::I64 => "bigint",
-        SimpleType::F32 => "real",
-        SimpleType::F64 => "double",
-        SimpleType::Bool => "bool",
-        SimpleType::String => "text",
-        SimpleType::Bytes => "bytea",
-        SimpleType::LocalTime => "timestamp",
-        SimpleType::UtcTime => "timestamp",
-        SimpleType::Enum(_) => "text",
-        SimpleType::JsonBytes(_) => "bytea",
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct Table(String);
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct Field(String, String);
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct Index(String, String);
-
-#[derive(Clone, Eq, PartialEq, Hash)]
-enum Id_ {
-    Table(Table),
-    Field(Field),
-    TableConstraint(String, String),
-    TableIndex(Index),
-}
-
-#[derive(Clone)]
-struct TableDef {
-    id: String,
+struct VersionQuery_ {
     name: String,
-    fields: Vec<FieldDef>,
+    txn: bool,
+    plural: QueryPlural,
+    q: Box<dyn Query>,
 }
 
-impl MigrateNode_ for TableDef {
-    fn update(&self, ctx: &mut BuildContext, old: &Self) {
-        unreachable!()
-    }
+#[derive(Default)]
+pub struct Version {
+    new_types: HashMap<usize, SimpleType>,
+    schema: HashMap<Id, MigrateNode>,
+    pre_migration: Option<String>,
+    post_migration: Option<String>,
+    queries: Vec<VersionQuery_>,
 }
 
-impl MigrateNodeDispatch_ for TableDef {
-    fn create_coalesce(&mut self, other: &Node_) -> bool {
-        match other {
-            Node_::Field(f) if f.table_id == self.id => {
-                self.fields.push(f.def.clone());
-                true
-            },
-            _ => false,
-        }
-    }
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Table(TableId);
 
-    fn delete_coalesce(&mut self, other: &Node_) -> bool {
-        match other {
-            Node_::Table(_) => false,
-            Node_::Field(f) if f.table_id == self.id => {
-                true
-            },
-            Node_::TableConstraint(e) if e.table_id == self.id => true,
-            Node_::TableIndex(e) if e.table_id == self.id => true,
-            _ => false,
-        }
-    }
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Field(FieldId);
 
-    fn create(&self, ctx: &mut BuildContext) {
-        let mut stmt = Tokens::new();
-        stmt.s("create table").id(&self.id).s("(");
-        for (i, f) in self.fields.iter().enumerate() {
-            stmt.id(&f.id);
-            stmt.s(match &f.type_ {
-                Type::NonOpt(t, _) => &format!("{} not null", to_sql_type(t)),
-                Type::Opt(t) => to_sql_type(t),
-            });
-        }
-        stmt.s(")");
-        ctx.stmt(stmt.to_string());
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Index(TableIndexId);
+
+impl Version {
+    fn table(&mut self, id: String, d: TableDef) -> Table {
+        let out = Table(TableId(id));
+        self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::Table(NodeTable_ {
+            id: out.0.clone(),
+            def: d,
+            fields: vec![],
+        })));
+        out
     }
 
-    fn delete(&self, ctx: &mut BuildContext) {
-        ctx.stmt(Tokens::new().s("drop table").id(&self.id).to_string());
+    fn query(&mut self, name: &str, txn: bool, plural: QueryPlural, query: impl Query + 'static) {
+        self.queries.push(VersionQuery_ {
+            name: name.into(),
+            txn: txn,
+            plural: plural,
+            q: Box::new(query),
+        });
     }
 }
-
-#[derive(Clone)]
-struct FieldDef {
-    id: String,
-    name: String,
-    type_: Type,
-}
-
-#[derive(Clone)]
-struct PrimaryKeyDef {
-    pub fields: Vec<Field>,
-}
-
-#[derive(Clone)]
-struct ForeignKeyDef {
-    pub fields: Vec<(Field, Field)>,
-}
-
-#[derive(Clone)]
-enum TableConstraintTypeDef {
-    PrimaryKey(PrimaryKeyDef),
-    ForeignKey(ForeignKeyDef),
-}
-
-#[derive(Clone)]
-struct TableConstraintDef {
-    pub id: String,
-    pub type_: TableConstraintTypeDef,
-}
-
-#[derive(Clone)]
-struct TableIndexDef {
-    id: String,
-    field_ids: Vec<Field>,
-    unique: bool,
-}
-
-#[derive(Clone)]
-struct NodeField_ {
-    table_id: String,
-    def: FieldDef,
-}
-
-impl MigrateNode_ for NodeField_ {
-    fn update(&self, ctx: &mut BuildContext, old: &Self) {
-        match (&self.def.type_, &old.def.type_) {
-            (Type::NonOpt(t, d), Type::NonOpt(old_t, old_d)) => todo!(),
-            (Type::NonOpt(t, _), Type::Opt(old_t)) => todo!(),
-            (Type::Opt(t), Type::NonOpt(old_t, _)) => todo!(),
-            (Type::Opt(t), Type::Opt(old_t)) => {
-                ctx.stmt(
-                    Tokens::new()
-                        .s("alter table")
-                        .id(&self.table_id)
-                        .s("alter column")
-                        .id(&self.def.id)
-                        .s("set type")
-                        .s(to_sql_type(t))
-                        .to_string(),
-                );
-            },
-        }
-    }
-}
-
-impl MigrateNodeDispatch_ for NodeField_ {
-    fn create(&self, ctx: &mut BuildContext) {
-        if matches!(self.def.type_.simple(), SimpleType::Auto) {
-            ctx.err(format!("Auto (serial) fields can't be added after table creation"));
-        }
-        let mut stmt = Tokens::new();
-        stmt
-            .s("alter table")
-            .id(&self.table_id)
-            .s("add column")
-            .id(&self.def.id)
-            .s(to_sql_type(self.def.type_.simple()));
-        if let Type::NonOpt(_, d) = &self.def.type_ {
-            stmt.s("not null default");
-            stmt.s(d);
-        }
-        ctx.stmt(stmt.to_string());
-        if let Type::NonOpt(_, _) = &self.def.type_ {
-            let mut stmt = Tokens::new();
-            stmt.s("alter table").id(&self.table_id).s("alter column").id(&self.def.id).s("drop default");
-        }
-    }
-
-    fn delete(&self, ctx: &mut BuildContext) {
-        ctx.stmt(
-            Tokens::new().s("alter table").id(&self.table_id).s("drop column").id(&self.def.id).to_string(),
-        );
-    }
-
-    fn create_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-
-    fn delete_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-}
-
-#[derive(Clone)]
-struct NodeTableConstraint_ {
-    table_id: String,
-    def: TableConstraintDef,
-}
-
-impl MigrateNodeDispatch_ for NodeTableConstraint_ {
-    fn create_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-
-    fn create(&self, ctx: &mut BuildContext) {
-        let mut stmt = Tokens::new();
-        stmt.s("alter table").id(&self.table_id).s("add constraint").id(&self.def.id);
-        match &self.def.type_ {
-            TableConstraintTypeDef::PrimaryKey(x) => {
-                stmt.s("primary key (").f(|t| {
-                    for (i, id) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(&id.1);
-                    }
-                }).s(")");
-            },
-            TableConstraintTypeDef::ForeignKey(x) => {
-                stmt.s("foreign key (").f(|t| {
-                    for (i, id) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(&id.1.1);
-                    }
-                }).s(") references ").f(|t| {
-                    for (i, id) in x.fields.iter().enumerate() {
-                        if i == 0 {
-                            t.id(&id.1.0).s("(");
-                        } else {
-                            t.s(",");
-                        }
-                        t.id(&id.1.1);
-                    }
-                }).s(")");
-            },
-        }
-        ctx.stmt(stmt.to_string());
-    }
-
-    fn delete_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-
-    fn delete(&self, ctx: &mut BuildContext) {
-        ctx.stmt(
-            Tokens::new().s("alter table").id(&self.table_id).s("drop constraint").id(&self.def.id).to_string(),
-        );
-    }
-}
-
-#[derive(Clone)]
-struct NodeTableIndex_ {
-    table_id: String,
-    def: TableIndexDef,
-}
-
-impl MigrateNodeDispatch_ for NodeTableIndex_ {
-    fn create_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-
-    fn create(&self, ctx: &mut BuildContext) {
-        ctx.stmt(Tokens::new().s("create").f(|t| {
-            if self.def.unique {
-                t.s("unique");
-            }
-        }).s("index").id(&self.def.id).s("on").id(&self.table_id).s("(").f(|t| {
-            for (i, id) in self.def.field_ids.iter().enumerate() {
-                if i > 0 {
-                    t.s(",");
-                }
-                t.id(&id.1);
-            }
-        }).s(")").to_string());
-    }
-
-    fn delete_coalesce(&mut self, other: &Node_) -> bool {
-        false
-    }
-
-    fn delete(&self, ctx: &mut BuildContext) {
-        ctx.stmt(Tokens::new().s("drop index").id(&self.def.id).to_string());
-    }
-}
-
-#[enum_dispatch]
-trait MigrateNodeDispatch_ {
-    fn create_coalesce(&mut self, other: &Node_) -> bool;
-    fn create(&self, ctx: &mut BuildContext);
-    fn delete_coalesce(&mut self, other: &Node_) -> bool;
-    fn delete(&self, ctx: &mut BuildContext);
-}
-
-trait MigrateNode_: MigrateNodeDispatch_ {
-    fn update(&self, ctx: &mut BuildContext, old: &Self);
-}
-
-#[derive(Clone)]
-#[enum_dispatch(MigrateNodeDispatch_)]
-//. #[samevariant(PairwiseNode_)]
-enum Node_ {
-    Table(TableDef),
-    Field(NodeField_),
-    TableConstraint(NodeTableConstraint_),
-    TableIndex(NodeTableIndex_),
-}
-
-type Version = super::Version<Node_, Id_>;
 
 impl Table {
-    fn new(v: &mut Version, d: TableDef) -> Table {
-        let out = Table(d.id.clone());
-        v.schema.insert(Id_::Table(out.clone()), crate::Node {
-            deps: vec![],
-            body: Node_::Table(d),
-        });
+    pub fn field(&self, v: &mut Version, id: String, d: FieldDef) -> Field {
+        let out = Field(FieldId(self.0.clone(), id));
+        v
+            .schema
+            .insert(
+                Id::Field(out.0.clone()),
+                MigrateNode::new(vec![Id::Table(self.0.clone())], Node::Field(NodeField_ {
+                    id: out.0.clone(),
+                    def: d,
+                })),
+            );
         out
     }
 
-    fn field(&self, v: &mut Version, d: FieldDef) -> Field {
-        let out = Field(self.0.clone(), d.id.clone());
-        v.schema.insert(Id_::Field(out.clone()), crate::Node {
-            deps: vec![Id_::Table(self.clone())],
-            body: Node_::Field(NodeField_ {
-                table_id: self.0.clone(),
-                def: d,
-            }),
-        });
-        out
-    }
-
-    fn primary_key(&self, v: &mut Version, d: TableConstraintDef) {
-        let mut deps = vec![Id_::Table(self.clone())];
+    pub fn constraint(&self, errs: &mut Vec<String>, v: &mut Version, id: String, d: TableConstraintDef) {
+        let id = TableConstraintId(self.0.clone(), id);
+        let mut deps = vec![Id::Table(self.0.clone())];
         match &d.type_ {
             TableConstraintTypeDef::PrimaryKey(x) => {
-                for f in x.fields {
+                for f in &x.fields {
                     if f.0 != self.0 {
-                        ctx.err(
+                        errs.push(
                             format!(
                                 "Field {} in primary key constraint {} is in table {}, but constraint is in table {}",
                                 f.1,
-                                d.id,
+                                id,
                                 self.0,
                                 f.0
                             ),
                         );
                     }
-                    deps.push(Id_::Field(f));
+                    deps.push(Id::Field(f.clone()));
                 }
             },
             TableConstraintTypeDef::ForeignKey(x) => {
-                let last_foreign_table = None;
-                for f in x.fields {
+                let mut last_foreign_table = None;
+                for f in &x.fields {
                     if f.0.0 != self.0 {
-                        ctx.err(
+                        errs.push(
                             format!(
                                 "Local field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
                                 f.0.1,
-                                d.id,
+                                id,
                                 self.0,
                                 f.1.0
                             ),
                         );
                     }
-                    deps.push(Id_::Field(f.0));
+                    deps.push(Id::Field(f.0.clone()));
                     if let Some(t) = last_foreign_table.take() {
                         if t != f.1.0 {
-                            ctx.err(
+                            errs.push(
                                 format!(
                                     "Foreign field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
                                     f.1.1,
-                                    d.id,
+                                    id,
                                     t,
                                     f.1.0
                                 ),
                             );
                         }
                     }
-                    last_foreign_table = Some(f.1.0);
-                    deps.push(Id_::Field(f.1));
+                    last_foreign_table = Some(f.1.0.clone());
+                    deps.push(Id::Field(f.1.clone()));
                 }
             },
         }
-        v.schema.insert(Id_::TableConstraint(self.0.clone(), d.id.clone()), crate::Node {
-            deps: deps,
-            body: Node_::TableConstraint(NodeTableConstraint_ {
-                table_id: self.0.clone(),
-                def: d,
-            }),
-        });
+        v
+            .schema
+            .insert(
+                Id::TableConstraint(id.clone()),
+                MigrateNode::new(deps, Node::TableConstraint(NodeTableConstraint_ {
+                    id: id,
+                    def: d,
+                })),
+            );
     }
 
-    fn index(&self, v: &mut Version, d: TableIndexDef) -> Index {
-        let out = Index(self.0.clone(), d.id.clone());
-        v.schema.insert(Id_::TableIndex(out.clone()), crate::Node {
-            deps: vec![Id_::Table(self.clone())],
-            body: Node_::TableIndex(NodeTableIndex_ {
-                table_id: self.0.clone(),
-                def: d,
-            }),
-        });
+    pub fn index(&self, v: &mut Version, id: String, d: TableIndexDef) -> Index {
+        let out = Index(TableIndexId(self.0.clone(), id));
+        v
+            .schema
+            .insert(
+                Id::TableIndex(out.0.clone()),
+                MigrateNode::new(vec![Id::Table(self.0.clone())], Node::TableIndex(NodeTableIndex_ {
+                    id: out.0.clone(),
+                    def: d,
+                })),
+            );
         out
     }
 }
 
-impl MigrateNodeVersion for Node_ {
-    fn compare(&self, other: &Self) -> crate::MigrateNodeVersionComparison {
-        match PairwiseNode_::pairs(self, other) {
-            PairwiseNode_::Table(_, _) => crate::MigrateNodeVersionComparison::Keep,
-            PairwiseNode_::Field(current, old) => if current.def.type_ == old.def.type_ {
-                MigrateNodeVersionComparison::Keep
-            } else {
-                MigrateNodeVersionComparison::Update
-            },
-            PairwiseNode_::TablePrimaryKey(current, old) => todo!(),
-            PairwiseNode_::TableForeignKey(current, old) => todo!(),
-            PairwiseNode_::TableIndex(current, old) => {
-                if current.def.field_ids == old.def.field_ids {
-                    MigrateNodeVersionComparison::Keep
+pub fn generate(versions: Vec<Version>) -> Result<TokenStream, Vec<String>> {
+    let mut errs = vec![];
+    let mut migrations = vec![];
+    let mut ver_wrappers = vec![];
+    let mut prev_version: Option<&Version> = None;
+    let mut prev_ver_txn_wrapper = None;
+    for (version_i, version) in versions.iter().enumerate() {
+        let db_wrapper_ident = format_ident!("DbVer{}", version_i);
+        let txn_wrapper_ident = format_ident!("TxnVer{}", version_i);
+
+        // Generate migrations
+        {
+            let mut state = PgMigrateCtx {
+                errs: &mut errs,
+                ver: version,
+                statements: vec![],
+            };
+            crate::graphmigrate::migrate(&mut state, &prev_version.take().map(|s| s.schema), &version.schema);
+            let mut migration = vec![];
+            if let Some(pre) = &version.pre_migration {
+                if let Some(prev_ver_txn_wrapper_ident) = prev_ver_txn_wrapper {
+                    let pre_ident = format_ident!("{}", pre);
+                    migration.push(quote!{
+                        txn = #pre_ident(#prev_ver_txn_wrapper_ident(txn)) ?.0;
+                    });
                 } else {
-                    MigrateNodeVersionComparison::DeleteCreate
+                    state
+                        .errs
+                        .push(
+                            format!(
+                                "Pre-migration specified for version {}, but no previous state to perform migration in",
+                                version_i
+                            ),
+                        );
                 }
-            },
-            PairwiseNode_::Nonmatching(_, _) => unreachable!(),
+            }
+            for statement in state.statements {
+                migration.push(quote!{
+                    txn.execute(#statement, &[]) ?;
+                });
+            }
+            if let Some(post) = &version.post_migration {
+                let post_ident = format_ident!("{}", post);
+                migration.push(quote!{
+                    txn = #post_ident(#txn_wrapper_ident(txn)) ?.0;
+                });
+            }
+            migrations.push(quote!{
+                if skip <= #version_i {
+                    #(#migration) *
+                }
+            });
         }
-    }
 
-    fn create(&self, ctx: &mut BuildContext) {
-        MigrateNodeDispatch_::create(self, stmts)
-    }
+        // Generate queries
+        {
+            let mut db_queries = vec![];
+            let mut txn_queries = vec![];
+            let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
+            let mut res_type_defs = vec![];
+            if version_i == versions.len() - 1 || version.post_migration.is_some() ||
+                versions.get(version_i + 1).map(|v| v.post_migration.is_some()).unwrap_or_default() {
+                for q in &version.queries {
+                    let mut ctx = QueryCtx::new(&mut errs);
+                    ctx.err_ctx.push(vec![("Query", q.name.clone())]);
+                    let res = Query::build(q.q.as_ref(), &mut ctx);
+                    let ident = format_ident!("{}", q.name);
+                    let q_text = res.1.to_string();
+                    let args = ctx.args;
+                    let args_forward = ctx.args_forward;
+                    let out = if q.txn {
+                        &mut txn_queries
+                    } else {
+                        &mut db_queries
+                    };
 
-    fn delete(&self, ctx: &mut BuildContext) {
-        MigrateNodeDispatch_::delete(self, stmts)
-    }
+                    struct ConvertResType {
+                        type_tokens: TokenStream,
+                        unforward: TokenStream,
+                    }
 
-    fn update(&self, ctx: &mut BuildContext, old: &Self) {
-        match PairwiseNode_::pairs(self, old) {
-            PairwiseNode_::Table(current, old) => current.update(stmts, &old),
-            PairwiseNode_::Field(current, old) => current.update(stmts, &old),
-            PairwiseNode_::TablePrimaryKey(current, old) => current.update(stmts, &old),
-            PairwiseNode_::TableForeignKey(current, old) => current.update(stmts, &old),
-            PairwiseNode_::TableIndex(current, old) => current.update(stmts, &old),
-            PairwiseNode_::Nonmatching(_, _) => unreachable!(),
+                    fn convert_res_type(s: Type) -> Option<ConvertResType> {
+                        let mut ident: TokenStream = match s.type_.type_ {
+                            types::SimpleSimpleType::Auto => quote!(i64),
+                            types::SimpleSimpleType::U32 => quote!(u32),
+                            types::SimpleSimpleType::U64 => quote!(u64),
+                            types::SimpleSimpleType::I32 => quote!(i32),
+                            types::SimpleSimpleType::I64 => quote!(i64),
+                            types::SimpleSimpleType::F32 => quote!(f32),
+                            types::SimpleSimpleType::F64 => quote!(f64),
+                            types::SimpleSimpleType::Bool => quote!(bool),
+                            types::SimpleSimpleType::String => quote!(String),
+                            types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
+                            types::SimpleSimpleType::LocalTime => quote!(chrono::LocalTime),
+                            types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                        };
+                        if s.opt {
+                            ident = quote!(Option < #ident >);
+                        }
+                        let mut unforward = quote!{
+                            let x: #ident = r.get(0);
+                        };
+                        if let Some(custom) = &s.type_.custom {
+                            ident = format_ident!("{}", custom).to_token_stream();
+                            if s.opt {
+                                unforward = quote!{
+                                    #unforward let x = x.map(| x | #ident:: from(x));
+                                };
+                                ident = quote!(Option < #ident >);
+                            } else {
+                                unforward = quote!{
+                                    #unforward let x = #ident:: from(x);
+                                };
+                            }
+                        }
+                        Some(ConvertResType {
+                            type_tokens: ident,
+                            unforward: quote!({
+                                #unforward x
+                            }),
+                        })
+                    }
+
+                    let (res_ident, unforward_res) = {
+                        let r = res.0.0;
+                        let mut fields = vec![];
+                        let mut unforward_fields = vec![];
+                        for (k, v) in r {
+                            let k_ident = format_ident!("{}", k.field);
+                            let r = match convert_res_type(v) {
+                                Some(x) => x,
+                                None => {
+                                    continue;
+                                },
+                            };
+                            let type_ident = r.type_tokens;
+                            let unforward = r.unforward;
+                            fields.push(quote!{
+                                pub #k_ident: #type_ident
+                            });
+                            unforward_fields.push(quote!{
+                                #k_ident: #unforward
+                            });
+                        }
+                        let body = quote!({
+                            #(#fields,) *
+                        });
+                        let res_type_count = res_type_idents.len();
+                        let res_ident = match res_type_idents.entry(body.to_string()) {
+                            std::collections::hash_map::Entry::Occupied(e) => {
+                                e.get().clone()
+                            },
+                            std::collections::hash_map::Entry::Vacant(e) => {
+                                let ident = format_ident!("ResVer{}_{}", version_i, res_type_count);
+                                e.insert(ident.clone());
+                                res_type_defs.push(quote!(pub struct #ident #body));
+                                ident
+                            },
+                        };
+                        let unforward = quote!(#res_ident {
+                            #(#unforward_fields,) *
+                        });
+                        (res_ident, unforward)
+                    };
+                    match q.plural {
+                        QueryPlural::None => {
+                            out.push(quote!{
+                                pub async fn #ident(&mut self, #(#args,) *) -> Result <() > {
+                                    self.0.execute(#q_text, &[#(#args_forward,) *]) ?;
+                                    Ok(())
+                                }
+                            });
+                        },
+                        QueryPlural::MaybeOne => {
+                            out.push(quote!{
+                                pub async fn #ident(&mut self, #(#args,) *) -> Result < Option < #res_ident >> {
+                                    let r = self.0.query_opt(#q_text, &[#(#args_forward,) *]) ?;
+                                    for r in r {
+                                        return Ok(Some(#unforward_res));
+                                    }
+                                    Ok(None)
+                                }
+                            });
+                        },
+                        QueryPlural::One => {
+                            out.push(quote!{
+                                pub async fn #ident(&mut self, #(#args,) *) -> Result < #res_ident > {
+                                    let r = self.0.query_one(#q_text, &[#(#args_forward,) *]) ?;
+                                    Ok(#unforward_res)
+                                }
+                            });
+                        },
+                        QueryPlural::Many => {
+                            out.push(quote!{
+                                pub async fn #ident(&mut self, #(#args,) *) -> Result < Vec < #res_ident >> {
+                                    let mut out = vec![];
+                                    for r in self.0.query(#q_text, &[#(#args_forward,) *]) ? {
+                                        out.push(#unforward_res);
+                                    }
+                                    Ok(out)
+                                }
+                            });
+                        },
+                    }
+                }
+            }
+            ver_wrappers.push(quote!{
+                pub struct #db_wrapper_ident(tokio_postgres::Client);
+                impl #db_wrapper_ident {
+                    fn tx < T >(
+                        &mut self,
+                        cb: impl FnOnce(#txn_wrapper_ident) ->(#txn_wrapper_ident, Result < T >)
+                    ) -> Result < T > {
+                        let mut(txn, res) = cb(#txn_wrapper_ident(self.0.transaction()?));
+                        let mut txn = txn.0;
+                        match res {
+                            Err(e) => {
+                                if let Err(e1) = txn.rollback() {
+                                    return Err(e1.chain(e));
+                                } else {
+                                    return Err(e);
+                                }
+                            },
+                            Ok(_) => {
+                                if let Err(e) = txn.commit()? {
+                                    return Err(e);
+                                } else {
+                                    return Ok(res);
+                                }
+                            },
+                        }
+                    }
+                    #(#db_queries) *
+                }
+                pub struct #txn_wrapper_ident < 'a >(tokio_postgres:: Transaction < 'a >);
+                impl #txn_wrapper_ident {
+                    #(#txn_queries) *
+                }
+                #(#res_type_defs) *
+            });
         }
-    }
 
-    fn create_coalesce(&mut self, other: &Self) -> bool {
-        MigrateNodeDispatch_::create_coalesce(self, other)
+        // Next iter prep
+        prev_version = Some(version);
+        prev_ver_txn_wrapper = Some(txn_wrapper_ident);
     }
-
-    fn delete_coalesce(&mut self, other: &Self) -> bool {
-        MigrateNodeDispatch_::delete_coalesce(self, other)
+    if !errs.is_empty() {
+        return Err(errs);
     }
+    let ver_wrapper = ver_wrappers.last().unwrap();
+    Ok(quote!{
+        fn migrate(db: tokio_postgres::Client) -> Result < #ver_wrapper > {
+            let mut txn = db.transaction()?;
+            match ||-> Result <() > {
+                txn.execute(
+                    "create table __good_version if not exists (version bigint not null, hash bytea not null);",
+                    &[],
+                )?;
+                let skip = match txn.query_opt("select * from __good_version limit 1", &[])? {
+                    Some(r) => {
+                        let ver: i64 = r.get("version");
+                        let hash: Vec<u8> = r.get("hash");
+                        if let Some(expect_hash) = version_hashes(ver) {
+                            if expect_hash != hash {
+                                return Err(
+                                    anyhow!(
+                                        "At version {}, but current version hash {:x} doesn't match schema hash {:x}. Did an old version schema change?",
+                                        ver,
+                                        hash,
+                                        expect_hash
+                                    ),
+                                );
+                            }
+                        } else {
+                            return Err(
+                                anyhow!("At version {} with has {:x} which isn't defined in the schema", ver, hash),
+                            );
+                        }
+                        ver + 1
+                    },
+                    None => {
+                        0
+                    },
+                };
+                #(#migrations) * Ok(())
+            }
+            () {
+                Err(e) => {
+                    return txn.rollback().chain(e)?;
+                }
+                Ok(_) => {
+                    txn.commit()?;
+                }
+            }
+            Ok(#ver_wrapper(db))
+        }
+        #(#ver_wrappers) *
+    })
 }
