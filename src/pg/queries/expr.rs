@@ -3,9 +3,9 @@ use quote::{
     format_ident,
     ToTokens,
 };
+use samevariant::samevariant;
 use syn::Path;
 use std::collections::HashMap;
-use proc_macro2::TokenStream;
 use crate::{
     pg::{
         types::{
@@ -19,7 +19,7 @@ use crate::{
     utils::Tokens,
 };
 use super::{
-    utils::QueryCtx,
+    utils::PgQueryCtx,
     select::Select,
 };
 
@@ -49,6 +49,7 @@ pub enum Expr {
         args: Vec<Box<Expr>>,
     },
     Select(Box<Select>),
+    Cast(Box<Expr>, Type),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -60,11 +61,16 @@ pub struct ExprTypeField {
 pub struct ExprType(pub Vec<(ExprTypeField, Type)>);
 
 impl ExprType {
-    pub fn assert_scalar(&self, ctx: &mut QueryCtx) -> Option<(ExprTypeField, Type)> {
+    pub fn assert_scalar(&self, ctx: &mut PgQueryCtx) -> Option<(ExprTypeField, Type)> {
         if self.0.len() != 1 {
-            ctx.err(
-                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
-            );
+            ctx
+                .errs
+                .err(
+                    format!(
+                        "Select outputs must be scalars, but got result with more than one field: {}",
+                        self.0.len()
+                    ),
+                );
             return None;
         }
         Some(self.0[0].clone())
@@ -72,7 +78,7 @@ impl ExprType {
 }
 
 impl Expr {
-    pub fn build(&self, ctx: &mut QueryCtx, scope: &HashMap<ExprTypeField, Type>) -> (ExprType, Tokens) {
+    pub fn build(&self, ctx: &mut PgQueryCtx, scope: &HashMap<ExprTypeField, Type>) -> (ExprType, Tokens) {
         let mut out = Tokens::new();
 
         macro_rules! empty_type{
@@ -90,54 +96,120 @@ impl Expr {
             };
         }
 
-        fn check_same(ctx: &mut QueryCtx, left: &ExprType, right: &ExprType) -> Option<Type> {
-            ctx.err_ctx.push(vec![("expr", "left".into())]);
+        fn check_general_same_type(ctx: &mut PgQueryCtx, left: &Type, right: &Type) {
+            if left.opt != right.opt {
+                ctx.errs.err(format!("Operator arms have differing optionality"));
+            }
+
+            #[derive(Debug)]
+            #[samevariant(GeneralTypePairs)]
+            enum GeneralType {
+                Bool,
+                Numeric,
+                Blob,
+            }
+
+            fn general_type(t: &Type) -> GeneralType {
+                match t.type_.type_ {
+                    SimpleSimpleType::Auto => GeneralType::Numeric,
+                    SimpleSimpleType::U32 => GeneralType::Numeric,
+                    SimpleSimpleType::U64 => GeneralType::Numeric,
+                    SimpleSimpleType::I32 => GeneralType::Numeric,
+                    SimpleSimpleType::I64 => GeneralType::Numeric,
+                    SimpleSimpleType::F32 => GeneralType::Numeric,
+                    SimpleSimpleType::F64 => GeneralType::Numeric,
+                    SimpleSimpleType::Bool => GeneralType::Bool,
+                    SimpleSimpleType::String => GeneralType::Blob,
+                    SimpleSimpleType::Bytes => GeneralType::Blob,
+                    SimpleSimpleType::LocalTime => GeneralType::Numeric,
+                    SimpleSimpleType::UtcTime => GeneralType::Numeric,
+                }
+            }
+
+            match GeneralTypePairs::pairs(&general_type(left), &general_type(right)) {
+                GeneralTypePairs::Nonmatching(left, right) => {
+                    ctx.errs.err(format!("Operator arms have incompatible types: {:?} and {:?}", left, right));
+                },
+                _ => { },
+            }
+        }
+
+        fn check_general_same(ctx: &mut PgQueryCtx, left: &ExprType, right: &ExprType) {
+            if left.0.len() != right.0.len() {
+                ctx
+                    .errs
+                    .err(
+                        format!(
+                            "Operator arms record type lengths don't match: left has {} fields and right has {}",
+                            left.0.len(),
+                            right.0.len()
+                        ),
+                    );
+            } else if left.0.len() == 1 && right.0.len() == 1 {
+                check_general_same_type(ctx, &left.0[0].1, &left.0[0].1);
+            } else {
+                for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
+                    ctx.errs.err_ctx.push(vec![("Record pair", i.to_string())]);
+                    check_general_same_type(ctx, &left.1, &right.1);
+                    ctx.errs.err_ctx.pop();
+                }
+            }
+        }
+
+        fn check_same(ctx: &mut PgQueryCtx, left: &ExprType, right: &ExprType) -> Option<Type> {
+            ctx.errs.err_ctx.push(vec![("expr", "left".into())]);
             let left = match left.assert_scalar(ctx) {
                 Some(t) => t,
                 None => {
                     return None;
                 },
             };
-            ctx.err_ctx.pop();
-            ctx.err_ctx.push(vec![("expr", "right".into())]);
+            ctx.errs.err_ctx.pop();
+            ctx.errs.err_ctx.push(vec![("expr", "right".into())]);
             let right = match right.assert_scalar(ctx) {
                 Some(t) => t,
                 None => {
                     return None;
                 },
             };
-            ctx.err_ctx.pop();
+            ctx.errs.err_ctx.pop();
             if left.1.opt != right.1.opt {
-                ctx.err(
-                    format!(
-                        "Expected same types, but left nullability is {} but right nullability is {}",
-                        left.1.opt,
-                        right.1.opt
-                    ),
-                );
+                ctx
+                    .errs
+                    .err(
+                        format!(
+                            "Expected same types, but left nullability is {} but right nullability is {}",
+                            left.1.opt,
+                            right.1.opt
+                        ),
+                    );
             }
             if left.1.type_.custom != right.1.type_.custom {
-                ctx.err(
-                    format!(
-                        "Expected same types, but left rust type is {:?} while right rust type is {:?}",
-                        left.1.type_.custom,
-                        right.1.type_.custom
-                    ),
-                );
+                ctx
+                    .errs
+                    .err(
+                        format!(
+                            "Expected same types, but left rust type is {:?} while right rust type is {:?}",
+                            left.1.type_.custom,
+                            right.1.type_.custom
+                        ),
+                    );
             }
             if left.1.type_.type_ != right.1.type_.type_ {
-                ctx.err(
-                    format!(
-                        "Expected same types, but left base type is {:?} while right base type is {:?}",
-                        left.1.type_.type_,
-                        right.1.type_.type_
-                    ),
-                );
+                ctx
+                    .errs
+                    .err(
+                        format!(
+                            "Expected same types, but left base type is {:?} while right base type is {:?}",
+                            left.1.type_.type_,
+                            right.1.type_.type_
+                        ),
+                    );
             }
             Some(left.1.clone())
         }
 
-        fn check_bool(ctx: &mut QueryCtx, a: &ExprType) {
+        fn check_bool(ctx: &mut PgQueryCtx, a: &ExprType) {
             let t = match a.assert_scalar(ctx) {
                 Some(t) => t,
                 None => {
@@ -145,39 +217,10 @@ impl Expr {
                 },
             };
             if t.1.opt {
-                ctx.err(format!("Expected bool type but is nullable: got {:?}", t));
+                ctx.errs.err(format!("Expected bool type but is nullable: got {:?}", t));
             }
             if !matches!(t.1.type_.type_, SimpleSimpleType::Bool) {
-                ctx.err(format!("Expected bool but type is non-bool: got {:?}", t.1.type_.type_));
-            }
-        }
-
-        fn check_numeric(ctx: &mut QueryCtx, a: &ExprType) {
-            let t = match a.assert_scalar(ctx) {
-                Some(t) => t,
-                None => {
-                    return;
-                },
-            };
-            if t.1.opt {
-                ctx.err(format!("Expected numeric type but is nullable: got {:?}", t));
-            }
-            if !match &t.1.type_.type_ {
-                SimpleSimpleType::Auto => true,
-                SimpleSimpleType::U32 => true,
-                SimpleSimpleType::U64 => true,
-                SimpleSimpleType::I32 => true,
-                SimpleSimpleType::I64 => true,
-                SimpleSimpleType::F32 => true,
-                SimpleSimpleType::F64 => true,
-                SimpleSimpleType::Bool => false,
-                SimpleSimpleType::String => false,
-                SimpleSimpleType::Bytes => false,
-                SimpleSimpleType::LocalTime => true,
-                SimpleSimpleType::UtcTime => true,
-            } {
-                ctx.err(format!("Expected numeric type but type is non numeric: got {:?}", t.1.type_.type_));
-                return;
+                ctx.errs.err(format!("Expected bool but type is non-bool: got {:?}", t.1.type_.type_));
             }
         }
 
@@ -219,47 +262,59 @@ impl Expr {
                 return empty_type!(SimpleSimpleType::String);
             },
             Expr::Param(x, t) => {
-                let i = ctx.param_count;
-                ctx.param_count += 1;
+                let mut errs = vec![];
+                let i = match ctx.arg_lookup.entry(x.clone()) {
+                    std::collections::hash_map::Entry::Occupied(e) => {
+                        let (i, prev_t) = e.get();
+                        if t != prev_t {
+                            errs.push(
+                                format!("Parameter {} specified with multiple types: {:?}, {:?}", x, t, prev_t),
+                            );
+                        }
+                        *i
+                    },
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        let i = ctx.args.len();
+                        e.insert((i, t.clone()));
+                        let rust_type = match t.type_.type_ {
+                            SimpleSimpleType::Auto => quote!(usize),
+                            SimpleSimpleType::U32 => quote!(u32),
+                            SimpleSimpleType::U64 => quote!(u64),
+                            SimpleSimpleType::I32 => quote!(i32),
+                            SimpleSimpleType::I64 => quote!(i64),
+                            SimpleSimpleType::F32 => quote!(f32),
+                            SimpleSimpleType::F64 => quote!(f64),
+                            SimpleSimpleType::Bool => quote!(bool),
+                            SimpleSimpleType::String => quote!(&str),
+                            SimpleSimpleType::Bytes => quote!(&[u8]),
+                            SimpleSimpleType::LocalTime => quote!(chrono::LocalDateTime),
+                            SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                        };
+                        let ident = format_ident!("{}", x);
+                        let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {
+                            (match syn::parse_str::<Path>(custom.as_str()) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    ctx.errs.err(format!("Couldn't parse custom type {}: {:?}", custom, e));
+                                    return (ExprType(vec![]), Tokens::new());
+                                },
+                            }.to_token_stream(), quote!(#rust_type:: from(#ident)))
+                        } else {
+                            (rust_type, quote!(#ident))
+                        };
+                        if t.opt {
+                            rust_type = quote!(Option < #rust_type >);
+                            rust_forward = quote!(#ident.map(| #ident | #rust_forward));
+                        }
+                        ctx.args.push(quote!(#ident: #rust_type));
+                        ctx.args_forward.push(rust_forward);
+                        i
+                    },
+                };
+                for e in errs {
+                    ctx.errs.err(e);
+                }
                 out.s(&format!("${}", i));
-
-                struct Param {
-                    rust_arg: TokenStream,
-                    rust_to_sql: TokenStream,
-                }
-
-                let rust_type = match t.type_.type_ {
-                    SimpleSimpleType::Auto => quote!(usize),
-                    SimpleSimpleType::U32 => quote!(u32),
-                    SimpleSimpleType::U64 => quote!(u64),
-                    SimpleSimpleType::I32 => quote!(i32),
-                    SimpleSimpleType::I64 => quote!(i64),
-                    SimpleSimpleType::F32 => quote!(f32),
-                    SimpleSimpleType::F64 => quote!(f64),
-                    SimpleSimpleType::Bool => quote!(bool),
-                    SimpleSimpleType::String => quote!(&str),
-                    SimpleSimpleType::Bytes => quote!(&[u8]),
-                    SimpleSimpleType::LocalTime => quote!(chrono::LocalDateTime),
-                    SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
-                };
-                let ident = format_ident!("{}", x);
-                let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {
-                    (match syn::parse_str::<Path>(custom.as_str()) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            ctx.err(format!("Couldn't parse custom type {}: {:?}", custom, e));
-                            return (ExprType(vec![]), Tokens::new());
-                        },
-                    }.to_token_stream(), quote!(#rust_type:: from(#ident)))
-                } else {
-                    (rust_type, quote!(#ident))
-                };
-                if t.opt {
-                    rust_type = quote!(Option < #rust_type >);
-                    rust_forward = quote!(#ident.map(| #ident | #rust_forward));
-                }
-                ctx.args.push(quote!(#ident: #rust_type));
-                ctx.args_forward.push(rust_forward);
                 return (ExprType(vec![(ExprTypeField {
                     table: "".into(),
                     field: "".into(),
@@ -273,13 +328,15 @@ impl Expr {
                 let t = match scope.get(&id) {
                     Some(t) => t.clone(),
                     None => {
-                        ctx.err(
-                            format!(
-                                "Expression references {} but this field isn't available here (available fields: {:?})",
-                                x.0,
-                                scope
-                            ),
-                        );
+                        ctx
+                            .errs
+                            .err(
+                                format!(
+                                    "Expression references {} but this field isn't available here (available fields: {:?})",
+                                    x.0,
+                                    scope
+                                ),
+                            );
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
@@ -324,12 +381,11 @@ impl Expr {
                         return empty_type!(SimpleSimpleType::Bool);
                     },
                     BinOp::Equals | BinOp::NotEquals => {
-                        check_same(ctx, &left_type.0, &right_type.0);
+                        check_general_same(ctx, &left_type.0, &right_type.0);
                         return empty_type!(SimpleSimpleType::Bool);
                     },
                     BinOp::LessThan | BinOp::LessThanEqualTo | BinOp::GreaterThan | BinOp::GreaterThanEqualTo => {
-                        check_numeric(ctx, &left_type.0);
-                        check_numeric(ctx, &right_type.0);
+                        check_general_same(ctx, &left_type.0, &right_type.0);
                         return empty_type!(SimpleSimpleType::Bool);
                     },
                 }
@@ -363,16 +419,18 @@ impl Expr {
             Expr::Select(s) => {
                 return s.build(ctx);
             },
+            Expr::Cast(e, t) => {
+                let out = e.build(ctx, scope);
+                if let Some(got_t) = out.0.assert_scalar(ctx) {
+                    check_general_same_type(ctx, t, &got_t.1);
+                }
+                return (ExprType(vec![(ExprTypeField {
+                    table: "".into(),
+                    field: "".into(),
+                }, t.clone())]), out.1);
+            },
         };
     }
-}
-
-pub struct ExprBinOp(Box<ExprBinOp_>);
-
-pub struct ExprBinOp_ {
-    Left: Expr,
-    Op: BinOp,
-    Right: Expr,
 }
 
 pub enum BinOp {
@@ -388,13 +446,6 @@ pub enum BinOp {
     LessThanEqualTo,
     GreaterThan,
     GreaterThanEqualTo,
-}
-
-pub struct ExprPrefixOp(Box<ExprPrefixOp_>);
-
-pub struct ExprPrefixOp_ {
-    Op: PrefixOp,
-    Right: Expr,
 }
 
 pub enum PrefixOp {

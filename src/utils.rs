@@ -32,3 +32,37 @@ impl Tokens {
         self
     }
 }
+
+pub struct Errs {
+    errs: Vec<String>,
+    pub(crate) err_ctx: Vec<Vec<(&'static str, String)>>,
+}
+
+impl Errs {
+    pub(crate) fn new() -> Self {
+        Self {
+            errs: vec![],
+            err_ctx: vec![],
+        }
+    }
+
+    pub fn err(&mut self, t: String) {
+        let mut out = String::new();
+        for (i, (k, v)) in self.err_ctx.iter().rev().flatten().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&format!("{}: {}", k, v));
+        }
+        out.push_str(" - ");
+        out.push_str(&t);
+        self.errs.push(out);
+    }
+
+    pub fn raise(self) -> Result<(), Vec<String>> {
+        if !self.errs.is_empty() {
+            return Err(self.errs);
+        }
+        Ok(())
+    }
+}

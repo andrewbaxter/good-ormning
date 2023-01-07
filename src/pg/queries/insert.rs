@@ -34,13 +34,13 @@ pub struct Insert {
 }
 
 impl Query for Insert {
-    fn build(&self, ctx: &mut super::utils::QueryCtx) -> (ExprType, Tokens) {
+    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
         // Prep
         let mut all_fields = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.err(format!("Unknown table {} for insert", self.table));
+                ctx.errs.err(format!("Unknown table {} for insert", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {

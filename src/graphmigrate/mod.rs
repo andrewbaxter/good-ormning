@@ -32,7 +32,7 @@ pub trait NodeData: Clone {
 
 pub struct Node<T: NodeData, I: NodeId> {
     deps: Vec<I>,
-    body: T,
+    pub(crate) body: T,
 }
 
 impl<T: NodeData, I: NodeId> Node<T, I> {
@@ -56,12 +56,11 @@ pub fn migrate<
     'a,
     T: NodeData,
     I: NodeId,
->(output: &'a mut T::O, prev_version: &Option<Version<T, I>>, version: &Version<T, I>) {
+>(output: &'a mut T::O, prev_version: &Option<&Version<T, I>>, version: &Version<T, I>) {
     #[derive(Clone, Hash, PartialEq, Eq)]
     struct VersionNodeId<I: NodeId>(i32, I);
 
     enum DiffNode<T: NodeData> {
-        DoNothing,
         Create {
             new: T,
         },
@@ -75,7 +74,7 @@ pub fn migrate<
     }
 
     struct Stage<T: NodeData, I: NodeId> {
-        nodes: Vec<DiffNode<T>>,
+        nodes: Vec<Option<DiffNode<T>>>,
         node_ids: HashMap<VersionNodeId<I>, usize>,
         g: GraphMap<usize, usize, Directed>,
         ge: usize,
@@ -95,7 +94,7 @@ pub fn migrate<
     impl<T: NodeData, I: NodeId> Stage<T, I> {
         fn add(&mut self, k: VersionNodeId<I>, v: T) -> usize {
             let id = self.nodes.len();
-            self.nodes.push(DiffNode::Create { new: v });
+            self.nodes.push(Some(DiffNode::Create { new: v }));
             self.node_ids.insert(k, id);
             self.g.add_node(id);
             id
@@ -103,7 +102,7 @@ pub fn migrate<
 
         fn remove(&mut self, k: VersionNodeId<I>, v: T) -> usize {
             let id = self.nodes.len();
-            self.nodes.push(DiffNode::Delete { old: v });
+            self.nodes.push(Some(DiffNode::Delete { old: v }));
             self.node_ids.insert(k, id);
             self.g.add_node(id);
             id
@@ -126,10 +125,10 @@ pub fn migrate<
 
     // Initialize graph with previous state, as deletions
     if let Some(prev_version) = prev_version {
-        for (k, n) in prev_version {
+        for (k, n) in *prev_version {
             current.remove(VersionNodeId(prev_version_i, k.clone()), n.body.clone());
         }
-        for (k, n) in prev_version {
+        for (k, n) in *prev_version {
             let gk = current.get(prev_version_i, k).unwrap();
             for dep in &n.deps {
                 current.edge(current.get(prev_version_i, dep).unwrap(), gk);
@@ -143,19 +142,19 @@ pub fn migrate<
         match current.get(prev_version_i, k) {
             Some(gk) => {
                 let old_n = match current.nodes.get(gk).unwrap() {
-                    DiffNode::Delete { old } => old,
-                    DiffNode::DoNothing | DiffNode::Create { .. } | DiffNode::Update { .. } => unreachable!(),
+                    Some(DiffNode::Delete { old }) => old,
+                    None | Some(DiffNode::Create { .. }) | Some(DiffNode::Update { .. }) => unreachable!(),
                 };
                 match n.body.compare(old_n) {
                     Comparison::DoNothing => {
-                        current.nodes[gk] = DiffNode::DoNothing;
+                        current.nodes[gk] = None;
                         gk
                     },
                     Comparison::Update => {
-                        current.nodes[gk] = DiffNode::Update {
+                        current.nodes[gk] = Some(DiffNode::Update {
                             old: old_n.clone(),
                             new: n.body.clone(),
-                        };
+                        });
                         gk
                     },
                     Comparison::DeleteCreate => {
@@ -180,41 +179,43 @@ pub fn migrate<
     // Perform changes in order
     let mut iter = Topo::new(&current.g);
     while let Some(n) = iter.next(&current.g) {
-        match current.nodes.remove(n) {
-            DiffNode::DoNothing => { },
-            DiffNode::Delete { mut old } => {
-                let mut dfs = Dfs::new(&current.g, n);
-                dfs.next(&current.g);
-                while let Some(n) = dfs.next(&current.g) {
-                    if !match current.nodes.get(n).unwrap() {
-                        DiffNode::Delete { old: v } => old.delete_coalesce(v),
-                        _ => {
-                            false
-                        },
-                    } {
-                        dfs.stack.pop();
-                        current.nodes[n] = DiffNode::DoNothing;
+        match current.nodes.get_mut(n).unwrap().take() {
+            None => { },
+            Some(node) => match node {
+                DiffNode::Delete { mut old } => {
+                    let mut dfs = Dfs::new(&current.g, n);
+                    dfs.next(&current.g);
+                    while let Some(n) = dfs.next(&current.g) {
+                        if !match current.nodes.get(n).unwrap().as_ref().unwrap() {
+                            DiffNode::Delete { old: v } => old.delete_coalesce(v),
+                            _ => {
+                                false
+                            },
+                        } {
+                            dfs.stack.pop();
+                            current.nodes[n] = None;
+                        }
                     }
-                }
-                old.delete(output);
-            },
-            DiffNode::Create { mut new } => {
-                let mut dfs = Dfs::new(&current.g, n);
-                dfs.next(&current.g);
-                while let Some(n) = dfs.next(&current.g) {
-                    if !match current.nodes.get(n).unwrap() {
-                        DiffNode::Create { new: v } => new.create_coalesce(v),
-                        _ => {
-                            false
-                        },
-                    } {
-                        dfs.stack.pop();
-                        current.nodes[n] = DiffNode::DoNothing;
+                    old.delete(output);
+                },
+                DiffNode::Create { mut new } => {
+                    let mut dfs = Dfs::new(&current.g, n);
+                    dfs.next(&current.g);
+                    while let Some(n) = dfs.next(&current.g) {
+                        if !match current.nodes.get(n).unwrap().as_ref() {
+                            Some(DiffNode::Create { new: v }) => new.create_coalesce(v),
+                            _ => {
+                                false
+                            },
+                        } {
+                            dfs.stack.pop();
+                            current.nodes[n] = None;
+                        }
                     }
-                }
-                new.create(output);
+                    new.create(output);
+                },
+                DiffNode::Update { old, new } => new.update(output, &old),
             },
-            DiffNode::Update { old, new } => new.update(output, &old),
         }
     }
 }

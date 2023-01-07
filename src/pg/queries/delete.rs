@@ -22,14 +22,14 @@ pub struct Delete {
 }
 
 impl Query for Delete {
-    fn build(&self, ctx: &mut super::utils::QueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
+    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
         let mut fields = HashMap::new();
         let mut all_fields = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.err(format!("Unknown table {} for delete", self.table));
+                ctx.errs.err(format!("Unknown table {} for delete", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {

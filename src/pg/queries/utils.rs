@@ -8,7 +8,10 @@ use crate::{
         },
         types::Type,
     },
-    utils::Tokens,
+    utils::{
+        Tokens,
+        Errs,
+    },
 };
 use super::{
     expr::{
@@ -19,49 +22,32 @@ use super::{
     select::SelectOutput,
 };
 
-pub(crate) struct QueryCtx<'a> {
-    pub(crate) tables: HashMap<TableId, HashMap<ExprTypeField, Type>>,
-    errs: &'a mut Vec<String>,
-    pub(crate) err_ctx: Vec<Vec<(&'static str, String)>>,
-    pub(crate) param_count: usize,
+pub struct PgQueryCtx<'a> {
+    pub(crate) tables: &'a HashMap<TableId, HashMap<ExprTypeField, Type>>,
+    pub(crate) errs: &'a mut Errs,
+    pub(crate) arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) args: Vec<TokenStream>,
     pub(crate) args_forward: Vec<TokenStream>,
-    pub(crate) params: Vec<TokenStream>,
 }
 
-impl<'a> QueryCtx<'a> {
-    pub(crate) fn new(errs: &'a mut Vec<String>) -> Self {
+impl<'a> PgQueryCtx<'a> {
+    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<ExprTypeField, Type>>) -> Self {
         Self {
-            tables: Default::default(),
+            tables: tables,
             errs: errs,
-            err_ctx: vec![],
-            param_count: 0,
+            arg_lookup: Default::default(),
             args: Default::default(),
             args_forward: Default::default(),
-            params: Default::default(),
         }
-    }
-
-    pub fn err(&mut self, t: String) {
-        let mut out = String::new();
-        for (i, (k, v)) in self.err_ctx.iter().rev().flatten().enumerate() {
-            if i > 0 {
-                out.push_str(", ");
-            }
-            out.push_str(&format!("{}: {}", k, v));
-        }
-        out.push_str(" - ");
-        out.push_str(&t);
-        self.errs.push(out);
     }
 }
 
-pub(crate) trait Query {
-    fn build(&self, ctx: &mut QueryCtx) -> (ExprType, Tokens);
+pub trait Query {
+    fn build(&self, ctx: &mut PgQueryCtx) -> (ExprType, Tokens);
 }
 
 pub fn build_set(
-    ctx: &mut QueryCtx,
+    ctx: &mut PgQueryCtx,
     all_fields: &HashMap<ExprTypeField, Type>,
     out: &mut Tokens,
     values: &Vec<(FieldId, Expr)>,
@@ -79,7 +65,7 @@ pub fn build_set(
 }
 
 pub fn build_returning_values(
-    ctx: &mut QueryCtx,
+    ctx: &mut PgQueryCtx,
     all_fields: &HashMap<ExprTypeField, Type>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
@@ -111,7 +97,7 @@ pub fn build_returning_values(
 }
 
 pub fn build_returning(
-    ctx: &mut QueryCtx,
+    ctx: &mut PgQueryCtx,
     all_fields: &HashMap<ExprTypeField, Type>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,

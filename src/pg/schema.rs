@@ -3,11 +3,15 @@ use std::{
         Display,
         Debug,
     },
+    marker::PhantomData,
 };
 use enum_dispatch::enum_dispatch;
 use samevariant::samevariant;
 use crate::{
-    utils::Tokens,
+    utils::{
+        Tokens,
+        Errs,
+    },
     graphmigrate::Comparison,
 };
 use super::{
@@ -16,21 +20,119 @@ use super::{
         to_sql_type,
         SimpleSimpleType,
     },
-    Version,
 };
 
 pub(crate) struct PgMigrateCtx<'a> {
-    pub errs: &'a mut Vec<String>,
-    pub ver: &'a Version,
+    pub(crate) errs: &'a mut Errs,
     pub statements: Vec<String>,
 }
 
-pub(crate) type MigrateNode = crate::graphmigrate::Node<Node, Id>;
+impl<'a> PgMigrateCtx<'a> {
+    pub fn new(errs: &'a mut Errs) -> Self {
+        Self {
+            errs: errs,
+            statements: Default::default(),
+        }
+    }
+}
+
+pub(crate) type MigrateNode<'a> = crate::graphmigrate::Node<Node<'a>, Id>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FieldType {
     NonOpt(SimpleType, String),
     Opt(SimpleType),
+}
+
+pub struct FieldBuilder {
+    t: SimpleSimpleType,
+    default_: Option<String>,
+    custom: Option<String>,
+}
+
+impl FieldBuilder {
+    fn new(t: SimpleSimpleType) -> FieldBuilder {
+        FieldBuilder {
+            t: t,
+            default_: Some("".into()),
+            custom: None,
+        }
+    }
+
+    pub fn opt(mut self) -> FieldBuilder {
+        self.default_ = None;
+        self
+    }
+
+    pub fn migrate_default(mut self, text: impl ToString) -> FieldBuilder {
+        self.default_ = Some(text.to_string());
+        self
+    }
+
+    pub fn custom(mut self, type_: impl ToString) -> FieldBuilder {
+        self.custom = Some(type_.to_string());
+        self
+    }
+
+    pub fn build(self) -> FieldType {
+        let t = SimpleType {
+            custom: self.custom,
+            type_: self.t,
+        };
+        if let Some(d) = self.default_ {
+            FieldType::NonOpt(t, d)
+        } else {
+            FieldType::Opt(t)
+        }
+    }
+}
+
+pub fn field_auto() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::Auto)
+}
+
+pub fn field_bool() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::Bool)
+}
+
+pub fn field_i32() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::I32)
+}
+
+pub fn field_i64() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::I64)
+}
+
+pub fn field_u32() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::U32)
+}
+
+pub fn field_u64() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::U64)
+}
+
+pub fn field_f32() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::F32)
+}
+
+pub fn field_f64() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::F64)
+}
+
+pub fn field_str() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::String)
+}
+
+pub fn field_bytes() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::Bytes)
+}
+
+pub fn field_localtime() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::LocalTime)
+}
+
+pub fn field_utctime() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::UtcTime)
 }
 
 impl FieldType {
@@ -86,6 +188,18 @@ pub enum Id {
     TableIndex(TableIndexId),
 }
 
+#[enum_dispatch]
+trait NodeDataDispatch {
+    fn create_coalesce(&mut self, other: &Node_) -> bool;
+    fn create(&self, ctx: &mut PgMigrateCtx);
+    fn delete_coalesce(&mut self, other: &Node_) -> bool;
+    fn delete(&self, ctx: &mut PgMigrateCtx);
+}
+
+trait NodeData: NodeDataDispatch {
+    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self);
+}
+
 #[derive(Clone)]
 pub struct TableDef {
     pub name: String,
@@ -105,9 +219,9 @@ impl NodeData for NodeTable_ {
 }
 
 impl NodeDataDispatch for NodeTable_ {
-    fn create_coalesce(&mut self, other: &Node) -> bool {
+    fn create_coalesce(&mut self, other: &Node_) -> bool {
         match other {
-            Node::Field(f) if f.id.0 == self.id => {
+            Node_::Field(f) if f.id.0 == self.id => {
                 self.fields.push((f.id.clone(), f.def.clone()));
                 true
             },
@@ -115,11 +229,11 @@ impl NodeDataDispatch for NodeTable_ {
         }
     }
 
-    fn delete_coalesce(&mut self, other: &Node) -> bool {
+    fn delete_coalesce(&mut self, other: &Node_) -> bool {
         match other {
-            Node::Field(f) if f.id.0 == self.id => true,
-            Node::TableConstraint(e) if e.id.0 == self.id => true,
-            Node::TableIndex(e) if e.id.0 == self.id => true,
+            Node_::Field(f) if f.id.0 == self.id => true,
+            Node_::Constraint(e) if e.id.0 == self.id => true,
+            Node_::Index(e) if e.id.0 == self.id => true,
             _ => false,
         }
     }
@@ -174,7 +288,7 @@ pub struct TableConstraintDef {
 }
 
 #[derive(Clone)]
-pub struct TableIndexDef {
+pub struct IndexDef {
     pub field_ids: Vec<FieldId>,
     pub unique: bool,
 }
@@ -187,24 +301,80 @@ pub(crate) struct NodeField_ {
 
 impl NodeData for NodeField_ {
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
-        match (&self.def.type_, &old.def.type_) {
-            (FieldType::NonOpt(t, d), FieldType::NonOpt(old_t, old_d)) => todo!(),
-            (FieldType::NonOpt(t, _), FieldType::Opt(old_t)) => todo!(),
-            (FieldType::Opt(t), FieldType::NonOpt(old_t, _)) => todo!(),
-            (FieldType::Opt(t), FieldType::Opt(old_t)) => {
-                ctx
-                    .statements
-                    .push(
-                        Tokens::new()
-                            .s("alter table")
-                            .id(&self.id.0.0)
-                            .s("alter column")
-                            .id(&self.id.1)
-                            .s("set type")
-                            .s(to_sql_type(t))
-                            .to_string(),
-                    );
+        let (new_t, new_def) = match (&self.def.type_, &old.def.type_) {
+            (FieldType::NonOpt(t, d), FieldType::NonOpt(old_t, old_d)) => {
+                (if t != old_t {
+                    Some(t)
+                } else {
+                    None
+                }, if d != old_d {
+                    Some(Some(d))
+                } else {
+                    None
+                })
             },
+            (FieldType::NonOpt(t, def), FieldType::Opt(old_t)) => {
+                (if t != old_t {
+                    Some(t)
+                } else {
+                    None
+                }, Some(Some(def)))
+            },
+            (FieldType::Opt(t), FieldType::NonOpt(old_t, _)) => {
+                (if t != old_t {
+                    Some(t)
+                } else {
+                    None
+                }, Some(None))
+            },
+            (FieldType::Opt(t), FieldType::Opt(_)) => {
+                (Some(t), None)
+            },
+        };
+        if let Some(new_t) = new_t {
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.id.0.0)
+                        .s("alter column")
+                        .id(&self.id.1)
+                        .s("set type")
+                        .s(to_sql_type(new_t))
+                        .to_string(),
+                );
+        }
+        if let Some(new_def) = new_def {
+            match new_def {
+                Some(def) => {
+                    ctx
+                        .statements
+                        .push(
+                            Tokens::new()
+                                .s("alter table")
+                                .id(&self.id.0.0)
+                                .s("alter column")
+                                .id(&self.id.1)
+                                .s("set default")
+                                .s(&def)
+                                .to_string(),
+                        );
+                },
+                None => {
+                    ctx
+                        .statements
+                        .push(
+                            Tokens::new()
+                                .s("alter table")
+                                .id(&self.id.0.0)
+                                .s("alter column")
+                                .id(&self.id.1)
+                                .s("unset default")
+                                .to_string(),
+                        );
+                },
+            }
         }
     }
 }
@@ -212,7 +382,7 @@ impl NodeData for NodeField_ {
 impl NodeDataDispatch for NodeField_ {
     fn create(&self, ctx: &mut PgMigrateCtx) {
         if matches!(self.def.type_.simple().type_, SimpleSimpleType::Auto) {
-            ctx.errs.push(format!("Auto (serial) fields can't be added after table creation"));
+            ctx.errs.err(format!("Auto (serial) fields can't be added after table creation"));
         }
         let mut stmt = Tokens::new();
         stmt
@@ -238,23 +408,23 @@ impl NodeDataDispatch for NodeField_ {
             .push(Tokens::new().s("alter table").id(&self.id.0.0).s("drop column").id(&self.id.1).to_string());
     }
 
-    fn create_coalesce(&mut self, _other: &Node) -> bool {
+    fn create_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 
-    fn delete_coalesce(&mut self, _other: &Node) -> bool {
+    fn delete_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct NodeTableConstraint_ {
+pub(crate) struct NodeConstraint_ {
     pub id: TableConstraintId,
     pub def: TableConstraintDef,
 }
 
-impl NodeDataDispatch for NodeTableConstraint_ {
-    fn create_coalesce(&mut self, _other: &Node) -> bool {
+impl NodeDataDispatch for NodeConstraint_ {
+    fn create_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 
@@ -295,7 +465,7 @@ impl NodeDataDispatch for NodeTableConstraint_ {
         ctx.statements.push(stmt.to_string());
     }
 
-    fn delete_coalesce(&mut self, _other: &Node) -> bool {
+    fn delete_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 
@@ -308,20 +478,20 @@ impl NodeDataDispatch for NodeTableConstraint_ {
     }
 }
 
-impl NodeData for NodeTableConstraint_ {
+impl NodeData for NodeConstraint_ {
     fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) {
         unreachable!()
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct NodeTableIndex_ {
+pub(crate) struct NodeIndex_ {
     pub id: TableIndexId,
-    pub def: TableIndexDef,
+    pub def: IndexDef,
 }
 
-impl NodeDataDispatch for NodeTableIndex_ {
-    fn create_coalesce(&mut self, _other: &Node) -> bool {
+impl NodeDataDispatch for NodeIndex_ {
+    fn create_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 
@@ -340,7 +510,7 @@ impl NodeDataDispatch for NodeTableIndex_ {
         }).s(")").to_string());
     }
 
-    fn delete_coalesce(&mut self, _other: &Node) -> bool {
+    fn delete_coalesce(&mut self, _other: &Node_) -> bool {
         false
     }
 
@@ -349,53 +519,78 @@ impl NodeDataDispatch for NodeTableIndex_ {
     }
 }
 
-impl NodeData for NodeTableIndex_ {
+impl NodeData for NodeIndex_ {
     fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) {
         unreachable!()
     }
 }
 
-#[enum_dispatch]
-trait NodeDataDispatch {
-    fn create_coalesce(&mut self, other: &Node) -> bool;
-    fn create(&self, ctx: &mut PgMigrateCtx);
-    fn delete_coalesce(&mut self, other: &Node) -> bool;
-    fn delete(&self, ctx: &mut PgMigrateCtx);
-}
-
-trait NodeData: NodeDataDispatch {
-    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self);
-}
-
 #[derive(Clone)]
 #[enum_dispatch(NodeDataDispatch)]
 #[samevariant(PairwiseNode)]
-pub enum Node {
+pub(crate) enum Node_ {
     Table(NodeTable_),
     Field(NodeField_),
-    TableConstraint(NodeTableConstraint_),
-    TableIndex(NodeTableIndex_),
+    Constraint(NodeConstraint_),
+    Index(NodeIndex_),
 }
 
-impl crate::graphmigrate::NodeData for Node {
-    type O = PgMigrateCtx<'static>;
+#[derive(Clone)]
+pub(crate) struct Node<'a> {
+    pub(crate) n: Node_,
+    // Rust is awesome
+    _pd: PhantomData<&'a i32>,
+}
+
+impl<'a> Node<'a> {
+    pub(crate) fn table(t: NodeTable_) -> Self {
+        Node {
+            n: Node_::Table(t),
+            _pd: Default::default(),
+        }
+    }
+
+    pub(crate) fn field(t: NodeField_) -> Self {
+        Node {
+            n: Node_::Field(t),
+            _pd: Default::default(),
+        }
+    }
+
+    pub(crate) fn table_constraint(t: NodeConstraint_) -> Self {
+        Node {
+            n: Node_::Constraint(t),
+            _pd: Default::default(),
+        }
+    }
+
+    pub(crate) fn table_index(t: NodeIndex_) -> Self {
+        Node {
+            n: Node_::Index(t),
+            _pd: Default::default(),
+        }
+    }
+}
+
+impl<'a> crate::graphmigrate::NodeData for Node<'a> {
+    type O = PgMigrateCtx<'a>;
 
     fn compare(&self, other: &Self) -> Comparison {
-        match PairwiseNode::pairs(self, other) {
+        match PairwiseNode::pairs(&self.n, &other.n) {
             PairwiseNode::Table(_, _) => Comparison::DoNothing,
             PairwiseNode::Field(current, old) => if current.def.type_ == old.def.type_ {
                 Comparison::DoNothing
             } else {
                 Comparison::Update
             },
-            PairwiseNode::TableConstraint(current, old) => {
+            PairwiseNode::Constraint(current, old) => {
                 if current.def.type_ == old.def.type_ {
                     Comparison::DoNothing
                 } else {
                     Comparison::DeleteCreate
                 }
             },
-            PairwiseNode::TableIndex(current, old) => {
+            PairwiseNode::Index(current, old) => {
                 if current.def.field_ids == old.def.field_ids {
                     Comparison::DoNothing
                 } else {
@@ -407,28 +602,28 @@ impl crate::graphmigrate::NodeData for Node {
     }
 
     fn create(&self, ctx: &mut PgMigrateCtx) {
-        NodeDataDispatch::create(self, ctx)
+        NodeDataDispatch::create(&self.n, ctx)
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
-        NodeDataDispatch::delete(self, ctx)
+        NodeDataDispatch::delete(&self.n, ctx)
     }
 
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
-        match PairwiseNode::pairs(self, old) {
+        match PairwiseNode::pairs(&self.n, &old.n) {
             PairwiseNode::Table(current, old) => current.update(ctx, &old),
             PairwiseNode::Field(current, old) => current.update(ctx, &old),
-            PairwiseNode::TableConstraint(current, old) => current.update(ctx, &old),
-            PairwiseNode::TableIndex(current, old) => current.update(ctx, &old),
+            PairwiseNode::Constraint(current, old) => current.update(ctx, &old),
+            PairwiseNode::Index(current, old) => current.update(ctx, &old),
             PairwiseNode::Nonmatching(_, _) => unreachable!(),
         }
     }
 
     fn create_coalesce(&mut self, other: &Self) -> bool {
-        NodeDataDispatch::create_coalesce(self, other)
+        NodeDataDispatch::create_coalesce(&mut self.n, &other.n)
     }
 
     fn delete_coalesce(&mut self, other: &Self) -> bool {
-        NodeDataDispatch::delete_coalesce(self, other)
+        NodeDataDispatch::delete_coalesce(&mut self.n, &other.n)
     }
 }

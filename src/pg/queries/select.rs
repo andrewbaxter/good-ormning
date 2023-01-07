@@ -9,7 +9,7 @@ use crate::{
 use super::{
     utils::{
         Query,
-        QueryCtx,
+        PgQueryCtx,
         build_returning_values,
     },
     expr::{
@@ -35,7 +35,7 @@ pub struct NamedSelectSource {
 }
 
 impl NamedSelectSource {
-    fn build(&self, ctx: &mut QueryCtx) -> (Vec<(ExprTypeField, Type)>, Tokens) {
+    fn build(&self, ctx: &mut PgQueryCtx) -> (Vec<(ExprTypeField, Type)>, Tokens) {
         let mut out = Tokens::new();
         let mut new_fields = match &self.source {
             JoinSource::Subsel(s) => {
@@ -47,7 +47,7 @@ impl NamedSelectSource {
                 let new_fields = match ctx.tables.get(&s) {
                     Some(f) => f,
                     None => {
-                        ctx.err(format!("No table with id {} in version", s));
+                        ctx.errs.err(format!("No table with id {} in version", s));
                         return (vec![], Tokens::new());
                     },
                 };
@@ -97,7 +97,7 @@ pub struct Select {
 }
 
 impl Query for Select {
-    fn build(&self, ctx: &mut super::utils::QueryCtx) -> (ExprType, Tokens) {
+    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
         // Prep
         let source = self.table.build(ctx);
         let mut fields = HashMap::new();

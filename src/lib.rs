@@ -1,3 +1,3 @@
 pub mod pg;
-pub mod graphmigrate;
-pub mod utils;
+mod graphmigrate;
+mod utils;
