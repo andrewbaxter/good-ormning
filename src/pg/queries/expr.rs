@@ -1,3 +1,7 @@
+use chrono::{
+    DateTime,
+    Utc,
+};
 use quote::{
     quote,
     format_ident,
@@ -29,6 +33,7 @@ use super::{
 
 #[derive(Clone, Debug)]
 pub enum Expr {
+    LitNull(SimpleType),
     LitBool(bool),
     LitI32(i32),
     LitI64(i64),
@@ -38,6 +43,7 @@ pub enum Expr {
     LitF64(f64),
     LitString(String),
     LitBytes(Vec<u8>),
+    LitUtcTime(DateTime<Utc>),
     Param(String, Type),
     Field(Field),
     BinOp {
@@ -112,7 +118,6 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, left: &Type, right: &Type) 
             SimpleSimpleType::Bool => GeneralType::Bool,
             SimpleSimpleType::String => GeneralType::Blob,
             SimpleSimpleType::Bytes => GeneralType::Blob,
-            SimpleSimpleType::LocalTime => GeneralType::Numeric,
             SimpleSimpleType::UtcTime => GeneralType::Numeric,
         }
     }
@@ -236,6 +241,16 @@ impl Expr {
         }
 
         match self {
+            Expr::LitNull(t) => {
+                out.s("null");
+                return (ExprType(vec![(ExprValName {
+                    table: "".into(),
+                    field: "".into(),
+                }, Type {
+                    type_: t.clone(),
+                    opt: true,
+                })]), out);
+            },
             Expr::LitBool(x) => {
                 out.s(if *x {
                     "true"
@@ -281,6 +296,13 @@ impl Expr {
                 out.s(&format!("${}", i + 1));
                 return empty_type!(SimpleSimpleType::Bytes);
             },
+            Expr::LitUtcTime(d) => {
+                let i = ctx.query_args.len();
+                let d = d.to_rfc3339();
+                ctx.query_args.push(quote!(#d));
+                out.s(&format!("${}", i + 1));
+                return empty_type!(SimpleSimpleType::UtcTime);
+            },
             Expr::Param(x, t) => {
                 let mut errs = vec![];
                 let i = match ctx.rust_arg_lookup.entry(x.clone()) {
@@ -307,7 +329,6 @@ impl Expr {
                             SimpleSimpleType::Bool => quote!(bool),
                             SimpleSimpleType::String => quote!(&str),
                             SimpleSimpleType::Bytes => quote!(&[u8]),
-                            SimpleSimpleType::LocalTime => quote!(chrono::LocalDateTime),
                             SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
                         };
                         let ident = format_ident!("{}", x);

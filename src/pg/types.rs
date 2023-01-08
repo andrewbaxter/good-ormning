@@ -10,7 +10,6 @@ pub enum SimpleSimpleType {
     Bool,
     String,
     Bytes,
-    LocalTime,
     UtcTime,
 }
 
@@ -38,7 +37,6 @@ pub fn to_sql_type(t: &SimpleType) -> &'static str {
         SimpleSimpleType::Bool => "bool",
         SimpleSimpleType::String => "text",
         SimpleSimpleType::Bytes => "bytea",
-        SimpleSimpleType::LocalTime => "timestamp",
-        SimpleSimpleType::UtcTime => "timestamp",
+        SimpleSimpleType::UtcTime => "timestamp with time zone",
     }
 }

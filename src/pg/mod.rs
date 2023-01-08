@@ -51,7 +51,7 @@ use self::{
         constraint::{
             ConstraintDef,
             ConstraintId,
-            TableConstraintTypeDef,
+            ConstraintTypeDef,
             NodeConstraint_,
         },
     },
@@ -126,7 +126,7 @@ impl Table {
         let id = ConstraintId(self.0.clone(), id.into());
         let mut deps = vec![Id::Table(self.0.clone())];
         match &d.type_ {
-            TableConstraintTypeDef::PrimaryKey(x) => {
+            ConstraintTypeDef::PrimaryKey(x) => {
                 for f in &x.fields {
                     if f.0 != self.0 {
                         panic!(
@@ -140,7 +140,7 @@ impl Table {
                     deps.push(Id::Field(f.clone()));
                 }
             },
-            TableConstraintTypeDef::ForeignKey(x) => {
+            ConstraintTypeDef::ForeignKey(x) => {
                 let mut last_foreign_table = None;
                 for f in &x.fields {
                     if f.0.0 != self.0 {
@@ -232,7 +232,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Prep for current version
         field_lookup.clear();
-        let version_i = *version_i;
+        let version_i = *version_i + 1;
         if let Some(i) = prev_version_i {
             if version_i != i + 1 {
                 errs.err(
@@ -293,7 +293,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Build migration
         migrations.push(quote!{
-            if skip <= #version_i {
+            if version < #version_i {
                 #(#migration) *
             }
         });
@@ -345,7 +345,6 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     types::SimpleSimpleType::Bool => quote!(bool),
                     types::SimpleSimpleType::String => quote!(String),
                     types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
-                    types::SimpleSimpleType::LocalTime => quote!(chrono::LocalTime),
                     types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
                 };
                 if s.opt {
@@ -499,41 +498,25 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     }
 
     // Compile, output
+    let last_version_i = prev_version_i.unwrap();
     let tokens = quote!{
-        fn migrate(db: tokio_postgres::Client) -> Result < #db_wrapper_ident > {
+        fn migrate(db: tokio_postgres::Client) -> Result < #db_wrapper_ident,
+        String > {
             let mut txn = db.transaction()?;
             match ||-> Result <() > {
-                txn.execute(
-                    "create table __good_version if not exists (version bigint not null, hash bytea not null);",
-                    &[],
-                )?;
-                let skip = match txn.query_opt("select * from __good_version limit 1", &[])? {
+                txn.execute("create table __good_version if not exists (version bigint not null);", &[])?;
+                let version = match txn.query_opt("select * from __good_version limit 1", &[])? {
                     Some(r) => {
                         let ver: i64 = r.get("version");
-                        let hash: Vec<u8> = r.get("hash");
-                        if let Some(expect_hash) = version_hashes(ver) {
-                            if expect_hash != hash {
-                                return Err(
-                                    anyhow!(
-                                        "At version {}, but current version hash {:x} doesn't match schema hash {:x}. Did an old version schema change?",
-                                        ver,
-                                        hash,
-                                        expect_hash
-                                    ),
-                                );
-                            }
-                        } else {
-                            return Err(
-                                anyhow!("At version {} with has {:x} which isn't defined in the schema", ver, hash),
-                            );
-                        }
-                        ver + 1
+                        ver
                     },
                     None => {
-                        0
+                        txn.execute("insert into __good_version (version) values (0)", &[])?;
+                        (0, vec![])
                     },
                 };
-                #(#migrations) * Ok(())
+                #(#migrations) * txn.execute("update __good_version set version = $1", &[& #last_version_i]) ?;
+                Ok(())
             }
             () {
                 Err(e) => {

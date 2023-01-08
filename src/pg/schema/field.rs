@@ -139,10 +139,6 @@ pub fn field_bytes() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::Bytes)
 }
 
-pub fn field_localtime() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::LocalTime)
-}
-
 pub fn field_utctime() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTime)
 }

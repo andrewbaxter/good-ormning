@@ -51,6 +51,14 @@ Generates this code
 
 ## Advanced usage
 
+### IDs and Names
+
+In general in this library, IDs are SQL table/field/index/constrait/etc ids. Names are what's used in generated Rust functions and structs.
+
+IDs must be stable. Migrations are based around stable ids, so if (for example) a table ID changes, this will be considered a delete of the table with the old id, and a create of a new table with the new id.
+
+In the example above, I used randomly generated IDs which have this property. This has the downside that it makes the SQL CLI harder to use. It's possible this will be improved upon, but if you frequently need to do things from the CLI I suggest creating a custom CLI using generated queries.
+
 ### Custom types
 
 When defining a field in the schema, call `.custom("mycrate::MyType")` on the field type builder (or pass it in as `Some("mycreate::MyType".to_string())` if creating the type structure directly).
@@ -66,7 +74,7 @@ If you miss either you'll get a compile error that should indicate clearly what 
 
 ### Vs Diesel
 
-Good-ormning is functionally most similar to Diesel.
+Good-Ormning is functionally most similar to Diesel.
 
 #### Diesel
 
