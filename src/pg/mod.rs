@@ -8,10 +8,7 @@ use quote::{
     ToTokens,
 };
 use std::{
-    collections::{
-        HashMap,
-        HashSet,
-    },
+    collections::HashMap,
     path::Path,
     fs,
 };
@@ -20,25 +17,6 @@ use crate::{
     utils::Errs,
 };
 use self::{
-    schema::{
-        TableId,
-        TableDef,
-        FieldId,
-        TableIndexId,
-        Node,
-        Id,
-        NodeTable_,
-        FieldDef,
-        NodeField_,
-        TableConstraintDef,
-        TableConstraintId,
-        NodeConstraint_,
-        TableConstraintTypeDef,
-        NodeIndex_,
-        IndexDef,
-        PgMigrateCtx,
-        Node_,
-    },
     queries::{
         utils::{
             PgQueryCtx,
@@ -46,16 +24,44 @@ use self::{
         },
         expr::ExprTypeField,
     },
-};
-use {
     schema::{
-        MigrateNode,
+        node::{
+            Id,
+            Node,
+            Node_,
+        },
+        utils::{
+            MigrateNode,
+            PgMigrateCtx,
+        },
+        table::{
+            TableId,
+            TableDef,
+            NodeTable_,
+        },
+        field::{
+            FieldId,
+            FieldDef,
+            NodeField_,
+            FieldType,
+        },
+        index::{
+            IndexId,
+            IndexDef,
+            NodeIndex_,
+        },
+        constraint::{
+            TableConstraintDef,
+            ConstraintId,
+            TableConstraintTypeDef,
+            NodeConstraint_,
+        },
     },
 };
 
 pub mod types;
-pub mod schema;
 pub mod queries;
+pub mod schema;
 
 pub enum QueryPlural {
     None,
@@ -86,16 +92,18 @@ pub struct Table(pub TableId);
 pub struct Field(pub FieldId);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Index(pub TableIndexId);
+pub struct Index(pub IndexId);
 
 impl<'a> Version<'a> {
     pub fn table(&mut self, id: &str, d: TableDef) -> Table {
         let out = Table(TableId(id.into()));
-        self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
+        if self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
             id: out.0.clone(),
             def: d,
             fields: vec![],
-        })));
+        }))).is_some() {
+            panic!("Table with id {} already exists", out.0);
+        };
         out
     }
 
@@ -112,7 +120,7 @@ impl<'a> Version<'a> {
 impl Table {
     pub fn field(&self, v: &mut Version, id: &str, d: FieldDef) -> Field {
         let out = Field(FieldId(self.0.clone(), id.into()));
-        v
+        if v
             .schema
             .insert(
                 Id::Field(out.0.clone()),
@@ -120,25 +128,26 @@ impl Table {
                     id: out.0.clone(),
                     def: d,
                 })),
-            );
+            )
+            .is_some() {
+            panic!("Field with id {} already exists", out.0);
+        };
         out
     }
 
-    pub fn constraint(&self, errs: &mut Errs, v: &mut Version, id: &str, d: TableConstraintDef) {
-        let id = TableConstraintId(self.0.clone(), id.into());
+    pub fn constraint(&self, v: &mut Version, id: &str, d: TableConstraintDef) {
+        let id = ConstraintId(self.0.clone(), id.into());
         let mut deps = vec![Id::Table(self.0.clone())];
         match &d.type_ {
             TableConstraintTypeDef::PrimaryKey(x) => {
                 for f in &x.fields {
                     if f.0 != self.0 {
-                        errs.err(
-                            format!(
-                                "Field {} in primary key constraint {} is in table {}, but constraint is in table {}",
-                                f.1,
-                                id,
-                                self.0,
-                                f.0
-                            ),
+                        panic!(
+                            "Field {} in primary key constraint {} is in table {}, but constraint is in table {}",
+                            f.1,
+                            id,
+                            self.0,
+                            f.0
                         );
                     }
                     deps.push(Id::Field(f.clone()));
@@ -148,27 +157,23 @@ impl Table {
                 let mut last_foreign_table = None;
                 for f in &x.fields {
                     if f.0.0 != self.0 {
-                        errs.err(
-                            format!(
-                                "Local field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
-                                f.0.1,
-                                id,
-                                self.0,
-                                f.1.0
-                            ),
+                        panic!(
+                            "Local field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
+                            f.0.1,
+                            id,
+                            self.0,
+                            f.1.0
                         );
                     }
                     deps.push(Id::Field(f.0.clone()));
                     if let Some(t) = last_foreign_table.take() {
                         if t != f.1.0 {
-                            errs.err(
-                                format!(
-                                    "Foreign field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
-                                    f.1.1,
-                                    id,
-                                    t,
-                                    f.1.0
-                                ),
+                            panic!(
+                                "Foreign field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
+                                f.1.1,
+                                id,
+                                t,
+                                f.1.0
                             );
                         }
                     }
@@ -177,25 +182,28 @@ impl Table {
                 }
             },
         }
-        v
-            .schema
-            .insert(Id::TableConstraint(id.clone()), MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
-                id: id,
-                def: d,
-            })));
+        if v.schema.insert(Id::Constraint(id.clone()), MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
+            id: id.clone(),
+            def: d,
+        }))).is_some() {
+            panic!("Constraint with id {} aleady exists", id.0)
+        };
     }
 
     pub fn index(&self, v: &mut Version, id: &str, d: IndexDef) -> Index {
-        let out = Index(TableIndexId(self.0.clone(), id.into()));
-        v
+        let out = Index(IndexId(self.0.clone(), id.into()));
+        if v
             .schema
             .insert(
-                Id::TableIndex(out.0.clone()),
+                Id::Index(out.0.clone()),
                 MigrateNode::new(vec![Id::Table(self.0.clone())], Node::table_index(NodeIndex_ {
                     id: out.0.clone(),
                     def: d,
                 })),
-            );
+            )
+            .is_some() {
+            panic!("Index with id {} already exists", out.0);
+        };
         out
     }
 }
@@ -227,16 +235,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Ve
         // Gather tables for lookup during query generation and check duplicates
         let mut field_lookup = HashMap::new();
         {
-            let mut table_lookup = HashSet::new();
-            let mut constraint_lookup = HashSet::new();
-            let mut index_lookup = HashSet::new();
             for v in version.schema.values() {
                 match &v.body.n {
-                    Node_::Table(t) => {
-                        if !table_lookup.insert(t.id.0.clone()) {
-                            errs.err(format!("Duplicate table id {}", t.id));
-                        }
-                    },
                     Node_::Field(f) => {
                         match field_lookup.entry(f.id.0.clone()) {
                             std::collections::hash_map::Entry::Occupied(_) => { },
@@ -249,11 +249,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Ve
                             table: f.id.0.0.clone(),
                             field: f.id.1.clone(),
                         }, match &f.def.type_ {
-                            schema::FieldType::NonOpt(t, _) => Type {
+                            FieldType::NonOpt(t, _) => Type {
                                 type_: t.clone(),
                                 opt: false,
                             },
-                            schema::FieldType::Opt(t) => Type {
+                            FieldType::Opt(t) => Type {
                                 type_: t.clone(),
                                 opt: true,
                             },
@@ -261,16 +261,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Ve
                             errs.err(format!("Duplicate field id {}", f.id));
                         }
                     },
-                    Node_::Constraint(c) => {
-                        if !constraint_lookup.insert(c.id.clone()) {
-                            errs.err(format!("Duplicate constraint id {}", c.id));
-                        }
-                    },
-                    Node_::Index(i) => {
-                        if !index_lookup.insert(i.id.clone()) {
-                            errs.err(format!("Duplicate index id {}", i.id));
-                        }
-                    },
+                    _ => { },
                 };
             }
         }

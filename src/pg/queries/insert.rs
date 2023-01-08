@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use crate::{
     pg::{
         schema::{
-            TableId,
-            FieldId,
+            field::FieldId,
+            table::TableId,
         },
     },
     utils::Tokens,

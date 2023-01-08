@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use crate::{
     pg::{
-        schema::{
-            TableId,
-            FieldId,
-        },
         types::Type,
+        schema::{
+            table::TableId,
+            field::FieldId,
+        },
     },
     utils::{
         Tokens,

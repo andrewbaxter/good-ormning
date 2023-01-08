@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::{
-    pg::schema::TableId,
     utils::Tokens,
+    pg::schema::table::TableId,
 };
 use super::{
     expr::{
