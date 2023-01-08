@@ -12,9 +12,10 @@ use super::{
     expr::{
         Expr,
         ExprType,
+        ExprValName,
     },
     utils::{
-        Query,
+        QueryBody,
         build_returning,
         build_set,
     },
@@ -28,10 +29,9 @@ pub struct Update {
     pub returning: Vec<SelectOutput>,
 }
 
-impl Query for Update {
+impl QueryBody for Update {
     fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
-        let mut fields = HashMap::new();
         let mut all_fields = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
@@ -40,8 +40,7 @@ impl Query for Update {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            fields.insert(k.clone(), v.clone());
-            all_fields.insert(k.clone(), v.clone());
+            all_fields.insert(ExprValName::from(k.clone()), v.clone());
         }
 
         // Build query

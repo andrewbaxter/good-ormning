@@ -86,26 +86,10 @@ impl<'a> crate::graphmigrate::NodeData for Node<'a> {
 
     fn compare(&self, other: &Self) -> Comparison {
         match PairwiseNode::pairs(&self.n, &other.n) {
-            PairwiseNode::Table(_, _) => Comparison::DoNothing,
-            PairwiseNode::Field(current, old) => if current.def.type_ == old.def.type_ {
-                Comparison::DoNothing
-            } else {
-                Comparison::Update
-            },
-            PairwiseNode::Constraint(current, old) => {
-                if current.def.type_ == old.def.type_ {
-                    Comparison::DoNothing
-                } else {
-                    Comparison::DeleteCreate
-                }
-            },
-            PairwiseNode::Index(current, old) => {
-                if current.def.field_ids == old.def.field_ids {
-                    Comparison::DoNothing
-                } else {
-                    Comparison::DeleteCreate
-                }
-            },
+            PairwiseNode::Table(current, old) => current.compare(old),
+            PairwiseNode::Field(current, old) => current.compare(old),
+            PairwiseNode::Constraint(current, old) => current.compare(old),
+            PairwiseNode::Index(current, old) => current.compare(old),
             PairwiseNode::Nonmatching(_, _) => unreachable!(),
         }
     }

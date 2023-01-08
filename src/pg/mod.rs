@@ -20,9 +20,8 @@ use self::{
     queries::{
         utils::{
             PgQueryCtx,
-            Query,
+            QueryBody,
         },
-        expr::ExprTypeField,
     },
     schema::{
         node::{
@@ -36,7 +35,6 @@ use self::{
         },
         table::{
             TableId,
-            TableDef,
             NodeTable_,
         },
         field::{
@@ -51,7 +49,7 @@ use self::{
             NodeIndex_,
         },
         constraint::{
-            TableConstraintDef,
+            ConstraintDef,
             ConstraintId,
             TableConstraintTypeDef,
             NodeConstraint_,
@@ -70,19 +68,18 @@ pub enum QueryPlural {
     Many,
 }
 
-struct VersionQuery_ {
-    name: String,
-    txn: bool,
-    plural: QueryPlural,
-    q: Box<dyn Query>,
+pub struct Query {
+    pub name: String,
+    pub txn: bool,
+    pub plural: QueryPlural,
+    pub q: Box<dyn QueryBody>,
 }
 
 #[derive(Default)]
 pub struct Version<'a> {
     schema: HashMap<Id, MigrateNode<'a>>,
-    pre_migration: Option<String>,
-    post_migration: Option<String>,
-    queries: Vec<VersionQuery_>,
+    pre_migration: Vec<Box<dyn QueryBody>>,
+    post_migration: Vec<Box<dyn QueryBody>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -95,25 +92,15 @@ pub struct Field(pub FieldId);
 pub struct Index(pub IndexId);
 
 impl<'a> Version<'a> {
-    pub fn table(&mut self, id: &str, d: TableDef) -> Table {
+    pub fn table(&mut self, id: &str) -> Table {
         let out = Table(TableId(id.into()));
         if self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
             id: out.0.clone(),
-            def: d,
             fields: vec![],
         }))).is_some() {
             panic!("Table with id {} already exists", out.0);
         };
         out
-    }
-
-    pub fn query(&mut self, name: &str, txn: bool, plural: QueryPlural, query: impl Query + 'static) {
-        self.queries.push(VersionQuery_ {
-            name: name.into(),
-            txn: txn,
-            plural: plural,
-            q: Box::new(query),
-        });
     }
 }
 
@@ -135,7 +122,7 @@ impl Table {
         out
     }
 
-    pub fn constraint(&self, v: &mut Version, id: &str, d: TableConstraintDef) {
+    pub fn constraint(&self, v: &mut Version, id: &str, d: ConstraintDef) {
         let id = ConstraintId(self.0.clone(), id.into());
         let mut deps = vec![Id::Table(self.0.clone())];
         match &d.type_ {
@@ -208,15 +195,43 @@ impl Table {
     }
 }
 
-pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Vec<String>> {
+pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
     let mut errs = Errs::new();
     let mut migrations = vec![];
-    let mut ver_wrappers = vec![];
-    let mut latest_ver_wrapper: Option<Ident> = None;
     let mut prev_version: Option<&Version> = None;
-    let mut prev_ver_txn_wrapper = None;
     let mut prev_version_i: Option<usize> = None;
+    let mut field_lookup = HashMap::new();
     for (version_i, version) in &versions {
+        errs.err_ctx.push(vec![("Migration to {}", version_i.to_string())]);
+        let mut migration = vec![];
+
+        fn do_migration(
+            errs: &mut Errs,
+            migration: &mut Vec<TokenStream>,
+            field_lookup: &HashMap<TableId, HashMap<FieldId, Type>>,
+            q: &dyn QueryBody,
+        ) {
+            let mut qctx = PgQueryCtx::new(errs, &field_lookup);
+            let e_res = q.build(&mut qctx);
+            if !qctx.rust_args.is_empty() {
+                qctx.errs.err(format!("Migration statements can't receive arguments"));
+            }
+            let statement = e_res.1.to_string();
+            let args = qctx.query_args;
+            migration.push(quote!{
+                txn.execute(#statement, &[#(& #args,) *]) ?;
+            });
+        }
+
+        // Do pre-migrations
+        for (i, q) in version.pre_migration.iter().enumerate() {
+            errs.err_ctx.push(vec![("Pre-migration statement", i.to_string())]);
+            do_migration(&mut errs, &mut migration, &field_lookup, q.as_ref());
+            errs.err_ctx.pop();
+        }
+
+        // Prep for current version
+        field_lookup.clear();
         let version_i = *version_i;
         if let Some(i) = prev_version_i {
             if version_i != i + 1 {
@@ -229,285 +244,263 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Ve
                 );
             }
         }
-        let db_wrapper_ident = format_ident!("DbVer{}", version_i);
-        let txn_wrapper_ident = format_ident!("TxnVer{}", version_i);
 
         // Gather tables for lookup during query generation and check duplicates
-        let mut field_lookup = HashMap::new();
-        {
-            for v in version.schema.values() {
-                match &v.body.n {
-                    Node_::Field(f) => {
-                        match field_lookup.entry(f.id.0.clone()) {
-                            std::collections::hash_map::Entry::Occupied(_) => { },
-                            std::collections::hash_map::Entry::Vacant(e) => {
-                                e.insert(HashMap::new());
-                            },
-                        };
-                        let table = field_lookup.get_mut(&f.id.0).unwrap();
-                        if table.insert(ExprTypeField {
-                            table: f.id.0.0.clone(),
-                            field: f.id.1.clone(),
-                        }, match &f.def.type_ {
-                            FieldType::NonOpt(t, _) => Type {
-                                type_: t.clone(),
-                                opt: false,
-                            },
-                            FieldType::Opt(t) => Type {
-                                type_: t.clone(),
-                                opt: true,
-                            },
-                        }).is_some() {
-                            errs.err(format!("Duplicate field id {}", f.id));
-                        }
-                    },
-                    _ => { },
-                };
-            }
+        for v in version.schema.values() {
+            match &v.body.n {
+                Node_::Field(f) => {
+                    match field_lookup.entry(f.id.0.clone()) {
+                        std::collections::hash_map::Entry::Occupied(_) => { },
+                        std::collections::hash_map::Entry::Vacant(e) => {
+                            e.insert(HashMap::new());
+                        },
+                    };
+                    let table = field_lookup.get_mut(&f.id.0).unwrap();
+                    if table.insert(f.id.clone(), match &f.def.type_ {
+                        FieldType::NonOpt(t, _) => Type {
+                            type_: t.clone(),
+                            opt: false,
+                        },
+                        FieldType::Opt(t) => Type {
+                            type_: t.clone(),
+                            opt: true,
+                        },
+                    }).is_some() {
+                        errs.err(format!("Duplicate field id {}", f.id));
+                    }
+                },
+                _ => { },
+            };
         }
 
-        // Generate migrations
+        // Main migrations
         {
             let mut state = PgMigrateCtx::new(&mut errs);
             crate::graphmigrate::migrate(&mut state, &prev_version.take().map(|s| &s.schema), &version.schema);
-            let mut migration = vec![];
-            if let Some(pre) = &version.pre_migration {
-                if let Some(prev_ver_txn_wrapper_ident) = prev_ver_txn_wrapper {
-                    let pre_ident = format_ident!("{}", pre);
-                    migration.push(quote!{
-                        txn = #pre_ident(#prev_ver_txn_wrapper_ident(txn)) ?.0;
-                    });
-                } else {
-                    state
-                        .errs
-                        .err(
-                            format!(
-                                "Pre-migration specified for version {}, but no previous state to perform migration in",
-                                version_i
-                            ),
-                        );
-                }
-            }
             for statement in state.statements {
                 migration.push(quote!{
                     txn.execute(#statement, &[]) ?;
                 });
             }
-            if let Some(post) = &version.post_migration {
-                let post_ident = format_ident!("{}", post);
-                migration.push(quote!{
-                    txn = #post_ident(#txn_wrapper_ident(txn)) ?.0;
-                });
-            }
-            migrations.push(quote!{
-                if skip <= #version_i {
-                    #(#migration) *
-                }
-            });
         }
 
-        // Generate queries
-        {
-            let mut db_queries = vec![];
-            let mut txn_queries = vec![];
-            let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
-            let mut res_type_defs = vec![];
-            if version_i == versions.len() - 1 || version.post_migration.is_some() ||
-                versions.get(version_i + 1).map(|v| v.1.post_migration.is_some()).unwrap_or_default() {
-                for q in &version.queries {
-                    let mut ctx = PgQueryCtx::new(&mut errs, &field_lookup);
-                    ctx.errs.err_ctx.push(vec![("Query", q.name.clone())]);
-                    let res = Query::build(q.q.as_ref(), &mut ctx);
-                    let ident = format_ident!("{}", q.name);
-                    let q_text = res.1.to_string();
-                    let args = ctx.args;
-                    let args_forward = ctx.args_forward;
-                    let out = if q.txn {
-                        &mut txn_queries
-                    } else {
-                        &mut db_queries
-                    };
-
-                    struct ConvertResType {
-                        type_tokens: TokenStream,
-                        unforward: TokenStream,
-                    }
-
-                    fn convert_res_type(s: Type) -> Option<ConvertResType> {
-                        let mut ident: TokenStream = match s.type_.type_ {
-                            types::SimpleSimpleType::Auto => quote!(i64),
-                            types::SimpleSimpleType::U32 => quote!(u32),
-                            types::SimpleSimpleType::U64 => quote!(u64),
-                            types::SimpleSimpleType::I32 => quote!(i32),
-                            types::SimpleSimpleType::I64 => quote!(i64),
-                            types::SimpleSimpleType::F32 => quote!(f32),
-                            types::SimpleSimpleType::F64 => quote!(f64),
-                            types::SimpleSimpleType::Bool => quote!(bool),
-                            types::SimpleSimpleType::String => quote!(String),
-                            types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
-                            types::SimpleSimpleType::LocalTime => quote!(chrono::LocalTime),
-                            types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
-                        };
-                        if s.opt {
-                            ident = quote!(Option < #ident >);
-                        }
-                        let mut unforward = quote!{
-                            let x: #ident = r.get(0);
-                        };
-                        if let Some(custom) = &s.type_.custom {
-                            ident = format_ident!("{}", custom).to_token_stream();
-                            if s.opt {
-                                unforward = quote!{
-                                    #unforward let x = if let Some(x) = x {
-                                        #ident:: convert(x) ?
-                                    }
-                                    else {
-                                        None
-                                    };
-                                };
-                                ident = quote!(Option < #ident >);
-                            } else {
-                                unforward = quote!{
-                                    #unforward let x = #ident:: convert(x) ?;
-                                };
-                            }
-                        }
-                        Some(ConvertResType {
-                            type_tokens: ident,
-                            unforward: quote!({
-                                #unforward x
-                            }),
-                        })
-                    }
-
-                    let (res_ident, unforward_res) = {
-                        let r = res.0.0;
-                        let mut fields = vec![];
-                        let mut unforward_fields = vec![];
-                        for (k, v) in r {
-                            let k_ident = format_ident!("{}", k.field);
-                            let r = match convert_res_type(v) {
-                                Some(x) => x,
-                                None => {
-                                    continue;
-                                },
-                            };
-                            let type_ident = r.type_tokens;
-                            let unforward = r.unforward;
-                            fields.push(quote!{
-                                pub #k_ident: #type_ident
-                            });
-                            unforward_fields.push(quote!{
-                                #k_ident: #unforward
-                            });
-                        }
-                        let body = quote!({
-                            #(#fields,) *
-                        });
-                        let res_type_count = res_type_idents.len();
-                        let res_ident = match res_type_idents.entry(body.to_string()) {
-                            std::collections::hash_map::Entry::Occupied(e) => {
-                                e.get().clone()
-                            },
-                            std::collections::hash_map::Entry::Vacant(e) => {
-                                let ident = format_ident!("ResVer{}_{}", version_i, res_type_count);
-                                e.insert(ident.clone());
-                                res_type_defs.push(quote!(pub struct #ident #body));
-                                ident
-                            },
-                        };
-                        let unforward = quote!(#res_ident {
-                            #(#unforward_fields,) *
-                        });
-                        (res_ident, unforward)
-                    };
-                    match q.plural {
-                        QueryPlural::None => {
-                            out.push(quote!{
-                                pub async fn #ident(&mut self, #(#args,) *) -> Result <() > {
-                                    self.0.execute(#q_text, &[#(#args_forward,) *]) ?;
-                                    Ok(())
-                                }
-                            });
-                        },
-                        QueryPlural::MaybeOne => {
-                            out.push(quote!{
-                                pub async fn #ident(&mut self, #(#args,) *) -> Result < Option < #res_ident >> {
-                                    let r = self.0.query_opt(#q_text, &[#(#args_forward,) *]) ?;
-                                    for r in r {
-                                        return Ok(Some(#unforward_res));
-                                    }
-                                    Ok(None)
-                                }
-                            });
-                        },
-                        QueryPlural::One => {
-                            out.push(quote!{
-                                pub async fn #ident(&mut self, #(#args,) *) -> Result < #res_ident > {
-                                    let r = self.0.query_one(#q_text, &[#(#args_forward,) *]) ?;
-                                    Ok(#unforward_res)
-                                }
-                            });
-                        },
-                        QueryPlural::Many => {
-                            out.push(quote!{
-                                pub async fn #ident(&mut self, #(#args,) *) -> Result < Vec < #res_ident >> {
-                                    let mut out = vec![];
-                                    for r in self.0.query(#q_text, &[#(#args_forward,) *]) ? {
-                                        out.push(#unforward_res);
-                                    }
-                                    Ok(out)
-                                }
-                            });
-                        },
-                    }
-                }
-            }
-            ver_wrappers.push(quote!{
-                pub struct #db_wrapper_ident(tokio_postgres::Client);
-                impl #db_wrapper_ident {
-                    fn tx < T >(
-                        &mut self,
-                        cb: impl FnOnce(#txn_wrapper_ident) ->(#txn_wrapper_ident, Result < T >)
-                    ) -> Result < T > {
-                        let(mut txn, mut res) = cb(#txn_wrapper_ident(self.0.transaction()?));
-                        let mut txn = txn.0;
-                        match res {
-                            Err(e) => {
-                                if let Err(e1) = txn.rollback() {
-                                    return Err(e1.chain(e));
-                                } else {
-                                    return Err(e);
-                                }
-                            },
-                            Ok(_) => {
-                                if let Err(e) = txn.commit()? {
-                                    return Err(e);
-                                } else {
-                                    return Ok(res);
-                                }
-                            },
-                        }
-                    }
-                    #(#db_queries) *
-                }
-                pub struct #txn_wrapper_ident < 'a >(tokio_postgres:: Transaction < 'a >);
-                impl #txn_wrapper_ident {
-                    #(#txn_queries) *
-                }
-                #(#res_type_defs) *
-            });
+        // Post-migration
+        for (i, q) in version.post_migration.iter().enumerate() {
+            errs.err_ctx.push(vec![("Post-migration statement", i.to_string())]);
+            do_migration(&mut errs, &mut migration, &field_lookup, q.as_ref());
+            errs.err_ctx.pop();
         }
+
+        // Build migration
+        migrations.push(quote!{
+            if skip <= #version_i {
+                #(#migration) *
+            }
+        });
 
         // Next iter prep
         prev_version = Some(version);
-        prev_ver_txn_wrapper = Some(txn_wrapper_ident);
-        latest_ver_wrapper = Some(db_wrapper_ident);
         prev_version_i = Some(version_i);
+        errs.err_ctx.pop();
     }
-    let ver_wrapper = latest_ver_wrapper.unwrap();
+
+    // Generate queries
+    let db_wrappers: TokenStream;
+    let db_wrapper_ident: Ident;
+    {
+        db_wrapper_ident = format_ident!("Db");
+        let txn_wrapper_ident = format_ident!("Txn");
+        let mut db_queries = vec![];
+        let mut txn_queries = vec![];
+        let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
+        let mut res_type_defs = vec![];
+        for q in queries {
+            let mut ctx = PgQueryCtx::new(&mut errs, &field_lookup);
+            ctx.errs.err_ctx.push(vec![("Query", q.name.clone())]);
+            let res = QueryBody::build(q.q.as_ref(), &mut ctx);
+            let ident = format_ident!("{}", q.name);
+            let q_text = res.1.to_string();
+            let args = ctx.rust_args;
+            let args_forward = ctx.query_args;
+            let out = if q.txn {
+                &mut txn_queries
+            } else {
+                &mut db_queries
+            };
+
+            struct ConvertResType {
+                type_tokens: TokenStream,
+                unforward: TokenStream,
+            }
+
+            fn convert_res_type(s: Type) -> Option<ConvertResType> {
+                let mut ident: TokenStream = match s.type_.type_ {
+                    types::SimpleSimpleType::Auto => quote!(i64),
+                    types::SimpleSimpleType::U32 => quote!(u32),
+                    types::SimpleSimpleType::U64 => quote!(u64),
+                    types::SimpleSimpleType::I32 => quote!(i32),
+                    types::SimpleSimpleType::I64 => quote!(i64),
+                    types::SimpleSimpleType::F32 => quote!(f32),
+                    types::SimpleSimpleType::F64 => quote!(f64),
+                    types::SimpleSimpleType::Bool => quote!(bool),
+                    types::SimpleSimpleType::String => quote!(String),
+                    types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
+                    types::SimpleSimpleType::LocalTime => quote!(chrono::LocalTime),
+                    types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                };
+                if s.opt {
+                    ident = quote!(Option < #ident >);
+                }
+                let mut unforward = quote!{
+                    let x: #ident = r.get(0);
+                };
+                if let Some(custom) = &s.type_.custom {
+                    ident = format_ident!("{}", custom).to_token_stream();
+                    if s.opt {
+                        unforward = quote!{
+                            #unforward let x = if let Some(x) = x {
+                                #ident:: convert(x) ?
+                            }
+                            else {
+                                None
+                            };
+                        };
+                        ident = quote!(Option < #ident >);
+                    } else {
+                        unforward = quote!{
+                            #unforward let x = #ident:: convert(x) ?;
+                        };
+                    }
+                }
+                Some(ConvertResType {
+                    type_tokens: ident,
+                    unforward: quote!({
+                        #unforward x
+                    }),
+                })
+            }
+
+            let (res_ident, unforward_res) = {
+                let r = res.0.0;
+                let mut fields = vec![];
+                let mut unforward_fields = vec![];
+                for (k, v) in r {
+                    let k_ident = format_ident!("{}", k.field);
+                    let r = match convert_res_type(v) {
+                        Some(x) => x,
+                        None => {
+                            continue;
+                        },
+                    };
+                    let type_ident = r.type_tokens;
+                    let unforward = r.unforward;
+                    fields.push(quote!{
+                        pub #k_ident: #type_ident
+                    });
+                    unforward_fields.push(quote!{
+                        #k_ident: #unforward
+                    });
+                }
+                let body = quote!({
+                    #(#fields,) *
+                });
+                let res_type_count = res_type_idents.len();
+                let res_ident = match res_type_idents.entry(body.to_string()) {
+                    std::collections::hash_map::Entry::Occupied(e) => {
+                        e.get().clone()
+                    },
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        let ident = format_ident!("DbRes{}", res_type_count);
+                        e.insert(ident.clone());
+                        res_type_defs.push(quote!(pub struct #ident #body));
+                        ident
+                    },
+                };
+                let unforward = quote!(#res_ident {
+                    #(#unforward_fields,) *
+                });
+                (res_ident, unforward)
+            };
+            match q.plural {
+                QueryPlural::None => {
+                    out.push(quote!{
+                        pub async fn #ident(&mut self, #(#args,) *) -> Result <() > {
+                            self.0.execute(#q_text, &[#(#args_forward,) *]) ?;
+                            Ok(())
+                        }
+                    });
+                },
+                QueryPlural::MaybeOne => {
+                    out.push(quote!{
+                        pub async fn #ident(&mut self, #(#args,) *) -> Result < Option < #res_ident >> {
+                            let r = self.0.query_opt(#q_text, &[#(#args_forward,) *]) ?;
+                            for r in r {
+                                return Ok(Some(#unforward_res));
+                            }
+                            Ok(None)
+                        }
+                    });
+                },
+                QueryPlural::One => {
+                    out.push(quote!{
+                        pub async fn #ident(&mut self, #(#args,) *) -> Result < #res_ident > {
+                            let r = self.0.query_one(#q_text, &[#(#args_forward,) *]) ?;
+                            Ok(#unforward_res)
+                        }
+                    });
+                },
+                QueryPlural::Many => {
+                    out.push(quote!{
+                        pub async fn #ident(&mut self, #(#args,) *) -> Result < Vec < #res_ident >> {
+                            let mut out = vec![];
+                            for r in self.0.query(#q_text, &[#(#args_forward,) *]) ? {
+                                out.push(#unforward_res);
+                            }
+                            Ok(out)
+                        }
+                    });
+                },
+            }
+        }
+        db_wrappers = quote!{
+            pub struct #db_wrapper_ident(tokio_postgres::Client);
+            impl #db_wrapper_ident {
+                fn tx < T >(
+                    &mut self,
+                    cb: impl FnOnce(#txn_wrapper_ident) ->(#txn_wrapper_ident, Result < T >)
+                ) -> Result < T > {
+                    let(mut txn, mut res) = cb(#txn_wrapper_ident(self.0.transaction()?));
+                    let mut txn = txn.0;
+                    match res {
+                        Err(e) => {
+                            if let Err(e1) = txn.rollback() {
+                                return Err(e1.chain(e));
+                            } else {
+                                return Err(e);
+                            }
+                        },
+                        Ok(_) => {
+                            if let Err(e) = txn.commit()? {
+                                return Err(e);
+                            } else {
+                                return Ok(res);
+                            }
+                        },
+                    }
+                }
+                #(#db_queries) *
+            }
+            pub struct #txn_wrapper_ident < 'a >(tokio_postgres:: Transaction < 'a >);
+            impl #txn_wrapper_ident {
+                #(#txn_queries) *
+            }
+            #(#res_type_defs) *
+        };
+    }
+
+    // Compile, output
     let tokens = quote!{
-        fn migrate(db: tokio_postgres::Client) -> Result < #ver_wrapper > {
+        fn migrate(db: tokio_postgres::Client) -> Result < #db_wrapper_ident > {
             let mut txn = db.transaction()?;
             match ||-> Result <() > {
                 txn.execute(
@@ -550,9 +543,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>) -> Result<(), Ve
                     txn.commit()?;
                 }
             }
-            Ok(#ver_wrapper(db))
+            Ok(#db_wrapper_ident(db))
         }
-        #(#ver_wrappers) *
+        #db_wrappers
     };
     if let Some(p) = output.parent() {
         if let Err(e) = fs::create_dir_all(&p) {

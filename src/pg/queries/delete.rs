@@ -7,9 +7,10 @@ use super::{
     expr::{
         Expr,
         ExprType,
+        ExprValName,
     },
     utils::{
-        Query,
+        QueryBody,
         build_returning,
     },
     select::SelectOutput,
@@ -21,10 +22,9 @@ pub struct Delete {
     pub returning: Vec<SelectOutput>,
 }
 
-impl Query for Delete {
+impl QueryBody for Delete {
     fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
-        let mut fields = HashMap::new();
         let mut all_fields = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
@@ -33,8 +33,7 @@ impl Query for Delete {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            fields.insert(k.clone(), v.clone());
-            all_fields.insert(k.clone(), v.clone());
+            all_fields.insert(ExprValName::from(k.clone()), v.clone());
         }
 
         // Build query

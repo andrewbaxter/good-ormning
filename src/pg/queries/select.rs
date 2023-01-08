@@ -8,34 +8,37 @@ use crate::{
 };
 use super::{
     utils::{
-        Query,
+        QueryBody,
         PgQueryCtx,
         build_returning_values,
     },
     expr::{
         Expr,
         ExprType,
-        ExprTypeField,
+        ExprValName,
     },
 };
 
+#[derive(Clone, Debug)]
 pub enum Order {
     Asc,
     Desc,
 }
 
+#[derive(Clone, Debug)]
 pub enum JoinSource {
     Subsel(Box<Select>),
     Table(TableId),
 }
 
+#[derive(Clone, Debug)]
 pub struct NamedSelectSource {
     pub source: JoinSource,
     pub alias: Option<String>,
 }
 
 impl NamedSelectSource {
-    fn build(&self, ctx: &mut PgQueryCtx) -> (Vec<(ExprTypeField, Type)>, Tokens) {
+    fn build(&self, ctx: &mut PgQueryCtx) -> (Vec<(ExprValName, Type)>, Tokens) {
         let mut out = Tokens::new();
         let mut new_fields = match &self.source {
             JoinSource::Subsel(s) => {
@@ -52,14 +55,14 @@ impl NamedSelectSource {
                     },
                 };
                 out.id(&s.0);
-                new_fields.iter().map(|(x, y)| (x.clone(), y.clone())).collect()
+                new_fields.iter().map(|(x, y)| (ExprValName::from(x.clone()), y.clone())).collect()
             },
         };
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];
             for (k, v) in new_fields {
-                new_fields2.push((ExprTypeField {
+                new_fields2.push((ExprValName {
                     table: s.clone(),
                     field: k.field,
                 }, v));
@@ -70,22 +73,26 @@ impl NamedSelectSource {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum JoinType {
     Left,
     Inner,
 }
 
+#[derive(Clone, Debug)]
 pub struct Join {
     pub source: Box<NamedSelectSource>,
     pub type_: JoinType,
     pub on: Expr,
 }
 
+#[derive(Clone, Debug)]
 pub struct SelectOutput {
     pub e: Expr,
     pub rename: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Select {
     pub table: NamedSelectSource,
     pub output: Vec<SelectOutput>,
@@ -96,7 +103,7 @@ pub struct Select {
     pub limit: Option<usize>,
 }
 
-impl Query for Select {
+impl QueryBody for Select {
     fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
         // Prep
         let source = self.table.build(ctx);

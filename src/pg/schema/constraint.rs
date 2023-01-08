@@ -1,5 +1,8 @@
 use std::fmt::Display;
-use crate::utils::Tokens;
+use crate::{
+    utils::Tokens,
+    graphmigrate::Comparison,
+};
 use super::{
     table::TableId,
     field::FieldId,
@@ -37,14 +40,24 @@ pub enum TableConstraintTypeDef {
 }
 
 #[derive(Clone)]
-pub struct TableConstraintDef {
+pub struct ConstraintDef {
     pub type_: TableConstraintTypeDef,
 }
 
 #[derive(Clone)]
 pub(crate) struct NodeConstraint_ {
     pub id: ConstraintId,
-    pub def: TableConstraintDef,
+    pub def: ConstraintDef,
+}
+
+impl NodeConstraint_ {
+    pub fn compare(&self, other: &Self) -> Comparison {
+        if self.def.type_ == other.def.type_ {
+            Comparison::DoNothing
+        } else {
+            Comparison::DeleteCreate
+        }
+    }
 }
 
 impl NodeDataDispatch for NodeConstraint_ {

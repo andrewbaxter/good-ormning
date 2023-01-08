@@ -5,6 +5,7 @@ use std::fmt::{
 use crate::{
     utils::Tokens,
     pg::types::to_sql_type,
+    graphmigrate::Comparison,
 };
 use super::{
     field::{
@@ -30,20 +31,20 @@ impl Display for TableId {
 }
 
 #[derive(Clone)]
-pub struct TableDef {
-    pub name: String,
-}
-
-#[derive(Clone)]
 pub struct NodeTable_ {
     pub id: TableId,
-    pub def: TableDef,
     pub fields: Vec<(FieldId, FieldDef)>,
+}
+
+impl NodeTable_ {
+    pub fn compare(&self, _old: &Self) -> Comparison {
+        Comparison::DoNothing
+    }
 }
 
 impl NodeData for NodeTable_ {
     fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) {
-        unreachable!()
+        unreachable!();
     }
 }
 

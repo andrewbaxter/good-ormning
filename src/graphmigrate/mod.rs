@@ -136,7 +136,6 @@ pub fn migrate<
                 };
                 match n.body.compare(old_n) {
                     Comparison::DoNothing => {
-                        println!("do nothing due to compare {:?}", vk);
                         stage.g.data[gk] = None;
                         gk
                     },
@@ -156,7 +155,6 @@ pub fn migrate<
             },
             None => {
                 let n = stage.add(vk.clone(), n.body.clone());
-                println!("new node {:?}, n {}", vk, n);
                 n
             },
         };
@@ -165,7 +163,6 @@ pub fn migrate<
         let gk = stage.get(version_i, k).unwrap();
         for dep in &n.deps {
             let dep_id = stage.get(version_i, dep).unwrap();
-            println!("edge {} {}", dep_id, gk);
             stage.edge(dep_id, gk);
         }
     }
@@ -173,14 +170,10 @@ pub fn migrate<
     // Perform changes in order
     let mut iter = TopoWalker::new_whole_graph(&stage.g);
     while let Some(n) = iter.get() {
-        println!("walk {}", n);
         match stage.g.data.get_mut(n).unwrap().take() {
-            None => {
-                println!("-> no node");
-            },
+            None => { },
             Some(node) => match node {
                 DiffNode::Delete { mut old } => {
-                    println!("-> delete");
                     let mut coalesce_iter = TopoWalker::new_rooted_at(&stage.g, n);
                     coalesce_iter.enter(&stage.g);
                     while let Some(n) = coalesce_iter.get() {
@@ -192,7 +185,6 @@ pub fn migrate<
                         } {
                             stage.g.data[n] = None;
                             coalesce_iter.enter(&stage.g);
-                            println!("----> coalescing for delete {}", n);
                         } else {
                             coalesce_iter.skip(&stage.g);
                         }
@@ -200,12 +192,9 @@ pub fn migrate<
                     old.delete(output);
                 },
                 DiffNode::Create { mut new } => {
-                    println!("-> create");
                     let mut coalesce_iter = TopoWalker::new_rooted_at(&stage.g, n);
-                    println!("   create (zub)");
                     coalesce_iter.enter(&stage.g);
                     while let Some(n) = coalesce_iter.get() {
-                        println!("   coalesce {}", n);
                         if match stage.g.data.get(n).unwrap().as_ref() {
                             Some(DiffNode::Create { new: v }) => new.create_coalesce(v),
                             _ => {
@@ -214,7 +203,6 @@ pub fn migrate<
                         } {
                             stage.g.data[n] = None;
                             coalesce_iter.enter(&stage.g);
-                            println!("----> coalescing for create {}", n);
                         } else {
                             coalesce_iter.skip(&stage.g);
                         }
@@ -222,7 +210,6 @@ pub fn migrate<
                     new.create(output);
                 },
                 DiffNode::Update { old, new } => {
-                    println!("-> update");
                     new.update(output, &old);
                 },
             },

@@ -16,39 +16,40 @@ use crate::{
 use super::{
     expr::{
         ExprType,
-        ExprTypeField,
+        ExprValName,
         Expr,
+        check_assignable,
     },
     select::SelectOutput,
 };
 
 pub struct PgQueryCtx<'a> {
-    pub(crate) tables: &'a HashMap<TableId, HashMap<ExprTypeField, Type>>,
+    pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, Type>>,
     pub(crate) errs: &'a mut Errs,
-    pub(crate) arg_lookup: HashMap<String, (usize, Type)>,
-    pub(crate) args: Vec<TokenStream>,
-    pub(crate) args_forward: Vec<TokenStream>,
+    pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
+    pub(crate) rust_args: Vec<TokenStream>,
+    pub(crate) query_args: Vec<TokenStream>,
 }
 
 impl<'a> PgQueryCtx<'a> {
-    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<ExprTypeField, Type>>) -> Self {
+    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<FieldId, Type>>) -> Self {
         Self {
             tables: tables,
             errs: errs,
-            arg_lookup: Default::default(),
-            args: Default::default(),
-            args_forward: Default::default(),
+            rust_arg_lookup: Default::default(),
+            rust_args: Default::default(),
+            query_args: Default::default(),
         }
     }
 }
 
-pub trait Query {
+pub trait QueryBody {
     fn build(&self, ctx: &mut PgQueryCtx) -> (ExprType, Tokens);
 }
 
 pub fn build_set(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprTypeField, Type>,
+    all_fields: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
     values: &Vec<(FieldId, Expr)>,
 ) {
@@ -59,35 +60,42 @@ pub fn build_set(
         }
         out.id(&k.1).s("=");
         let res = v.build(ctx, &all_fields);
-        res.0.assert_scalar(ctx);
+        let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
+            Some(t) => t,
+            None => {
+                ctx.errs.err(format!("Update destination value field {} is not known", k));
+                continue;
+            },
+        };
+        check_assignable(&mut ctx.errs, field_type, &res.0);
         out.s(&res.1.to_string());
     }
 }
 
 pub fn build_returning_values(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprTypeField, Type>,
+    all_fields: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
 ) -> ExprType {
-    let mut out_rec: Vec<(ExprTypeField, Type)> = vec![];
+    let mut out_rec: Vec<(ExprValName, Type)> = vec![];
     for (i, o) in outputs.iter().enumerate() {
         if i > 0 {
             out.s(",");
         }
         let res = o.e.build(ctx, all_fields);
-        let (res_name, res_type) = match res.0.assert_scalar(ctx) {
+        let (res_name, res_type) = match res.0.assert_scalar(&mut ctx.errs) {
             Some(x) => x,
             None => continue,
         };
         if let Some(rename) = &o.rename {
             out.s("as").id(rename);
-            out_rec.push((ExprTypeField {
+            out_rec.push((ExprValName {
                 table: "".into(),
                 field: rename.clone(),
             }, res_type));
         } else {
-            out_rec.push((ExprTypeField {
+            out_rec.push((ExprValName {
                 table: "".into(),
                 field: res_name.field,
             }, res_type));
@@ -98,7 +106,7 @@ pub fn build_returning_values(
 
 pub fn build_returning(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprTypeField, Type>,
+    all_fields: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
 ) -> ExprType {

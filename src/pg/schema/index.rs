@@ -1,5 +1,8 @@
 use std::fmt::Display;
-use crate::utils::Tokens;
+use crate::{
+    utils::Tokens,
+    graphmigrate::Comparison,
+};
 use super::{
     table::TableId,
     field::FieldId,
@@ -30,6 +33,16 @@ pub struct IndexDef {
 pub(crate) struct NodeIndex_ {
     pub id: IndexId,
     pub def: IndexDef,
+}
+
+impl NodeIndex_ {
+    pub fn compare(&self, other: &Self) -> Comparison {
+        if self.def.field_ids == other.def.field_ids {
+            Comparison::DoNothing
+        } else {
+            Comparison::DeleteCreate
+        }
+    }
 }
 
 impl NodeDataDispatch for NodeIndex_ {

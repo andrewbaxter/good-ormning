@@ -12,9 +12,11 @@ use super::{
     expr::{
         Expr,
         ExprType,
+        check_assignable,
+        ExprValName,
     },
     utils::{
-        Query,
+        QueryBody,
         build_returning,
         build_set,
     },
@@ -33,7 +35,7 @@ pub struct Insert {
     pub returning: Vec<SelectOutput>,
 }
 
-impl Query for Insert {
+impl QueryBody for Insert {
     fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
         // Prep
         let mut all_fields = HashMap::new();
@@ -44,7 +46,7 @@ impl Query for Insert {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            all_fields.insert(k.clone(), v.clone());
+            all_fields.insert(ExprValName::from(k.clone()), v.clone());
         }
 
         // Build query
@@ -57,14 +59,19 @@ impl Query for Insert {
             out.id(&k.1);
         }
         out.s(") values (");
-        for (i, (_, v)) in self.values.iter().enumerate() {
+        for (i, (k, v)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");
             }
             let res = v.build(ctx, &all_fields);
-            if res.0.assert_scalar(ctx).is_none() {
-                continue;
-            }
+            let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
+                Some(t) => t,
+                None => {
+                    ctx.errs.err(format!("Insert destination value field {} is not known", k));
+                    continue;
+                },
+            };
+            check_assignable(&mut ctx.errs, field_type, &res.0);
             out.s(&res.1.to_string());
         }
         out.s(")");
