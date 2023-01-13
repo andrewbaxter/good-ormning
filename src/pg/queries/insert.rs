@@ -13,7 +13,6 @@ use super::{
         Expr,
         ExprType,
         check_assignable,
-        ExprValName,
     },
     utils::{
         QueryBody,
@@ -29,16 +28,16 @@ pub enum InsertConflict {
 }
 
 pub struct Insert {
-    pub table: TableId,
-    pub values: Vec<(FieldId, Expr)>,
-    pub on_conflict: Option<InsertConflict>,
-    pub returning: Vec<SelectOutput>,
+    pub(crate) table: TableId,
+    pub(crate) values: Vec<(FieldId, Expr)>,
+    pub(crate) on_conflict: Option<InsertConflict>,
+    pub(crate) returning: Vec<SelectOutput>,
 }
 
 impl QueryBody for Insert {
     fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
         // Prep
-        let mut all_fields = HashMap::new();
+        let mut scope = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
@@ -46,7 +45,7 @@ impl QueryBody for Insert {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            all_fields.insert(ExprValName::from(k.clone()), v.clone());
+            scope.insert(k.clone(), v.clone());
         }
 
         // Build query
@@ -63,7 +62,7 @@ impl QueryBody for Insert {
             if i > 0 {
                 out.s(",");
             }
-            let res = v.build(ctx, &all_fields);
+            let res = v.build(ctx, &scope);
             let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
                 Some(t) => t,
                 None => {
@@ -71,7 +70,7 @@ impl QueryBody for Insert {
                     continue;
                 },
             };
-            check_assignable(&mut ctx.errs, field_type, &res.0);
+            check_assignable(&mut ctx.errs, &field_type.1, &res.0);
             out.s(&res.1.to_string());
         }
         out.s(")");
@@ -82,11 +81,11 @@ impl QueryBody for Insert {
                     out.s("do nothing");
                 },
                 InsertConflict::Update(values) => {
-                    build_set(ctx, &all_fields, &mut out, values);
+                    build_set(ctx, &scope, &mut out, values);
                 },
             }
         }
-        let out_type = build_returning(ctx, &all_fields, &mut out, &self.returning);
+        let out_type = build_returning(ctx, &scope, &mut out, &self.returning);
         (out_type, out)
     }
 }

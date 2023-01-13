@@ -24,7 +24,7 @@ use super::{
 };
 
 pub struct PgQueryCtx<'a> {
-    pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, Type>>,
+    pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>,
     pub(crate) errs: &'a mut Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
@@ -32,7 +32,7 @@ pub struct PgQueryCtx<'a> {
 }
 
 impl<'a> PgQueryCtx<'a> {
-    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<FieldId, Type>>) -> Self {
+    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
         Self {
             tables: tables,
             errs: errs,
@@ -49,7 +49,7 @@ pub trait QueryBody {
 
 pub fn build_set(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprValName, Type>,
+    scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
     values: &Vec<(FieldId, Expr)>,
 ) {
@@ -59,7 +59,7 @@ pub fn build_set(
             out.s(",");
         }
         out.id(&k.1).s("=");
-        let res = v.build(ctx, &all_fields);
+        let res = v.build(ctx, &scope);
         let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
             Some(t) => t,
             None => {
@@ -67,14 +67,14 @@ pub fn build_set(
                 continue;
             },
         };
-        check_assignable(&mut ctx.errs, field_type, &res.0);
+        check_assignable(&mut ctx.errs, &field_type.1, &res.0);
         out.s(&res.1.to_string());
     }
 }
 
 pub fn build_returning_values(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprValName, Type>,
+    scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
 ) -> ExprType {
@@ -83,22 +83,17 @@ pub fn build_returning_values(
         if i > 0 {
             out.s(",");
         }
-        let res = o.e.build(ctx, all_fields);
+        let res = o.e.build(ctx, scope);
+        out.s(&res.1.to_string());
         let (res_name, res_type) = match res.0.assert_scalar(&mut ctx.errs) {
             Some(x) => x,
             None => continue,
         };
         if let Some(rename) = &o.rename {
             out.s("as").id(rename);
-            out_rec.push((ExprValName {
-                table: "".into(),
-                field: rename.clone(),
-            }, res_type));
+            out_rec.push((ExprValName::local(rename.clone()), res_type));
         } else {
-            out_rec.push((ExprValName {
-                table: "".into(),
-                field: res_name.field,
-            }, res_type));
+            out_rec.push((res_name, res_type));
         }
     }
     ExprType(out_rec)
@@ -106,12 +101,12 @@ pub fn build_returning_values(
 
 pub fn build_returning(
     ctx: &mut PgQueryCtx,
-    all_fields: &HashMap<ExprValName, Type>,
+    scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
 ) -> ExprType {
     if !outputs.is_empty() {
         out.s("returning");
     }
-    build_returning_values(ctx, all_fields, out, outputs)
+    build_returning_values(ctx, scope, out, outputs)
 }

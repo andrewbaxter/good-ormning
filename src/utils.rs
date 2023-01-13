@@ -48,13 +48,13 @@ impl Errs {
 
     pub fn err(&mut self, t: String) {
         let mut out = String::new();
-        for (i, (k, v)) in self.err_ctx.iter().rev().flatten().enumerate() {
+        for (i, (k, v)) in self.err_ctx.iter().flatten().enumerate() {
             if i > 0 {
                 out.push_str(", ");
             }
             out.push_str(&format!("{}: {}", k, v));
         }
-        out.push_str(" - ");
+        out.push_str(" -- ");
         out.push_str(&t);
         self.errs.push(out);
     }

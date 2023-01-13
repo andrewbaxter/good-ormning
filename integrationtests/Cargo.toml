@@ -1,0 +1,15 @@
+[package]
+name = "integrationtests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+testcontainers = { version = "0.14.0", features = ["tokio"] }
+tokio = { version = "1.24.1", features = ["macros", "rt"] }
+
+[build-dependencies]
+goodormning = { path = ".." }
+
+[dev-dependencies]
+anyhow = "1.0.68"
+tokio-postgres = "0.7.7"

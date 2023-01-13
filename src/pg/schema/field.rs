@@ -46,9 +46,34 @@ impl Display for FieldId {
 }
 
 #[derive(Clone, Debug)]
-pub enum FieldType {
-    NonOpt(SimpleType, Option<Expr>),
-    Opt(SimpleType),
+pub struct FieldType {
+    pub type_: Type,
+    pub migration_default: Option<Expr>,
+}
+
+impl FieldType {
+    /// Create a field type from the specified value type.
+    pub fn with(t: &Type) -> Self {
+        Self {
+            type_: t.clone(),
+            migration_default: None,
+        }
+    }
+
+    /// Create a field type from the specified value type, and provide a migration fill value.
+    pub fn with_migration(t: &Type, def: Option<Expr>) -> Self {
+        if t.opt {
+            panic!("Optional fields can't have defaults.");
+        }
+        Self {
+            type_: t.clone(),
+            migration_default: def,
+        }
+    }
+
+    fn simple(&self) -> &SimpleType {
+        &self.type_.type_
+    }
 }
 
 pub struct FieldBuilder {
@@ -68,33 +93,42 @@ impl FieldBuilder {
         }
     }
 
+    /// Make the field optional.
     pub fn opt(mut self) -> FieldBuilder {
-        self.default_ = None;
+        if self.default_.is_some() {
+            panic!("Optional fields can't have migration fill expressions.");
+        }
+        self.opt = true;
         self
     }
 
-    pub fn migrate_default(mut self, expr: Expr) -> FieldBuilder {
+    /// Specify an expression to use to populate the new column in existing rows. This is must
+    /// be specified (only) for non-opt fields in a new version of an existing table.
+    pub fn migrate_fill(mut self, expr: Expr) -> FieldBuilder {
         if self.opt {
-            panic!("Optional fields can't have defaults.");
+            panic!("Optional fields can't have migration fill expressions.");
         }
         self.default_ = Some(expr);
         self
     }
 
+    /// Use a custom Rust type for this field. This must be the full path to the type, like
+    /// `crate::abcdef::MyType`.
     pub fn custom(mut self, type_: impl ToString) -> FieldBuilder {
         self.custom = Some(type_.to_string());
         self
     }
 
     pub fn build(self) -> FieldType {
-        let t = SimpleType {
-            custom: self.custom,
-            type_: self.t,
-        };
-        if self.opt {
-            FieldType::Opt(t)
-        } else {
-            FieldType::NonOpt(t, self.default_)
+        FieldType {
+            type_: Type {
+                type_: SimpleType {
+                    custom: self.custom,
+                    type_: self.t,
+                },
+                opt: self.opt,
+            },
+            migration_default: self.default_,
         }
     }
 }
@@ -119,10 +153,6 @@ pub fn field_u32() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::U32)
 }
 
-pub fn field_u64() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::U64)
-}
-
 pub fn field_f32() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::F32)
 }
@@ -143,15 +173,6 @@ pub fn field_utctime() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTime)
 }
 
-impl FieldType {
-    fn simple(&self) -> &SimpleType {
-        match self {
-            FieldType::NonOpt(t, _) => t,
-            FieldType::Opt(t) => t,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct FieldDef {
     pub name: String,
@@ -166,52 +187,21 @@ pub(crate) struct NodeField_ {
 
 impl NodeField_ {
     pub fn compare(&self, other: &Self) -> Comparison {
-        match (&self.def.type_, &other.def.type_) {
-            (FieldType::NonOpt(t, _), FieldType::NonOpt(old_t, _)) => if t != old_t {
-                Comparison::Update
-            } else {
-                Comparison::DoNothing
-            },
-            (FieldType::NonOpt(_, _), FieldType::Opt(_)) => Comparison::Update,
-            (FieldType::Opt(_), FieldType::NonOpt(_, _)) => Comparison::Update,
-            (FieldType::Opt(t), FieldType::Opt(old_t)) => if t != old_t {
-                Comparison::Update
-            } else {
-                Comparison::DoNothing
-            },
+        let t = &self.def.type_.type_;
+        let other_t = &other.def.type_.type_;
+        if t.opt != other_t.opt || t.type_.type_ != other_t.type_.type_ {
+            Comparison::Update
+        } else {
+            Comparison::DoNothing
         }
     }
 }
 
 impl NodeData for NodeField_ {
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
-        let new_t = match (&self.def.type_, &old.def.type_) {
-            (FieldType::NonOpt(t, _), FieldType::NonOpt(old_t, _)) => {
-                if t != old_t {
-                    Some(t)
-                } else {
-                    None
-                }
-            },
-            (FieldType::NonOpt(t, _), FieldType::Opt(old_t)) => {
-                if t != old_t {
-                    Some(t)
-                } else {
-                    None
-                }
-            },
-            (FieldType::Opt(t), FieldType::NonOpt(old_t, _)) => {
-                if t != old_t {
-                    Some(t)
-                } else {
-                    None
-                }
-            },
-            (FieldType::Opt(t), FieldType::Opt(_)) => {
-                Some(t)
-            },
-        };
-        if let Some(new_t) = new_t {
+        let t = &self.def.type_.type_;
+        let old_t = &old.def.type_.type_;
+        if t.type_.type_ != old_t.type_.type_ {
             ctx
                 .statements
                 .push(
@@ -221,7 +211,7 @@ impl NodeData for NodeField_ {
                         .s("alter column")
                         .id(&self.id.1)
                         .s("set type")
-                        .s(to_sql_type(new_t))
+                        .s(to_sql_type(&t.type_.type_))
                         .to_string(),
                 );
         }
@@ -239,18 +229,15 @@ impl NodeDataDispatch for NodeField_ {
             .id(&self.id.0.0)
             .s("add column")
             .id(&self.id.1)
-            .s(to_sql_type(self.def.type_.simple()));
-        if let FieldType::NonOpt(t, d) = &self.def.type_ {
-            if let Some(e) = d {
+            .s(to_sql_type(&self.def.type_.type_.type_.type_));
+        if self.def.type_.type_.opt {
+            if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
                 let qctx_fields = HashMap::new();
                 let mut qctx = PgQueryCtx::new(&mut ctx.errs, &qctx_fields);
-                let e_res = e.build(&mut qctx, &HashMap::new());
-                check_same(&mut qctx.errs, &ExprType(vec![(ExprValName {
-                    table: "".into(),
-                    field: "".into(),
-                }, Type {
-                    type_: t.clone(),
+                let e_res = d.build(&mut qctx, &HashMap::new());
+                check_same(&mut qctx.errs, &ExprType(vec![(ExprValName::empty(), Type {
+                    type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                 })]), &e_res.0);
                 if !qctx.rust_args.is_empty() {
@@ -269,7 +256,7 @@ impl NodeDataDispatch for NodeField_ {
             }
         }
         ctx.statements.push(stmt.to_string());
-        if let FieldType::NonOpt(_, _) = &self.def.type_ {
+        if self.def.type_.migration_default.is_some() {
             let mut stmt = Tokens::new();
             stmt.s("alter table").id(&self.id.0.0).s("alter column").id(&self.id.1).s("drop default");
         }

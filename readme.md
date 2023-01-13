@@ -31,7 +31,8 @@ Supported databases:
 
 ### Schema changes
 
-1. Create a new schema version, leaving the old schema version untouched.
+1. Copy your previous version schema, leaving the old schema version untouched. Modify the new schema and queries as you wish.
+2. Upon calling `migrate` the database will be updated to the new schema version.
 
 If any of your queries don't work with the new schema, you'll be informed during the build.
 

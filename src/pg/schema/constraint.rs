@@ -34,14 +34,14 @@ pub struct ForeignKeyDef {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum ConstraintTypeDef {
+pub enum ConstraintType {
     PrimaryKey(PrimaryKeyDef),
     ForeignKey(ForeignKeyDef),
 }
 
 #[derive(Clone)]
 pub struct ConstraintDef {
-    pub type_: ConstraintTypeDef,
+    pub type_: ConstraintType,
 }
 
 #[derive(Clone)]
@@ -69,7 +69,7 @@ impl NodeDataDispatch for NodeConstraint_ {
         let mut stmt = Tokens::new();
         stmt.s("alter table").id(&self.id.0.0).s("add constraint").id(&self.id.1);
         match &self.def.type_ {
-            ConstraintTypeDef::PrimaryKey(x) => {
+            ConstraintType::PrimaryKey(x) => {
                 stmt.s("primary key (").f(|t| {
                     for (i, id) in x.fields.iter().enumerate() {
                         if i > 0 {
@@ -79,7 +79,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                     }
                 }).s(")");
             },
-            ConstraintTypeDef::ForeignKey(x) => {
+            ConstraintType::ForeignKey(x) => {
                 stmt.s("foreign key (").f(|t| {
                     for (i, id) in x.fields.iter().enumerate() {
                         if i > 0 {

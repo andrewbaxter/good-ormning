@@ -3,7 +3,10 @@ use crate::{
     utils::Tokens,
     pg::{
         types::Type,
-        schema::table::TableId,
+        schema::{
+            table::TableId,
+            field::FieldId,
+        },
     },
 };
 use super::{
@@ -15,7 +18,6 @@ use super::{
     expr::{
         Expr,
         ExprType,
-        ExprValName,
     },
 };
 
@@ -38,13 +40,13 @@ pub struct NamedSelectSource {
 }
 
 impl NamedSelectSource {
-    fn build(&self, ctx: &mut PgQueryCtx) -> (Vec<(ExprValName, Type)>, Tokens) {
+    fn build(&self, ctx: &mut PgQueryCtx) -> (Vec<(FieldId, (String, Type))>, Tokens) {
         let mut out = Tokens::new();
-        let mut new_fields = match &self.source {
+        let mut new_fields: Vec<(FieldId, (String, Type))> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res = s.build(ctx);
                 out.s("(").s(&res.1.to_string()).s(")");
-                res.0.0
+                res.0.0.iter().map(|e| (e.0.field.clone(), (e.0.name.clone(), e.1.clone()))).collect()
             },
             JoinSource::Table(s) => {
                 let new_fields = match ctx.tables.get(&s) {
@@ -55,17 +57,14 @@ impl NamedSelectSource {
                     },
                 };
                 out.id(&s.0);
-                new_fields.iter().map(|(x, y)| (ExprValName::from(x.clone()), y.clone())).collect()
+                new_fields.iter().map(|e| (e.0.clone(), e.1.clone())).collect()
             },
         };
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];
             for (k, v) in new_fields {
-                new_fields2.push((ExprValName {
-                    table: s.clone(),
-                    field: k.field,
-                }, v));
+                new_fields2.push((FieldId(TableId(s.clone()), k.1.clone()), v));
             }
             new_fields = new_fields2;
         }
@@ -94,13 +93,13 @@ pub struct SelectOutput {
 
 #[derive(Clone, Debug)]
 pub struct Select {
-    pub table: NamedSelectSource,
-    pub output: Vec<SelectOutput>,
-    pub join: Vec<Join>,
-    pub where_: Option<Expr>,
-    pub group: Vec<Expr>,
-    pub order: Option<Vec<(Expr, Order)>>,
-    pub limit: Option<usize>,
+    pub(crate) table: NamedSelectSource,
+    pub(crate) output: Vec<SelectOutput>,
+    pub(crate) join: Vec<Join>,
+    pub(crate) where_: Option<Expr>,
+    pub(crate) group: Vec<Expr>,
+    pub(crate) order: Vec<(Expr, Order)>,
+    pub(crate) limit: Option<usize>,
 }
 
 impl QueryBody for Select {
@@ -126,10 +125,10 @@ impl QueryBody for Select {
             match je.type_ {
                 JoinType::Left => {
                     for (k, mut v) in source.0 {
-                        if !v.opt {
-                            v = Type {
+                        if !v.1.opt {
+                            v.1 = Type {
                                 opt: true,
-                                type_: v.type_,
+                                type_: v.1.type_,
                             };
                         }
                         all_fields.insert(k, v);
@@ -166,9 +165,9 @@ impl QueryBody for Select {
                 g.build(ctx, &all_fields);
             }
         }
-        if let Some(o) = &self.order {
+        if !self.order.is_empty() {
             out.s("order by");
-            for (i, o) in o.iter().enumerate() {
+            for (i, o) in self.order.iter().enumerate() {
                 if i > 0 {
                     out.s(",");
                 }

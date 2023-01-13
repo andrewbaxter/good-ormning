@@ -13,7 +13,10 @@ use std::{
     fs,
 };
 use crate::{
-    pg::types::Type,
+    pg::{
+        types::Type,
+        queries::expr::ExprValName,
+    },
     utils::Errs,
 };
 use self::{
@@ -22,6 +25,21 @@ use self::{
             PgQueryCtx,
             QueryBody,
         },
+        insert::{
+            Insert,
+            InsertConflict,
+        },
+        expr::Expr,
+        select::{
+            SelectOutput,
+            Select,
+            NamedSelectSource,
+            JoinSource,
+            Join,
+            Order,
+        },
+        update::Update,
+        delete::Delete,
     },
     schema::{
         node::{
@@ -51,7 +69,7 @@ use self::{
         constraint::{
             ConstraintDef,
             ConstraintId,
-            ConstraintTypeDef,
+            ConstraintType,
             NodeConstraint_,
         },
     },
@@ -60,21 +78,456 @@ use self::{
 pub mod types;
 pub mod queries;
 pub mod schema;
+pub mod utils;
 
-pub enum QueryPlural {
+/// The number of results this query returns. This determines if the return type is
+/// void, `Option`, the value directly, or a `Vec`. It must be a valid value per the
+/// query body (e.g. select can't have `None` res count).
+pub enum QueryResCount {
     None,
     MaybeOne,
     One,
     Many,
 }
 
-pub struct Query {
-    pub name: String,
-    pub txn: bool,
-    pub plural: QueryPlural,
-    pub q: Box<dyn QueryBody>,
+/// See Insert for field descriptions. Call `build()` to get a finished query object.
+pub struct InsertBuilder {
+    pub q: Insert,
 }
 
+impl InsertBuilder {
+    pub fn on_conflict(mut self, v: InsertConflict) -> Self {
+        self.q.on_conflict = Some(v);
+        self
+    }
+
+    pub fn returning(mut self, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returning_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: Expr::Field(f.id.clone()),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+        for f in f {
+            self.q.returning.push(SelectOutput {
+                e: Expr::Field(f.id.clone()),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    // Produce a migration for use in version pre/post-migration.
+    pub fn build_migration(self) -> Insert {
+        self.q
+    }
+
+    // Produce a query object.
+    //
+    // # Arguments
+    //
+    // * `name` - This is used as the name of the rust function.
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    // Same as `build_query`, but specify a name for the result structure. Only valid if
+    // result is a record (not a single value).
+    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+}
+
+/// See Select for field descriptions. Call `build()` to get a finished query object.
+pub struct SelectBuilder {
+    pub q: Select,
+}
+
+impl SelectBuilder {
+    pub fn output(mut self, v: Expr) -> Self {
+        self.q.output.push(SelectOutput {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn named_output(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.output.push(SelectOutput {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn output_field(mut self, f: &Field) -> Self {
+        self.q.output.push(SelectOutput {
+            e: Expr::Field(f.id.clone()),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn output_fields(mut self, f: &[&Field]) -> Self {
+        for f in f {
+            self.q.output.push(SelectOutput {
+                e: Expr::Field(f.id.clone()),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn output_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+        self.q.output.extend(f);
+        self
+    }
+
+    pub fn join(mut self, v: Join) -> Self {
+        self.q.join.push(v);
+        self
+    }
+
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        self
+    }
+
+    pub fn group(mut self, v: Vec<Expr>) -> Self {
+        self.q.group = v;
+        self
+    }
+
+    pub fn order(mut self, v: Vec<(Expr, Order)>) -> Self {
+        self.q.order = v;
+        self
+    }
+
+    pub fn limit(mut self, v: usize) -> Self {
+        self.q.limit = Some(v);
+        self
+    }
+
+    // Produce a migration for use in version pre/post-migration.
+    pub fn build_migration(self) -> Select {
+        self.q
+    }
+
+    // Produce a query object.
+    //
+    // # Arguments
+    //
+    // * `name` - This is used as the name of the rust function.
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    // Same as `build_query`, but specify a name for the result structure. Only valid if
+    // result is a record (not a single value).
+    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+}
+
+/// See Update for field descriptions. Call `build()` to get a finished query object.
+pub struct UpdateBuilder {
+    pub q: Update,
+}
+
+impl UpdateBuilder {
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        self
+    }
+
+    pub fn returning(mut self, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returning_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: Expr::Field(f.id.clone()),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+        for f in f {
+            self.q.returning.push(SelectOutput {
+                e: Expr::Field(f.id.clone()),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    // Produce a migration for use in version pre/post-migration.
+    pub fn build_migration(self) -> Update {
+        self.q
+    }
+
+    // Produce a query object.
+    //
+    // # Arguments
+    //
+    // * `name` - This is used as the name of the rust function.
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    // Same as `build_query`, but specify a name for the result structure. Only valid if
+    // result is a record (not a single value).
+    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+}
+
+/// See Delete for field descriptions. Call `build()` to get a finished query object.
+pub struct DeleteBuilder {
+    pub q: Delete,
+}
+
+impl DeleteBuilder {
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        self
+    }
+
+    pub fn returning(mut self, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returning_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(SelectOutput {
+            e: Expr::Field(f.id.clone()),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+        for f in f {
+            self.q.returning.push(SelectOutput {
+                e: Expr::Field(f.id.clone()),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    // Produce a migration for use in version pre/post-migration.
+    pub fn build_migration(self) -> Delete {
+        self.q
+    }
+
+    // Produce a query object.
+    //
+    // # Arguments
+    //
+    // * `name` - This is used as the name of the rust function.
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    // Same as `build_query`, but specify a name for the result structure. Only valid if
+    // result is a record (not a single value).
+    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+}
+
+/// This represents an SQL query. A function will be generated which accepts a db
+/// connection and query parameters, and returns the query results. Call the `new_*`
+/// functions to get a builder.
+pub struct Query {
+    pub name: String,
+    pub body: Box<dyn QueryBody>,
+    pub res_count: QueryResCount,
+    pub res_name: Option<String>,
+}
+
+/// Get a builder for an INSERT query.
+///
+/// # Arguments
+///
+/// * `values` - The fields to insert and their corresponding values
+pub fn new_insert(table: &Table, values: Vec<(FieldId, Expr)>) -> InsertBuilder {
+    InsertBuilder { q: Insert {
+        table: table.0.clone(),
+        values: values,
+        on_conflict: None,
+        returning: vec![],
+    } }
+}
+
+/// Get a builder for a SELECT query.
+pub fn new_select(table: &Table) -> SelectBuilder {
+    SelectBuilder { q: Select {
+        table: NamedSelectSource {
+            source: JoinSource::Table(table.0.clone()),
+            alias: None,
+        },
+        output: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        order: vec![],
+        limit: None,
+    } }
+}
+
+/// Get a builder for a SELECT query. This allows advanced sources (like selecting
+/// from a synthetic table).
+pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
+    SelectBuilder { q: Select {
+        table: source,
+        output: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        order: vec![],
+        limit: None,
+    } }
+}
+
+/// Get a builder for an UPDATE query.
+///
+/// # Arguments
+///
+/// * `values` - The fields to update and their corresponding values
+pub fn new_update(table: &Table, values: Vec<(FieldId, Expr)>) -> UpdateBuilder {
+    UpdateBuilder { q: Update {
+        table: table.0.clone(),
+        values: values,
+        where_: None,
+        returning: vec![],
+    } }
+}
+
+/// Get a builder for a DELETE query.
+///
+/// # Arguments
+///
+/// * `name` - This becomes the name of the generated rust function.
+pub fn new_delete(table: &Table) -> DeleteBuilder {
+    DeleteBuilder { q: Delete {
+        table: table.0.clone(),
+        returning: vec![],
+        where_: None,
+    } }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Table(pub TableId);
+
+#[derive(Clone)]
+pub struct Field {
+    pub id: FieldId,
+    pub def: FieldDef,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Index(pub IndexId);
+
+/// The version represents the state of a schema at a point in time.
 #[derive(Default)]
 pub struct Version<'a> {
     schema: HashMap<Id, MigrateNode<'a>>,
@@ -82,16 +535,8 @@ pub struct Version<'a> {
     post_migration: Vec<Box<dyn QueryBody>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Table(pub TableId);
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Field(pub FieldId);
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Index(pub IndexId);
-
 impl<'a> Version<'a> {
+    /// Define a table in the version
     pub fn table(&mut self, id: &str) -> Table {
         let out = Table(TableId(id.into()));
         if self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
@@ -102,31 +547,53 @@ impl<'a> Version<'a> {
         };
         out
     }
+
+    /// Add a query to execute before before migrating to this schema (applied immediately
+    /// before migration).
+    pub fn pre_migration(&mut self, q: impl QueryBody + 'static) {
+        self.pre_migration.push(Box::new(q));
+    }
+
+    /// Add a query to execute after migrating to this schema version (applied immediately
+    /// after migration).
+    pub fn post_migration(&mut self, q: impl QueryBody + 'static) {
+        self.post_migration.push(Box::new(q));
+    }
 }
 
 impl Table {
-    pub fn field(&self, v: &mut Version, id: &str, d: FieldDef) -> Field {
-        let out = Field(FieldId(self.0.clone(), id.into()));
+    /// Define a field
+    pub fn field(&self, v: &mut Version, id: impl ToString, name: impl ToString, type_: FieldType) -> Field {
+        let out_id = FieldId(self.0.clone(), id.to_string());
+        let d = FieldDef {
+            name: name.to_string(),
+            type_: type_,
+        };
         if v
             .schema
             .insert(
-                Id::Field(out.0.clone()),
+                Id::Field(out_id.clone()),
                 MigrateNode::new(vec![Id::Table(self.0.clone())], Node::field(NodeField_ {
-                    id: out.0.clone(),
-                    def: d,
+                    id: out_id.clone(),
+                    def: d.clone(),
                 })),
             )
             .is_some() {
-            panic!("Field with id {} already exists", out.0);
+            panic!("Field with id {} already exists", out_id.0);
         };
-        out
+        Field {
+            id: out_id,
+            def: d.clone(),
+        }
     }
 
-    pub fn constraint(&self, v: &mut Version, id: &str, d: ConstraintDef) {
+    /// Define a constraint
+    pub fn constraint(&self, v: &mut Version, id: &str, type_: ConstraintType) {
         let id = ConstraintId(self.0.clone(), id.into());
+        let d = ConstraintDef { type_: type_ };
         let mut deps = vec![Id::Table(self.0.clone())];
         match &d.type_ {
-            ConstraintTypeDef::PrimaryKey(x) => {
+            ConstraintType::PrimaryKey(x) => {
                 for f in &x.fields {
                     if f.0 != self.0 {
                         panic!(
@@ -140,7 +607,7 @@ impl Table {
                     deps.push(Id::Field(f.clone()));
                 }
             },
-            ConstraintTypeDef::ForeignKey(x) => {
+            ConstraintType::ForeignKey(x) => {
                 let mut last_foreign_table = None;
                 for f in &x.fields {
                     if f.0.0 != self.0 {
@@ -177,38 +644,69 @@ impl Table {
         };
     }
 
-    pub fn index(&self, v: &mut Version, id: &str, d: IndexDef) -> Index {
-        let out = Index(IndexId(self.0.clone(), id.into()));
-        if v
-            .schema
-            .insert(
-                Id::Index(out.0.clone()),
-                MigrateNode::new(vec![Id::Table(self.0.clone())], Node::table_index(NodeIndex_ {
-                    id: out.0.clone(),
-                    def: d,
-                })),
-            )
-            .is_some() {
-            panic!("Index with id {} already exists", out.0);
-        };
-        out
+    /// Define an index
+    pub fn index(&self, id: impl ToString, fields: Vec<FieldId>) -> IndexBuilder {
+        IndexBuilder {
+            id: IndexId(self.0.clone(), id.to_string()),
+            d: IndexDef {
+                field_ids: fields,
+                unique: false,
+            },
+        }
     }
 }
 
+pub struct IndexBuilder {
+    id: IndexId,
+    d: IndexDef,
+}
+
+impl IndexBuilder {
+    pub fn unique(mut self) -> Self {
+        self.d.unique = true;
+        self
+    }
+
+    pub fn build(self, v: &mut Version) -> Index {
+        if v
+            .schema
+            .insert(
+                Id::Index(self.id.clone()),
+                MigrateNode::new(vec![Id::Table(self.id.0.clone())], Node::table_index(NodeIndex_ {
+                    id: self.id.clone(),
+                    def: self.d,
+                })),
+            )
+            .is_some() {
+            panic!("Index with id {} already exists", self.id);
+        };
+        Index(self.id)
+    }
+}
+
+/// Generate Rust code for migrations and queries.
+///
+/// # Arguments
+///
+/// * `output` - the path to a single rust source file where the output will be written
+///
+/// # Returns
+///
+/// * Error - a list of validation or generation errors that occurred
 pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
     let mut errs = Errs::new();
     let mut migrations = vec![];
     let mut prev_version: Option<&Version> = None;
-    let mut prev_version_i: Option<usize> = None;
+    let mut prev_version_i: Option<i64> = None;
     let mut field_lookup = HashMap::new();
     for (version_i, version) in &versions {
-        errs.err_ctx.push(vec![("Migration to {}", version_i.to_string())]);
+        errs.err_ctx.push(vec![("Migration to", version_i.to_string())]);
         let mut migration = vec![];
 
         fn do_migration(
             errs: &mut Errs,
             migration: &mut Vec<TokenStream>,
-            field_lookup: &HashMap<TableId, HashMap<FieldId, Type>>,
+            field_lookup: &HashMap<TableId, HashMap<FieldId, (String, Type)>>,
             q: &dyn QueryBody,
         ) {
             let mut qctx = PgQueryCtx::new(errs, &field_lookup);
@@ -219,7 +717,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             let statement = e_res.1.to_string();
             let args = qctx.query_args;
             migration.push(quote!{
-                txn.execute(#statement, &[#(& #args,) *]) ?;
+                txn.execute(#statement, &[#(& #args,) *]).await ?;
             });
         }
 
@@ -232,9 +730,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Prep for current version
         field_lookup.clear();
-        let version_i = *version_i + 1;
+        let version_i = *version_i as i64;
         if let Some(i) = prev_version_i {
-            if version_i != i + 1 {
+            if version_i != i as i64 + 1 {
                 errs.err(
                     format!(
                         "Version numbers are not consecutive ({} to {}) - was an intermediate version deleted?",
@@ -256,16 +754,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         },
                     };
                     let table = field_lookup.get_mut(&f.id.0).unwrap();
-                    if table.insert(f.id.clone(), match &f.def.type_ {
-                        FieldType::NonOpt(t, _) => Type {
-                            type_: t.clone(),
-                            opt: false,
-                        },
-                        FieldType::Opt(t) => Type {
-                            type_: t.clone(),
-                            opt: true,
-                        },
-                    }).is_some() {
+                    if table.insert(f.id.clone(), (f.def.name.clone(), f.def.type_.type_.clone())).is_some() {
                         errs.err(format!("Duplicate field id {}", f.id));
                     }
                 },
@@ -279,7 +768,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             crate::graphmigrate::migrate(&mut state, &prev_version.take().map(|s| &s.schema), &version.schema);
             for statement in state.statements {
                 migration.push(quote!{
-                    txn.execute(#statement, &[]) ?;
+                    txn.execute(#statement, &[]).await ?;
                 });
             }
         }
@@ -305,134 +794,154 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     }
 
     // Generate queries
-    let db_wrappers: TokenStream;
-    let db_wrapper_ident: Ident;
+    let mut db_others = Vec::new();
     {
-        db_wrapper_ident = format_ident!("Db");
-        let txn_wrapper_ident = format_ident!("Txn");
-        let mut db_queries = vec![];
-        let mut txn_queries = vec![];
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
-        let mut res_type_defs = vec![];
         for q in queries {
             let mut ctx = PgQueryCtx::new(&mut errs, &field_lookup);
             ctx.errs.err_ctx.push(vec![("Query", q.name.clone())]);
-            let res = QueryBody::build(q.q.as_ref(), &mut ctx);
+            let res = QueryBody::build(q.body.as_ref(), &mut ctx);
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
             let args = ctx.rust_args;
             let args_forward = ctx.query_args;
-            let out = if q.txn {
-                &mut txn_queries
-            } else {
-                &mut db_queries
-            };
-
-            struct ConvertResType {
-                type_tokens: TokenStream,
-                unforward: TokenStream,
-            }
-
-            fn convert_res_type(s: Type) -> Option<ConvertResType> {
-                let mut ident: TokenStream = match s.type_.type_ {
-                    types::SimpleSimpleType::Auto => quote!(i64),
-                    types::SimpleSimpleType::U32 => quote!(u32),
-                    types::SimpleSimpleType::U64 => quote!(u64),
-                    types::SimpleSimpleType::I32 => quote!(i32),
-                    types::SimpleSimpleType::I64 => quote!(i64),
-                    types::SimpleSimpleType::F32 => quote!(f32),
-                    types::SimpleSimpleType::F64 => quote!(f64),
-                    types::SimpleSimpleType::Bool => quote!(bool),
-                    types::SimpleSimpleType::String => quote!(String),
-                    types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
-                    types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
-                };
-                if s.opt {
-                    ident = quote!(Option < #ident >);
-                }
-                let mut unforward = quote!{
-                    let x: #ident = r.get(0);
-                };
-                if let Some(custom) = &s.type_.custom {
-                    ident = format_ident!("{}", custom).to_token_stream();
-                    if s.opt {
-                        unforward = quote!{
-                            #unforward let x = if let Some(x) = x {
-                                #ident:: convert(x) ?
-                            }
-                            else {
-                                None
-                            };
-                        };
-                        ident = quote!(Option < #ident >);
-                    } else {
-                        unforward = quote!{
-                            #unforward let x = #ident:: convert(x) ?;
-                        };
-                    }
-                }
-                Some(ConvertResType {
-                    type_tokens: ident,
-                    unforward: quote!({
-                        #unforward x
-                    }),
-                })
-            }
-
             let (res_ident, unforward_res) = {
-                let r = res.0.0;
-                let mut fields = vec![];
-                let mut unforward_fields = vec![];
-                for (k, v) in r {
-                    let k_ident = format_ident!("{}", k.field);
-                    let r = match convert_res_type(v) {
-                        Some(x) => x,
+                fn convert_one_res(
+                    errs: &mut Errs,
+                    i: usize,
+                    k: &ExprValName,
+                    v: &Type,
+                ) -> Option<(Ident, TokenStream, TokenStream)> {
+                    if k.name.is_empty() {
+                        errs.err(
+                            format!("Result element {} has no name; name it using `rename` if this is intentional", i),
+                        );
+                        return None;
+                    }
+                    let mut ident: TokenStream = match v.type_.type_ {
+                        types::SimpleSimpleType::Auto => quote!(i64),
+                        types::SimpleSimpleType::U32 => quote!(u32),
+                        types::SimpleSimpleType::I32 => quote!(i32),
+                        types::SimpleSimpleType::I64 => quote!(i64),
+                        types::SimpleSimpleType::F32 => quote!(f32),
+                        types::SimpleSimpleType::F64 => quote!(f64),
+                        types::SimpleSimpleType::Bool => quote!(bool),
+                        types::SimpleSimpleType::String => quote!(String),
+                        types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
+                        types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                    };
+                    if v.opt {
+                        ident = quote!(Option < #ident >);
+                    }
+                    let mut unforward = quote!{
+                        let x: #ident = r.get(#i);
+                    };
+                    if let Some(custom) = &v.type_.custom {
+                        ident = match syn::parse_str::<syn::Path>(&custom) {
+                            Ok(i) => i.to_token_stream(),
+                            Err(e) => {
+                                errs.err(
+                                    format!(
+                                        "Couldn't parse provided custom type name [{}] as identifier path: {:?}",
+                                        custom,
+                                        e
+                                    ),
+                                );
+                                return None;
+                            },
+                        };
+                        if v.opt {
+                            unforward = quote!{
+                                #unforward let x = if let Some(x) = x {
+                                    Some(#ident:: from_sql(x).map_err(|e| GoodError(e.to_string())) ?)
+                                }
+                                else {
+                                    None
+                                };
+                            };
+                            ident = quote!(Option < #ident >);
+                        } else {
+                            unforward = quote!{
+                                #unforward let x = #ident:: from_sql(x).map_err(|e| GoodError(e.to_string())) ?;
+                            };
+                        }
+                    }
+                    return Some((format_ident!("{}", utils::sanitize(&k.name).1), ident, quote!({
+                        #unforward x
+                    })));
+                }
+
+                if res.0.0.len() == 1 {
+                    let e = &res.0.0[0];
+                    let (_, type_ident, unforward) = match convert_one_res(&mut ctx.errs, 0, &e.0, &e.1) {
                         None => {
                             continue;
                         },
+                        Some(x) => x,
                     };
-                    let type_ident = r.type_tokens;
-                    let unforward = r.unforward;
-                    fields.push(quote!{
-                        pub #k_ident: #type_ident
+                    (type_ident, unforward)
+                } else {
+                    let mut fields = vec![];
+                    let mut unforward_fields = vec![];
+                    for (i, (k, v)) in res.0.0.into_iter().enumerate() {
+                        let (k_ident, type_ident, unforward) = match convert_one_res(&mut ctx.errs, i, &k, &v) {
+                            Some(x) => x,
+                            None => continue,
+                        };
+                        fields.push(quote!{
+                            pub #k_ident: #type_ident
+                        });
+                        unforward_fields.push(quote!{
+                            #k_ident: #unforward
+                        });
+                    }
+                    let body = quote!({
+                        #(#fields,) *
                     });
-                    unforward_fields.push(quote!{
-                        #k_ident: #unforward
+                    let res_type_count = res_type_idents.len();
+                    let res_ident = match res_type_idents.entry(body.to_string()) {
+                        std::collections::hash_map::Entry::Occupied(e) => {
+                            e.get().clone()
+                        },
+                        std::collections::hash_map::Entry::Vacant(e) => {
+                            let ident = if let Some(name) = q.res_name {
+                                format_ident!("{}", name)
+                            } else {
+                                format_ident!("DbRes{}", res_type_count)
+                            };
+                            e.insert(ident.clone());
+                            db_others.push(quote!(pub struct #ident #body));
+                            ident
+                        },
+                    };
+                    let unforward = quote!(#res_ident {
+                        #(#unforward_fields,) *
                     });
+                    (res_ident.to_token_stream(), unforward)
                 }
-                let body = quote!({
-                    #(#fields,) *
-                });
-                let res_type_count = res_type_idents.len();
-                let res_ident = match res_type_idents.entry(body.to_string()) {
-                    std::collections::hash_map::Entry::Occupied(e) => {
-                        e.get().clone()
-                    },
-                    std::collections::hash_map::Entry::Vacant(e) => {
-                        let ident = format_ident!("DbRes{}", res_type_count);
-                        e.insert(ident.clone());
-                        res_type_defs.push(quote!(pub struct #ident #body));
-                        ident
-                    },
-                };
-                let unforward = quote!(#res_ident {
-                    #(#unforward_fields,) *
-                });
-                (res_ident, unforward)
             };
-            match q.plural {
-                QueryPlural::None => {
-                    out.push(quote!{
-                        pub async fn #ident(&mut self, #(#args,) *) -> Result <() > {
-                            self.0.execute(#q_text, &[#(#args_forward,) *]) ?;
+            let db_arg = quote!(db: &mut impl tokio_postgres::GenericClient);
+            match q.res_count {
+                QueryResCount::None => {
+                    db_others.push(quote!{
+                        pub async fn #ident(#db_arg, #(#args,) *) -> Result <(),
+                        GoodError > {
+                            db.execute(
+                                #q_text,
+                                &[#(#args_forward,) *]
+                            ).await.map_err(|e| GoodError(e.to_string())) ?;
                             Ok(())
                         }
                     });
                 },
-                QueryPlural::MaybeOne => {
-                    out.push(quote!{
-                        pub async fn #ident(&mut self, #(#args,) *) -> Result < Option < #res_ident >> {
-                            let r = self.0.query_opt(#q_text, &[#(#args_forward,) *]) ?;
+                QueryResCount::MaybeOne => {
+                    db_others.push(quote!{
+                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
+                        GoodError > {
+                            let r = db.query_opt(
+                                #q_text,
+                                &[#(#args_forward,) *]
+                            ).await.map_err(|e| GoodError(e.to_string())) ?;
                             for r in r {
                                 return Ok(Some(#unforward_res));
                             }
@@ -440,19 +949,27 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         }
                     });
                 },
-                QueryPlural::One => {
-                    out.push(quote!{
-                        pub async fn #ident(&mut self, #(#args,) *) -> Result < #res_ident > {
-                            let r = self.0.query_one(#q_text, &[#(#args_forward,) *]) ?;
+                QueryResCount::One => {
+                    db_others.push(quote!{
+                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
+                        GoodError > {
+                            let r = db.query_one(
+                                #q_text,
+                                &[#(#args_forward,) *]
+                            ).await.map_err(|e| GoodError(e.to_string())) ?;
                             Ok(#unforward_res)
                         }
                     });
                 },
-                QueryPlural::Many => {
-                    out.push(quote!{
-                        pub async fn #ident(&mut self, #(#args,) *) -> Result < Vec < #res_ident >> {
+                QueryResCount::Many => {
+                    db_others.push(quote!{
+                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
+                        GoodError > {
                             let mut out = vec![];
-                            for r in self.0.query(#q_text, &[#(#args_forward,) *]) ? {
+                            for r in db.query(
+                                #q_text,
+                                &[#(#args_forward,) *]
+                            ).await.map_err(|e| GoodError(e.to_string())) ? {
                                 out.push(#unforward_res);
                             }
                             Ok(out)
@@ -460,75 +977,82 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     });
                 },
             }
+            ctx.errs.err_ctx.pop();
         }
-        db_wrappers = quote!{
-            pub struct #db_wrapper_ident(tokio_postgres::Client);
-            impl #db_wrapper_ident {
-                fn tx < T >(
-                    &mut self,
-                    cb: impl FnOnce(#txn_wrapper_ident) ->(#txn_wrapper_ident, Result < T >)
-                ) -> Result < T > {
-                    let(mut txn, mut res) = cb(#txn_wrapper_ident(self.0.transaction()?));
-                    let mut txn = txn.0;
-                    match res {
-                        Err(e) => {
-                            if let Err(e1) = txn.rollback() {
-                                return Err(e1.chain(e));
-                            } else {
-                                return Err(e);
-                            }
-                        },
-                        Ok(_) => {
-                            if let Err(e) = txn.commit()? {
-                                return Err(e);
-                            } else {
-                                return Ok(res);
-                            }
-                        },
-                    }
-                }
-                #(#db_queries) *
-            }
-            pub struct #txn_wrapper_ident < 'a >(tokio_postgres:: Transaction < 'a >);
-            impl #txn_wrapper_ident {
-                #(#txn_queries) *
-            }
-            #(#res_type_defs) *
-        };
     }
 
     // Compile, output
-    let last_version_i = prev_version_i.unwrap();
+    let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
-        fn migrate(db: tokio_postgres::Client) -> Result < #db_wrapper_ident,
-        String > {
-            let mut txn = db.transaction()?;
-            match ||-> Result <() > {
-                txn.execute("create table __good_version if not exists (version bigint not null);", &[])?;
-                let version = match txn.query_opt("select * from __good_version limit 1", &[])? {
-                    Some(r) => {
-                        let ver: i64 = r.get("version");
-                        ver
-                    },
-                    None => {
-                        txn.execute("insert into __good_version (version) values (0)", &[])?;
-                        (0, vec![])
-                    },
-                };
-                #(#migrations) * txn.execute("update __good_version set version = $1", &[& #last_version_i]) ?;
-                Ok(())
+        #[derive(Debug)]
+        pub struct GoodError(pub String);
+        impl std::fmt::Display for GoodError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
             }
-            () {
+        }
+        impl std::error::Error for GoodError { }
+        pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
+        GoodError > {
+            let txn = db.transaction().await.map_err(|e| GoodError(e.to_string()))?;
+            match(|| {
+                async {
+                    txn.execute("create table if not exists __good_version (version bigint not null);", &[]).await?;
+                    let version = match txn.query_opt("select * from __good_version limit 1", &[]).await? {
+                        Some(r) => {
+                            let ver: i64 = r.get("version");
+                            ver
+                        },
+                        None => {
+                            let ver: i64 =
+                                txn
+                                    .query_one(
+                                        "insert into __good_version (version) values (-1) returning version",
+                                        &[],
+                                    )
+                                    .await?
+                                    .get("version");
+                            ver
+                        },
+                    };
+                    #(
+                        #migrations
+                    ) * txn.execute("update __good_version set version = $1", &[& #last_version_i]).await ?;
+                    let out: Result <(),
+                    tokio_postgres::Error >= Ok(());
+                    out
+                }
+            })().await {
                 Err(e) => {
-                    return txn.rollback().chain(e)?;
+                    match txn.rollback().await {
+                        Err(e1) => {
+                            return Err(
+                                GoodError(
+                                    format!(
+                                        "{}\n\nRolling back the transaction due to the above also failed: {}",
+                                        e,
+                                        e1
+                                    ),
+                                ),
+                            );
+                        },
+                        Ok(_) => {
+                            return Err(GoodError(e.to_string()));
+                        },
+                    };
                 }
                 Ok(_) => {
-                    txn.commit()?;
+                    match txn.commit().await {
+                        Err(e) => {
+                            return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
+                        },
+                        Ok(_) => { },
+                    };
                 }
             }
-            Ok(#db_wrapper_ident(db))
+            Ok(())
         }
-        #db_wrappers
+        #(#db_others) *
     };
     if let Some(p) = output.parent() {
         if let Err(e) = fs::create_dir_all(&p) {

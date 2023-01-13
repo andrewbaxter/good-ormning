@@ -13,3 +13,6 @@ quote = "1.0.23"
 samevariant = { path = "/home/andrew/temp/ren/samevariant" }
 stable-hash = "0.4.3"
 syn = "1.0.107"
+
+[workspace]
+members = ["integrationtests"]

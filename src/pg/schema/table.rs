@@ -11,7 +11,6 @@ use super::{
     field::{
         FieldId,
         FieldDef,
-        FieldType,
     },
     utils::{
         NodeData,
@@ -75,11 +74,10 @@ impl NodeDataDispatch for NodeTable_ {
             if i > 0 {
                 stmt.s(",");
             }
-            stmt.id(&f.0.1);
-            match &f.1.type_ {
-                FieldType::NonOpt(t, _) => stmt.s(&format!("{} not null", to_sql_type(t))),
-                FieldType::Opt(t) => stmt.s(to_sql_type(&t)),
-            };
+            stmt.id(&f.0.1).s(to_sql_type(&f.1.type_.type_.type_.type_));
+            if !f.1.type_.type_.opt {
+                stmt.s("not null");
+            }
         }
         stmt.s(")");
         ctx.statements.push(stmt.to_string());
