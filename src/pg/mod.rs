@@ -45,7 +45,6 @@ use self::{
         node::{
             Id,
             Node,
-            Node_,
         },
         utils::{
             MigrateNode,
@@ -529,13 +528,13 @@ pub struct Index(pub IndexId);
 
 /// The version represents the state of a schema at a point in time.
 #[derive(Default)]
-pub struct Version<'a> {
-    schema: HashMap<Id, MigrateNode<'a>>,
+pub struct Version {
+    schema: HashMap<Id, MigrateNode>,
     pre_migration: Vec<Box<dyn QueryBody>>,
     post_migration: Vec<Box<dyn QueryBody>>,
 }
 
-impl<'a> Version<'a> {
+impl Version {
     /// Define a table in the version
     pub fn table(&mut self, id: &str) -> Table {
         let out = Table(TableId(id.into()));
@@ -696,20 +695,20 @@ impl IndexBuilder {
 pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
     let mut errs = Errs::new();
     let mut migrations = vec![];
-    let mut prev_version: Option<&Version> = None;
+    let mut prev_version: Option<Version> = None;
     let mut prev_version_i: Option<i64> = None;
     let mut field_lookup = HashMap::new();
-    for (version_i, version) in &versions {
-        errs.err_ctx.push(vec![("Migration to", version_i.to_string())]);
+    for (version_i, version) in versions {
+        errs.push_ctx(vec![("Migration to", version_i.to_string())]);
         let mut migration = vec![];
 
-        fn do_migration(
+        fn do_migration_query(
             errs: &mut Errs,
             migration: &mut Vec<TokenStream>,
             field_lookup: &HashMap<TableId, HashMap<FieldId, (String, Type)>>,
             q: &dyn QueryBody,
         ) {
-            let mut qctx = PgQueryCtx::new(errs, &field_lookup);
+            let mut qctx = PgQueryCtx::new(errs.clone(), &field_lookup);
             let e_res = q.build(&mut qctx);
             if !qctx.rust_args.is_empty() {
                 qctx.errs.err(format!("Migration statements can't receive arguments"));
@@ -723,14 +722,14 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Do pre-migrations
         for (i, q) in version.pre_migration.iter().enumerate() {
-            errs.err_ctx.push(vec![("Pre-migration statement", i.to_string())]);
-            do_migration(&mut errs, &mut migration, &field_lookup, q.as_ref());
-            errs.err_ctx.pop();
+            errs.push_ctx(vec![("Pre-migration statement", i.to_string())]);
+            do_migration_query(&mut errs, &mut migration, &field_lookup, q.as_ref());
+            errs.pop_ctx();
         }
 
         // Prep for current version
         field_lookup.clear();
-        let version_i = *version_i as i64;
+        let version_i = version_i as i64;
         if let Some(i) = prev_version_i {
             if version_i != i as i64 + 1 {
                 errs.err(
@@ -745,8 +744,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Gather tables for lookup during query generation and check duplicates
         for v in version.schema.values() {
-            match &v.body.n {
-                Node_::Field(f) => {
+            match &v.body {
+                Node::Field(f) => {
                     match field_lookup.entry(f.id.0.clone()) {
                         std::collections::hash_map::Entry::Occupied(_) => { },
                         std::collections::hash_map::Entry::Vacant(e) => {
@@ -764,9 +763,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Main migrations
         {
-            let mut state = PgMigrateCtx::new(&mut errs);
-            crate::graphmigrate::migrate(&mut state, &prev_version.take().map(|s| &s.schema), &version.schema);
-            for statement in state.statements {
+            let mut state = PgMigrateCtx::new(errs.clone());
+            crate::graphmigrate::migrate(&mut state, prev_version.take().map(|s| s.schema), &version.schema);
+            for statement in &state.statements {
                 migration.push(quote!{
                     txn.execute(#statement, &[]).await ?;
                 });
@@ -775,9 +774,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Post-migration
         for (i, q) in version.post_migration.iter().enumerate() {
-            errs.err_ctx.push(vec![("Post-migration statement", i.to_string())]);
-            do_migration(&mut errs, &mut migration, &field_lookup, q.as_ref());
-            errs.err_ctx.pop();
+            errs.push_ctx(vec![("Post-migration statement", i.to_string())]);
+            do_migration_query(&mut errs, &mut migration, &field_lookup, q.as_ref());
+            errs.pop_ctx();
         }
 
         // Build migration
@@ -790,7 +789,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         // Next iter prep
         prev_version = Some(version);
         prev_version_i = Some(version_i);
-        errs.err_ctx.pop();
+        errs.pop_ctx();
     }
 
     // Generate queries
@@ -798,13 +797,14 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     {
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
         for q in queries {
-            let mut ctx = PgQueryCtx::new(&mut errs, &field_lookup);
-            ctx.errs.err_ctx.push(vec![("Query", q.name.clone())]);
+            let mut ctx = PgQueryCtx::new(errs.clone(), &field_lookup);
+            ctx.errs.push_ctx(vec![("Query", q.name.clone())]);
             let res = QueryBody::build(q.body.as_ref(), &mut ctx);
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
-            let args = ctx.rust_args;
-            let args_forward = ctx.query_args;
+            let args = ctx.rust_args.split_off(0);
+            let args_forward = ctx.query_args.split_off(0);
+            drop(ctx);
             let (res_ident, unforward_res) = {
                 fn convert_one_res(
                     errs: &mut Errs,
@@ -873,7 +873,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
                 if res.0.0.len() == 1 {
                     let e = &res.0.0[0];
-                    let (_, type_ident, unforward) = match convert_one_res(&mut ctx.errs, 0, &e.0, &e.1) {
+                    let (_, type_ident, unforward) = match convert_one_res(&mut errs, 0, &e.0, &e.1) {
                         None => {
                             continue;
                         },
@@ -884,7 +884,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     let mut fields = vec![];
                     let mut unforward_fields = vec![];
                     for (i, (k, v)) in res.0.0.into_iter().enumerate() {
-                        let (k_ident, type_ident, unforward) = match convert_one_res(&mut ctx.errs, i, &k, &v) {
+                        let (k_ident, type_ident, unforward) = match convert_one_res(&mut errs, i, &k, &v) {
                             Some(x) => x,
                             None => continue,
                         };
@@ -928,7 +928,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         GoodError > {
                             db.execute(
                                 #q_text,
-                                &[#(#args_forward,) *]
+                                &[#(& #args_forward,) *]
                             ).await.map_err(|e| GoodError(e.to_string())) ?;
                             Ok(())
                         }
@@ -940,9 +940,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         GoodError > {
                             let r = db.query_opt(
                                 #q_text,
-                                &[#(#args_forward,) *]
+                                &[#(& #args_forward,) *]
                             ).await.map_err(|e| GoodError(e.to_string())) ?;
-                            for r in r {
+                            if let Some(r) = r {
                                 return Ok(Some(#unforward_res));
                             }
                             Ok(None)
@@ -955,7 +955,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         GoodError > {
                             let r = db.query_one(
                                 #q_text,
-                                &[#(#args_forward,) *]
+                                &[#(& #args_forward,) *]
                             ).await.map_err(|e| GoodError(e.to_string())) ?;
                             Ok(#unforward_res)
                         }
@@ -968,7 +968,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             let mut out = vec![];
                             for r in db.query(
                                 #q_text,
-                                &[#(#args_forward,) *]
+                                &[#(& #args_forward,) *]
                             ).await.map_err(|e| GoodError(e.to_string())) ? {
                                 out.push(#unforward_res);
                             }
@@ -977,7 +977,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     });
                 },
             }
-            ctx.errs.err_ctx.pop();
+            errs.pop_ctx();
         }
     }
 

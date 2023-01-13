@@ -1,6 +1,9 @@
-use std::fmt::{
-    Display,
-    Debug,
+use std::{
+    fmt::{
+        Display,
+        Debug,
+    },
+    collections::HashSet,
 };
 use crate::{
     utils::Tokens,
@@ -17,7 +20,10 @@ use super::{
         PgMigrateCtx,
         NodeDataDispatch,
     },
-    node::Node_,
+    node::{
+        Id,
+        Node,
+    },
 };
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -36,7 +42,7 @@ pub struct NodeTable_ {
 }
 
 impl NodeTable_ {
-    pub fn compare(&self, _old: &Self) -> Comparison {
+    pub fn compare(&self, _old: &Self, _created: &HashSet<Id>) -> Comparison {
         Comparison::DoNothing
     }
 }
@@ -48,22 +54,24 @@ impl NodeData for NodeTable_ {
 }
 
 impl NodeDataDispatch for NodeTable_ {
-    fn create_coalesce(&mut self, other: &Node_) -> bool {
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        println!("{:?} coalesce...", self.id);
         match other {
-            Node_::Field(f) if f.id.0 == self.id => {
+            Node::Field(f) if f.id.0 == self.id => {
+                println!("  {} yesce", f.id);
                 self.fields.push((f.id.clone(), f.def.clone()));
-                true
+                None
             },
-            _ => false,
+            other => Some(other),
         }
     }
 
-    fn delete_coalesce(&mut self, other: &Node_) -> bool {
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
-            Node_::Field(f) if f.id.0 == self.id => true,
-            Node_::Constraint(e) if e.id.0 == self.id => true,
-            Node_::Index(e) if e.id.0 == self.id => true,
-            _ => false,
+            Node::Field(f) if f.id.0 == self.id => None,
+            Node::Constraint(e) if e.id.0 == self.id => None,
+            Node::Index(e) if e.id.0 == self.id => None,
+            other => Some(other),
         }
     }
 

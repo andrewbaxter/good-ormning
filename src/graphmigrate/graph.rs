@@ -32,6 +32,15 @@ impl<T> Graph<T> {
             },
         };
     }
+
+    pub fn reverse_edges(&mut self) {
+        let mut replace = HashMap::new();
+        replace.reserve(self.edges.len());
+        for (k, v) in self.edges.drain() {
+            replace.insert(k, v);
+        }
+        self.edges = replace;
+    }
 }
 
 /// Visit each node only when all nodes pointing to it have been visited

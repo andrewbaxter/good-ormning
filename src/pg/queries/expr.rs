@@ -183,30 +183,30 @@ pub(crate) fn check_general_same(ctx: &mut PgQueryCtx, left: &ExprType, right: &
         check_general_same_type(ctx, &left.0[0].1, &left.0[0].1);
     } else {
         for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
-            ctx.errs.err_ctx.push(vec![("Record pair", i.to_string())]);
+            ctx.errs.push_ctx(vec![("Record pair", i.to_string())]);
             check_general_same_type(ctx, &left.1, &right.1);
-            ctx.errs.err_ctx.pop();
+            ctx.errs.pop_ctx();
         }
     }
 }
 
 pub(crate) fn check_same(errs: &mut Errs, left: &ExprType, right: &ExprType) -> Option<Type> {
-    errs.err_ctx.push(vec![("expr", "left".into())]);
+    errs.push_ctx(vec![("expr", "left".into())]);
     let left = match left.assert_scalar(errs) {
         Some(t) => t,
         None => {
             return None;
         },
     };
-    errs.err_ctx.pop();
-    errs.err_ctx.push(vec![("expr", "right".into())]);
+    errs.pop_ctx();
+    errs.push_ctx(vec![("expr", "right".into())]);
     let right = match right.assert_scalar(errs) {
         Some(t) => t,
         None => {
             return None;
         },
     };
-    errs.err_ctx.pop();
+    errs.pop_ctx();
     if left.1.opt != right.1.opt {
         errs.err(
             format!(
@@ -414,7 +414,7 @@ impl Expr {
             Expr::LitString(x) => {
                 let mut out = Tokens::new();
                 let i = ctx.query_args.len();
-                ctx.query_args.push(quote!(& #x));
+                ctx.query_args.push(quote!(#x));
                 out.s(&format!("${}", i + 1));
                 return empty_type!(out, SimpleSimpleType::String);
             },
@@ -422,7 +422,7 @@ impl Expr {
                 let mut out = Tokens::new();
                 let i = ctx.query_args.len();
                 let h = hex::encode(&x);
-                ctx.query_args.push(quote!(&hex_literal::hex!(#h)));
+                ctx.query_args.push(quote!(hex_literal::hex!(#h)));
                 out.s(&format!("${}", i + 1));
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
@@ -430,7 +430,7 @@ impl Expr {
                 let mut out = Tokens::new();
                 let i = ctx.query_args.len();
                 let d = d.to_rfc3339();
-                ctx.query_args.push(quote!(& #d));
+                ctx.query_args.push(quote!(#d));
                 out.s(&format!("${}", i + 1));
                 return empty_type!(out, SimpleSimpleType::UtcTime);
             },
@@ -481,7 +481,7 @@ impl Expr {
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
                         }
                         ctx.rust_args.push(quote!(#ident: #rust_type));
-                        ctx.query_args.push(quote!(& #rust_forward));
+                        ctx.query_args.push(quote!(#rust_forward));
                         i
                     },
                 };

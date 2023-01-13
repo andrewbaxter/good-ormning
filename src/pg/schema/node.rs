@@ -1,4 +1,6 @@
-use std::marker::PhantomData;
+use std::{
+    collections::HashSet,
+};
 use enum_dispatch::enum_dispatch;
 use samevariant::samevariant;
 use crate::graphmigrate::Comparison;
@@ -37,73 +39,55 @@ pub enum Id {
 #[derive(Clone)]
 #[enum_dispatch(NodeDataDispatch)]
 #[samevariant(PairwiseNode)]
-pub(crate) enum Node_ {
+pub(crate) enum Node {
     Table(NodeTable_),
     Field(NodeField_),
     Constraint(NodeConstraint_),
     Index(NodeIndex_),
 }
 
-#[derive(Clone)]
-pub(crate) struct Node<'a> {
-    pub(crate) n: Node_,
-    // Rust is awesome
-    _pd: PhantomData<&'a i32>,
-}
-
-impl<'a> Node<'a> {
+impl Node {
     pub(crate) fn table(t: NodeTable_) -> Self {
-        Node {
-            n: Node_::Table(t),
-            _pd: Default::default(),
-        }
+        Node::Table(t)
     }
 
     pub(crate) fn field(t: NodeField_) -> Self {
-        Node {
-            n: Node_::Field(t),
-            _pd: Default::default(),
-        }
+        Node::Field(t)
     }
 
     pub(crate) fn table_constraint(t: NodeConstraint_) -> Self {
-        Node {
-            n: Node_::Constraint(t),
-            _pd: Default::default(),
-        }
+        Node::Constraint(t)
     }
 
     pub(crate) fn table_index(t: NodeIndex_) -> Self {
-        Node {
-            n: Node_::Index(t),
-            _pd: Default::default(),
-        }
+        Node::Index(t)
     }
 }
 
-impl<'a> crate::graphmigrate::NodeData for Node<'a> {
-    type O = PgMigrateCtx<'a>;
+impl<'a> crate::graphmigrate::NodeData for Node {
+    type O = PgMigrateCtx;
+    type I = Id;
 
-    fn compare(&self, other: &Self) -> Comparison {
-        match PairwiseNode::pairs(&self.n, &other.n) {
-            PairwiseNode::Table(current, old) => current.compare(old),
-            PairwiseNode::Field(current, old) => current.compare(old),
-            PairwiseNode::Constraint(current, old) => current.compare(old),
-            PairwiseNode::Index(current, old) => current.compare(old),
+    fn compare(&self, other: &Self, created: &HashSet<Self::I>) -> Comparison {
+        match PairwiseNode::pairs(self, &other) {
+            PairwiseNode::Table(current, old) => current.compare(old, created),
+            PairwiseNode::Field(current, old) => current.compare(old, created),
+            PairwiseNode::Constraint(current, old) => current.compare(old, created),
+            PairwiseNode::Index(current, old) => current.compare(old, created),
             PairwiseNode::Nonmatching(_, _) => unreachable!(),
         }
     }
 
     fn create(&self, ctx: &mut PgMigrateCtx) {
-        NodeDataDispatch::create(&self.n, ctx)
+        NodeDataDispatch::create(self, ctx)
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
-        NodeDataDispatch::delete(&self.n, ctx)
+        NodeDataDispatch::delete(self, ctx)
     }
 
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
-        match PairwiseNode::pairs(&self.n, &old.n) {
+        match PairwiseNode::pairs(self, &old) {
             PairwiseNode::Table(current, old) => current.update(ctx, &old),
             PairwiseNode::Field(current, old) => current.update(ctx, &old),
             PairwiseNode::Constraint(current, old) => current.update(ctx, &old),
@@ -112,11 +96,11 @@ impl<'a> crate::graphmigrate::NodeData for Node<'a> {
         }
     }
 
-    fn create_coalesce(&mut self, other: &Self) -> bool {
-        NodeDataDispatch::create_coalesce(&mut self.n, &other.n)
+    fn create_coalesce(&mut self, other: Self) -> Option<Self> {
+        NodeDataDispatch::create_coalesce(self, other)
     }
 
-    fn delete_coalesce(&mut self, other: &Self) -> bool {
-        NodeDataDispatch::delete_coalesce(&mut self.n, &other.n)
+    fn delete_coalesce(&mut self, other: Self) -> Option<Self> {
+        NodeDataDispatch::delete_coalesce(self, other)
     }
 }

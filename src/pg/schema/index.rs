@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    collections::HashSet,
+};
 use crate::{
     utils::Tokens,
     graphmigrate::Comparison,
@@ -11,7 +14,10 @@ use super::{
         PgMigrateCtx,
         NodeData,
     },
-    node::Node_,
+    node::{
+        Node,
+        Id,
+    },
 };
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -36,18 +42,18 @@ pub(crate) struct NodeIndex_ {
 }
 
 impl NodeIndex_ {
-    pub fn compare(&self, other: &Self) -> Comparison {
-        if self.def.field_ids == other.def.field_ids {
-            Comparison::DoNothing
+    pub fn compare(&self, other: &Self, created: &HashSet<Id>) -> Comparison {
+        if created.contains(&Id::Table(self.id.0.clone())) || self.def.field_ids != other.def.field_ids {
+            Comparison::Recreate
         } else {
-            Comparison::DeleteCreate
+            Comparison::DoNothing
         }
     }
 }
 
 impl NodeDataDispatch for NodeIndex_ {
-    fn create_coalesce(&mut self, _other: &Node_) -> bool {
-        false
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 
     fn create(&self, ctx: &mut PgMigrateCtx) {
@@ -65,8 +71,8 @@ impl NodeDataDispatch for NodeIndex_ {
         }).s(")").to_string());
     }
 
-    fn delete_coalesce(&mut self, _other: &Node_) -> bool {
-        false
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {

@@ -3,7 +3,10 @@ use std::{
         Display,
         Debug,
     },
-    collections::HashMap,
+    collections::{
+        HashMap,
+        HashSet,
+    },
 };
 use crate::{
     utils::Tokens,
@@ -33,7 +36,10 @@ use super::{
         PgMigrateCtx,
         NodeDataDispatch,
     },
-    node::Node_,
+    node::{
+        Node,
+        Id,
+    },
 };
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -186,7 +192,10 @@ pub(crate) struct NodeField_ {
 }
 
 impl NodeField_ {
-    pub fn compare(&self, other: &Self) -> Comparison {
+    pub fn compare(&self, other: &Self, created: &HashSet<Id>) -> Comparison {
+        if created.contains(&Id::Table(self.id.0.clone())) {
+            return Comparison::Recreate;
+        }
         let t = &self.def.type_.type_;
         let other_t = &other.def.type_.type_;
         if t.opt != other_t.opt || t.type_.type_ != other_t.type_.type_ {
@@ -230,11 +239,11 @@ impl NodeDataDispatch for NodeField_ {
             .s("add column")
             .id(&self.id.1)
             .s(to_sql_type(&self.def.type_.type_.type_.type_));
-        if self.def.type_.type_.opt {
+        if !self.def.type_.type_.opt {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
                 let qctx_fields = HashMap::new();
-                let mut qctx = PgQueryCtx::new(&mut ctx.errs, &qctx_fields);
+                let mut qctx = PgQueryCtx::new(ctx.errs.clone(), &qctx_fields);
                 let e_res = d.build(&mut qctx, &HashMap::new());
                 check_same(&mut qctx.errs, &ExprType(vec![(ExprValName::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
@@ -256,9 +265,18 @@ impl NodeDataDispatch for NodeField_ {
             }
         }
         ctx.statements.push(stmt.to_string());
-        if self.def.type_.migration_default.is_some() {
-            let mut stmt = Tokens::new();
-            stmt.s("alter table").id(&self.id.0.0).s("alter column").id(&self.id.1).s("drop default");
+        if !self.def.type_.type_.opt && self.def.type_.migration_default.is_some() {
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.id.0.0)
+                        .s("alter column")
+                        .id(&self.id.1)
+                        .s("drop default")
+                        .to_string(),
+                );
         }
     }
 
@@ -268,11 +286,11 @@ impl NodeDataDispatch for NodeField_ {
             .push(Tokens::new().s("alter table").id(&self.id.0.0).s("drop column").id(&self.id.1).to_string());
     }
 
-    fn create_coalesce(&mut self, _other: &Node_) -> bool {
-        false
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 
-    fn delete_coalesce(&mut self, _other: &Node_) -> bool {
-        false
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 }

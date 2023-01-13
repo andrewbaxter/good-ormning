@@ -98,7 +98,13 @@ async fn test_migrate_add_field() -> Result<()> {
     let docker = testcontainers::clients::Cli::default();
     let (mut db, _cont) = db(&docker).await?;
     pg_gen_migrate_add_field::migrate(&mut db).await?;
-    assert_eq!(pg_gen_migrate_add_field::get_banan(&mut db).await?, Some(MyString("higgins".into())));
+    match pg_gen_migrate_add_field::get_banan(&mut db).await? {
+        Some(x) => {
+            assert_eq!(x.zomzom, true);
+            assert_eq!(&x.hizat, "nizoot");
+        },
+        None => assert!(false),
+    };
     Ok(())
 }
 
@@ -107,6 +113,6 @@ async fn test_migrate_remove_field() -> Result<()> {
     let docker = testcontainers::clients::Cli::default();
     let (mut db, _cont) = db(&docker).await?;
     pg_gen_migrate_remove_field::migrate(&mut db).await?;
-    pg_gen_migrate_remove_field::insert_banan(&mut db, Some(&MyString("higgins".into()))).await?;
+    pg_gen_migrate_remove_field::new_banan(&mut db, "yordol").await?;
     Ok(())
 }

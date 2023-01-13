@@ -25,14 +25,14 @@ use super::{
 
 pub struct PgQueryCtx<'a> {
     pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>,
-    pub(crate) errs: &'a mut Errs,
+    pub(crate) errs: Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
     pub(crate) query_args: Vec<TokenStream>,
 }
 
 impl<'a> PgQueryCtx<'a> {
-    pub(crate) fn new(errs: &'a mut Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
+    pub(crate) fn new(errs: Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
         Self {
             tables: tables,
             errs: errs,
