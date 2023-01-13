@@ -23,6 +23,7 @@ use crate::{
             table::TableId,
         },
         utils::sanitize,
+        QueryResCount,
     },
     utils::{
         Tokens,
@@ -40,6 +41,7 @@ pub enum Expr {
     // optional value.
     LitNull(SimpleType),
     LitBool(bool),
+    LitAuto(i64),
     LitI32(i32),
     LitI64(i64),
     LitU32(u32),
@@ -347,7 +349,7 @@ impl Expr {
                 BinOp::Divide => "/",
                 BinOp::And => "and",
                 BinOp::Or => "or",
-                BinOp::Equals => "==",
+                BinOp::Equals => "=",
                 BinOp::NotEquals => "!=",
                 BinOp::Is => "is",
                 BinOp::IsNot => "is not",
@@ -385,6 +387,11 @@ impl Expr {
                     "false"
                 });
                 return empty_type!(out, SimpleSimpleType::Bool);
+            },
+            Expr::LitAuto(x) => {
+                let mut out = Tokens::new();
+                out.s(&x.to_string());
+                return empty_type!(out, SimpleSimpleType::Auto);
             },
             Expr::LitI32(x) => {
                 let mut out = Tokens::new();
@@ -546,7 +553,7 @@ impl Expr {
                 return (ExprType(vec![(ExprValName::empty(), type_.clone())]), out);
             },
             Expr::Select(s) => {
-                return s.build(ctx);
+                return s.build(ctx, QueryResCount::Many);
             },
             Expr::Cast(e, t) => {
                 let out = e.build(ctx, scope);

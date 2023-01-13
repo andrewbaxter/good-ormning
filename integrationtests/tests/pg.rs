@@ -14,6 +14,9 @@ pub mod pg_gen_param_custom;
 pub mod pg_gen_param_opt_custom;
 pub mod pg_gen_migrate_add_field;
 pub mod pg_gen_migrate_remove_field;
+pub mod pg_gen_migrate_add_table;
+pub mod pg_gen_migrate_remove_table;
+pub mod pg_gen_select_join;
 
 async fn db<
     'a,
@@ -114,5 +117,33 @@ async fn test_migrate_remove_field() -> Result<()> {
     let (mut db, _cont) = db(&docker).await?;
     pg_gen_migrate_remove_field::migrate(&mut db).await?;
     pg_gen_migrate_remove_field::new_banan(&mut db, "yordol").await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_add_table() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_add_table::migrate(&mut db).await?;
+    pg_gen_migrate_add_table::two(&mut db, 23).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_remove_table() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_remove_table::migrate(&mut db).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_join() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_select_join::migrate(&mut db).await?;
+    let res = pg_gen_select_join::get_it(&mut db).await?;
+    assert_eq!(res.three, 33);
+    assert_eq!(res.two, Some("no".into()));
     Ok(())
 }

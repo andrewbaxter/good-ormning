@@ -7,6 +7,7 @@ use crate::{
             table::TableId,
             field::FieldId,
         },
+        QueryResCount,
     },
     utils::{
         Tokens,
@@ -44,7 +45,7 @@ impl<'a> PgQueryCtx<'a> {
 }
 
 pub trait QueryBody {
-    fn build(&self, ctx: &mut PgQueryCtx) -> (ExprType, Tokens);
+    fn build(&self, ctx: &mut PgQueryCtx, res_count: QueryResCount) -> (ExprType, Tokens);
 }
 
 pub fn build_set(
@@ -77,7 +78,17 @@ pub fn build_returning_values(
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
+    res_count: QueryResCount,
 ) -> ExprType {
+    if outputs.is_empty() {
+        if !matches!(res_count, QueryResCount::None) {
+            ctx.errs.err(format!("Query has no outputs but res_count is None: {:?}", res_count));
+        }
+    } else {
+        if matches!(res_count, QueryResCount::None) {
+            ctx.errs.err(format!("Query has outputs but res_count is None: {:?}", res_count));
+        }
+    }
     let mut out_rec: Vec<(ExprValName, Type)> = vec![];
     for (i, o) in outputs.iter().enumerate() {
         if i > 0 {
@@ -104,9 +115,10 @@ pub fn build_returning(
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
     outputs: &Vec<SelectOutput>,
+    res_count: QueryResCount,
 ) -> ExprType {
     if !outputs.is_empty() {
         out.s("returning");
     }
-    build_returning_values(ctx, scope, out, outputs)
+    build_returning_values(ctx, scope, out, outputs, res_count)
 }

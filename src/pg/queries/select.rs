@@ -7,6 +7,7 @@ use crate::{
             table::TableId,
             field::FieldId,
         },
+        QueryResCount,
     },
 };
 use super::{
@@ -44,7 +45,7 @@ impl NamedSelectSource {
         let mut out = Tokens::new();
         let mut new_fields: Vec<(FieldId, (String, Type))> = match &self.source {
             JoinSource::Subsel(s) => {
-                let res = s.build(ctx);
+                let res = s.build(ctx, QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.iter().map(|e| (e.0.field.clone(), (e.0.name.clone(), e.1.clone()))).collect()
             },
@@ -103,7 +104,7 @@ pub struct Select {
 }
 
 impl QueryBody for Select {
-    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
+    fn build(&self, ctx: &mut super::utils::PgQueryCtx, res_count: QueryResCount) -> (ExprType, Tokens) {
         // Prep
         let source = self.table.build(ctx);
         let mut fields = HashMap::new();
@@ -121,7 +122,6 @@ impl QueryBody for Select {
             out.s("join");
             let source = je.source.build(ctx);
             out.s(&source.1.to_string());
-            out.s("on").s(&je.on.build(ctx, &fields).1.to_string());
             match je.type_ {
                 JoinType::Left => {
                     for (k, mut v) in source.0 {
@@ -140,13 +140,17 @@ impl QueryBody for Select {
                     }
                 },
             }
+            out.s("on").s(&je.on.build(ctx, &all_fields).1.to_string());
             joins.push(out.to_string());
         }
 
         // Build query
         let mut out = Tokens::new();
         out.s("select");
-        let out_type = build_returning_values(ctx, &all_fields, &mut out, &self.output);
+        if self.output.is_empty() {
+            ctx.errs.err(format!("Select must have at least one output, but outputs are empty"));
+        }
+        let out_type = build_returning_values(ctx, &all_fields, &mut out, &self.output, res_count);
         out.s("from");
         out.s(&source.1.to_string());
         for join in joins {

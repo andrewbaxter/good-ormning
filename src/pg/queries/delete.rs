@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use crate::{
     utils::Tokens,
-    pg::schema::table::TableId,
+    pg::{
+        schema::table::TableId,
+        QueryResCount,
+    },
 };
 use super::{
     expr::{
@@ -22,7 +25,11 @@ pub struct Delete {
 }
 
 impl QueryBody for Delete {
-    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
+    fn build(
+        &self,
+        ctx: &mut super::utils::PgQueryCtx,
+        res_count: QueryResCount,
+    ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
         let mut scope = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
@@ -42,7 +49,7 @@ impl QueryBody for Delete {
             out.s("where");
             where_.build(ctx, &scope);
         }
-        let out_type = build_returning(ctx, &scope, &mut out, &self.returning);
+        let out_type = build_returning(ctx, &scope, &mut out, &self.returning, res_count);
         (out_type, out)
     }
 }

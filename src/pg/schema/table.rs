@@ -55,10 +55,8 @@ impl NodeData for NodeTable_ {
 
 impl NodeDataDispatch for NodeTable_ {
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        println!("{:?} coalesce...", self.id);
         match other {
             Node::Field(f) if f.id.0 == self.id => {
-                println!("  {} yesce", f.id);
                 self.fields.push((f.id.clone(), f.def.clone()));
                 None
             },

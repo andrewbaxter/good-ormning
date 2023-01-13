@@ -5,6 +5,7 @@ use crate::{
             table::TableId,
             field::FieldId,
         },
+        QueryResCount,
     },
     utils::Tokens,
 };
@@ -29,7 +30,11 @@ pub struct Update {
 }
 
 impl QueryBody for Update {
-    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (super::expr::ExprType, crate::utils::Tokens) {
+    fn build(
+        &self,
+        ctx: &mut super::utils::PgQueryCtx,
+        res_count: QueryResCount,
+    ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
         let mut scope = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
@@ -50,7 +55,7 @@ impl QueryBody for Update {
             out.s("where");
             where_.build(ctx, &scope);
         }
-        let out_type = build_returning(ctx, &scope, &mut out, &self.returning);
+        let out_type = build_returning(ctx, &scope, &mut out, &self.returning, res_count);
         (out_type, out)
     }
 }

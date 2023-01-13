@@ -184,7 +184,6 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
         // Coalesce creates and generate
         let mut iter = TopoWalker::new_whole_graph(&create_graph);
         while let Some(graph_key) = iter.get() {
-            println!("walk {}", graph_key);
             iter.enter(&create_graph);
             match create_graph.data.get_mut(graph_key).unwrap().1.take() {
                 None => continue,
@@ -197,7 +196,6 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
                                 let (other_k, other_node) = create_graph.data.get_mut(other_graph_key).unwrap();
                                 (other_k.clone(), other_node.take())
                             };
-                            println!("coalesce vs {:?} (gk {})", other_k, other_graph_key);
                             let unconsumed = match other_node {
                                 Some(other_node) => match other_node {
                                     DiffNode::Create { new: other_new } => {
@@ -210,14 +208,11 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
                             match unconsumed {
                                 Some(other_node) => {
                                     // wasn't consumed; replace and skip tree
-                                    println!("-> not consumed");
-                                    *create_graph.data.get_mut(other_graph_key).unwrap() =
-                                        (other_k, Some(other_node));
+                                    *create_graph.data.get_mut(other_graph_key).unwrap() = (other_k, Some(other_node));
                                     coalesce_iter.skip(&create_graph);
                                 },
                                 None => {
                                     // was consumed
-                                    println!("-> consumed");
                                     coalesce_iter.enter(&create_graph);
                                 },
                             }

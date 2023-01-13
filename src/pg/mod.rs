@@ -82,6 +82,7 @@ pub mod utils;
 /// The number of results this query returns. This determines if the return type is
 /// void, `Option`, the value directly, or a `Vec`. It must be a valid value per the
 /// query body (e.g. select can't have `None` res count).
+#[derive(Debug, Clone)]
 pub enum QueryResCount {
     None,
     MaybeOne,
@@ -709,7 +710,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             q: &dyn QueryBody,
         ) {
             let mut qctx = PgQueryCtx::new(errs.clone(), &field_lookup);
-            let e_res = q.build(&mut qctx);
+            let e_res = q.build(&mut qctx, QueryResCount::None);
             if !qctx.rust_args.is_empty() {
                 qctx.errs.err(format!("Migration statements can't receive arguments"));
             }
@@ -799,7 +800,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         for q in queries {
             let mut ctx = PgQueryCtx::new(errs.clone(), &field_lookup);
             ctx.errs.push_ctx(vec![("Query", q.name.clone())]);
-            let res = QueryBody::build(q.body.as_ref(), &mut ctx);
+            let res = QueryBody::build(q.body.as_ref(), &mut ctx, q.res_count.clone());
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
             let args = ctx.rust_args.split_off(0);
@@ -1074,4 +1075,135 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     };
     errs.raise()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        path::PathBuf,
+        str::FromStr,
+    };
+    use crate::pg::{
+        new_select,
+        QueryResCount,
+        new_insert,
+    };
+    use super::{
+        schema::field::{
+            field_str,
+            field_auto,
+        },
+        generate,
+        Version,
+        queries::expr::Expr,
+    };
+
+    #[test]
+    fn test_add_field_serial_bad() {
+        assert!(generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            }),
+            (1usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                bananna.field(&mut v, "zPREUVAOD", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
+                v
+            })
+        ], vec![]).is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_field_dup_bad() {
+        generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            }),
+            (1usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                bananna.field(&mut v, "z437INV6D", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
+                v
+            })
+        ], vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_table_dup_bad() {
+        generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            }),
+            (1usize, {
+                let mut v = Version::default();
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                let bananna = v.table("bananna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            })
+        ], vec![]).unwrap();
+    }
+
+    #[test]
+    fn test_res_count_none_bad() {
+        let mut v = Version::default();
+        let bananna = v.table("bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        assert!(
+            generate(
+                &PathBuf::from_str("/dev/null").unwrap(),
+                vec![(0usize, v)],
+                vec![new_select(&bananna).output_field(&hizat).build_query("x", QueryResCount::None)],
+            ).is_err()
+        );
+    }
+
+    #[test]
+    fn test_select_nothing_bad() {
+        let mut v = Version::default();
+        let bananna = v.table("bananna");
+        bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        assert!(
+            generate(
+                &PathBuf::from_str("/dev/null").unwrap(),
+                vec![(0usize, v)],
+                vec![new_select(&bananna).build_query("x", QueryResCount::None)],
+            ).is_err()
+        );
+    }
+
+    #[test]
+    fn test_returning_none_bad() {
+        let mut v = Version::default();
+        let bananna = v.table("bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        assert!(
+            generate(
+                &PathBuf::from_str("/dev/null").unwrap(),
+                vec![(0usize, v)],
+                vec![
+                    new_insert(&bananna, vec![(hizat.id.clone(), Expr::LitString("hoy".into()))])
+                        .returning_field(&hizat)
+                        .build_query("x", QueryResCount::None)
+                ],
+            ).is_err()
+        );
+    }
 }

@@ -5,6 +5,7 @@ use crate::{
             field::FieldId,
             table::TableId,
         },
+        QueryResCount,
     },
     utils::Tokens,
 };
@@ -35,7 +36,7 @@ pub struct Insert {
 }
 
 impl QueryBody for Insert {
-    fn build(&self, ctx: &mut super::utils::PgQueryCtx) -> (ExprType, Tokens) {
+    fn build(&self, ctx: &mut super::utils::PgQueryCtx, res_count: QueryResCount) -> (ExprType, Tokens) {
         // Prep
         let mut scope = HashMap::new();
         for (k, v) in match ctx.tables.get(&self.table) {
@@ -85,7 +86,25 @@ impl QueryBody for Insert {
                 },
             }
         }
-        let out_type = build_returning(ctx, &scope, &mut out, &self.returning);
+        match (&res_count, &self.on_conflict) {
+            (QueryResCount::MaybeOne, Some(InsertConflict::Update(_))) => {
+                ctx.errs.err(format!("Insert with [on conflict update] will always return a row"));
+            },
+            (QueryResCount::One, Some(InsertConflict::DoNothing)) => {
+                ctx.errs.err(format!("Insert with [on conflict do nothing] may not return a row"));
+            },
+            (QueryResCount::Many, _) => {
+                ctx.errs.err(format!("Insert can at most return one row, but res count is many"));
+            },
+            (QueryResCount::None, _) | (QueryResCount::One, None) | (QueryResCount::MaybeOne, None) => {
+                // handled elsewhere, nop
+            },
+            (QueryResCount::One, Some(InsertConflict::Update(_))) |
+            (QueryResCount::MaybeOne, Some(InsertConflict::DoNothing)) => {
+                // ok
+            },
+        }
+        let out_type = build_returning(ctx, &scope, &mut out, &self.returning, res_count);
         (out_type, out)
     }
 }
