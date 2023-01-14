@@ -1,11 +1,9 @@
 # GOOD-ORMNING
 
-Good-ormning is an ORM, probably?
-
-You
+Good-ormning is an ORM, probably? In a nutshell:
 
 1. Define schemas and queries in `build.rs`
-2. `good-ormning` generates a migration function and functions for each queries
+2. `good-ormning` generates a function to set up/migrate the database and for each query
 
 **Features**
 
