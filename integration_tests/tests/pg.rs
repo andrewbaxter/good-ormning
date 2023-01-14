@@ -1,4 +1,4 @@
-use integrationtests::MyString;
+use integration_tests::MyString;
 use testcontainers::{
     images::postgres::Postgres,
     Container,

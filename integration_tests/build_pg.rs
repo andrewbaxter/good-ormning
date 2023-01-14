@@ -1,5 +1,5 @@
 use std::path::Path;
-use goodormning::pg::{
+use good_ormning::pg::{
     Version,
     schema::field::{
         field_str,
@@ -97,7 +97,7 @@ pub fn build(root: &Path) {
         let mut v = Version::default();
         let bananna = v.table("zH2Q9TOLG");
         let hizat =
-            bananna.field(&mut v, "z437INV6D", "hizat", field_str().custom("integrationtests::MyString").build());
+            bananna.field(&mut v, "z437INV6D", "hizat", field_str().custom("integration_tests::MyString").build());
         generate(&root.join("tests/pg_gen_param_custom.rs"), vec![(0usize, v)], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.id.clone(), Expr::Param {
@@ -117,7 +117,7 @@ pub fn build(root: &Path) {
                 &mut v,
                 "z437INV6D",
                 "hizat",
-                field_str().custom("integrationtests::MyString").opt().build(),
+                field_str().custom("integration_tests::MyString").opt().build(),
             );
         generate(&root.join("tests/pg_gen_param_opt_custom.rs"), vec![(0usize, v)], vec![
             // Queries

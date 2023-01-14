@@ -3,9 +3,10 @@
 Good-ormning is an ORM, probably? In a nutshell:
 
 1. Define schemas and queries in `build.rs`
-2. `good-ormning` generates a function to set up/migrate the database and for each query
+2. Good-ormning generates a function to set up/migrate the database
+3. Good-ormning generates functions for each query
 
-**Features**
+### Features
 
 - No macros
 - No generics
@@ -21,7 +22,7 @@ Like other Rust ORMs, Good-ormning doesn't abstract away from actual database wo
 
 See Comparisons, below, for information on how Good-ormning differs from other Rust ORMs.
 
-**Current status**
+### Current status
 
 Alpha:
 
@@ -30,7 +31,7 @@ Alpha:
 - Missing advanced features
 - Some ergonomics issues, interfaces may change in upcoming releases
 
-**Supported databases**:
+### Supported databases
 
 - PostgreSQL
 - Sqlite

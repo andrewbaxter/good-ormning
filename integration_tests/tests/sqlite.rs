@@ -1,4 +1,4 @@
-use integrationtests::MyString;
+use integration_tests::MyString;
 use anyhow::Result;
 
 pub mod sqlite_gen_base_insert;
