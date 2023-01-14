@@ -11,7 +11,7 @@ use samevariant::samevariant;
 use syn::Path;
 use std::collections::HashMap;
 use crate::{
-    pg::{
+    sqlite::{
         types::{
             Type,
             SimpleSimpleType,
@@ -31,7 +31,7 @@ use crate::{
     },
 };
 use super::{
-    utils::PgQueryCtx,
+    utils::SqliteQueryCtx,
     select::Select,
 };
 
@@ -41,7 +41,6 @@ pub enum Expr {
     // optional value.
     LitNull(SimpleType),
     LitBool(bool),
-    LitAuto(i64),
     LitI32(i32),
     LitI64(i64),
     LitU32(u32),
@@ -49,7 +48,8 @@ pub enum Expr {
     LitF64(f64),
     LitString(String),
     LitBytes(Vec<u8>),
-    LitUtcTime(DateTime<Utc>),
+    LitUtcTimeS(DateTime<Utc>),
+    LitUtcTimeMs(DateTime<Utc>),
     /// A query parameter. This will become a parameter to the generated Rust function with
     /// the specified `name` and `type_`.
     Param {
@@ -135,33 +135,34 @@ impl ExprType {
     }
 }
 
-#[derive(Debug)]
-#[samevariant(GeneralTypePairs)]
-pub(crate) enum GeneralType {
-    Bool,
-    Numeric,
-    Blob,
-}
-
-pub(crate) fn general_type(t: &Type) -> GeneralType {
-    match t.type_.type_ {
-        SimpleSimpleType::Auto => GeneralType::Numeric,
-        SimpleSimpleType::U32 => GeneralType::Numeric,
-        SimpleSimpleType::I32 => GeneralType::Numeric,
-        SimpleSimpleType::I64 => GeneralType::Numeric,
-        SimpleSimpleType::F32 => GeneralType::Numeric,
-        SimpleSimpleType::F64 => GeneralType::Numeric,
-        SimpleSimpleType::Bool => GeneralType::Bool,
-        SimpleSimpleType::String => GeneralType::Blob,
-        SimpleSimpleType::Bytes => GeneralType::Blob,
-        SimpleSimpleType::UtcTime => GeneralType::Numeric,
-    }
-}
-
-pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
+pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
     if left.opt != right.opt {
         ctx.errs.err(path, format!("Operator arms have differing optionality"));
     }
+
+    #[derive(Debug)]
+    #[samevariant(GeneralTypePairs)]
+    enum GeneralType {
+        Bool,
+        Numeric,
+        Blob,
+    }
+
+    fn general_type(t: &Type) -> GeneralType {
+        match t.type_.type_ {
+            SimpleSimpleType::U32 => GeneralType::Numeric,
+            SimpleSimpleType::I32 => GeneralType::Numeric,
+            SimpleSimpleType::I64 => GeneralType::Numeric,
+            SimpleSimpleType::F32 => GeneralType::Numeric,
+            SimpleSimpleType::F64 => GeneralType::Numeric,
+            SimpleSimpleType::Bool => GeneralType::Bool,
+            SimpleSimpleType::String => GeneralType::Blob,
+            SimpleSimpleType::Bytes => GeneralType::Blob,
+            SimpleSimpleType::UtcTimeS => GeneralType::Numeric,
+            SimpleSimpleType::UtcTimeMs => GeneralType::Blob,
+        }
+    }
+
     match GeneralTypePairs::pairs(&general_type(left), &general_type(right)) {
         GeneralTypePairs::Nonmatching(left, right) => {
             ctx.errs.err(path, format!("Operator arms have incompatible types: {:?} and {:?}", left, right));
@@ -171,7 +172,7 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>
 }
 
 pub(crate) fn check_general_same(
-    ctx: &mut PgQueryCtx,
+    ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
     left: &ExprType,
     right: &ExprType,
@@ -247,7 +248,7 @@ pub(crate) fn check_same(
     Some(left.1.clone())
 }
 
-pub(crate) fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, a: &ExprType) {
+pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, a: &ExprType) {
     let t = match a.assert_scalar(&mut ctx.errs, path) {
         Some(t) => t,
         None => {
@@ -269,7 +270,7 @@ pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, a: 
 impl Expr {
     pub(crate) fn build(
         &self,
-        ctx: &mut PgQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
         scope: &HashMap<FieldId, (String, Type)>,
     ) -> (ExprType, Tokens) {
@@ -286,7 +287,7 @@ impl Expr {
         }
 
         fn do_bin_op(
-            ctx: &mut PgQueryCtx,
+            ctx: &mut SqliteQueryCtx,
             path: &rpds::Vector<String>,
             scope: &HashMap<FieldId, (String, Type)>,
             op: &BinOp,
@@ -414,11 +415,6 @@ impl Expr {
                 });
                 return empty_type!(out, SimpleSimpleType::Bool);
             },
-            Expr::LitAuto(x) => {
-                let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::Auto);
-            },
             Expr::LitI32(x) => {
                 let mut out = Tokens::new();
                 out.s(&x.to_string());
@@ -459,13 +455,21 @@ impl Expr {
                 out.s(&format!("${}", i + 1));
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
-            Expr::LitUtcTime(d) => {
+            Expr::LitUtcTimeS(d) => {
+                let mut out = Tokens::new();
+                let i = ctx.query_args.len();
+                let d = d.timestamp();
+                ctx.query_args.push(quote!(#d));
+                out.s(&format!("${}", i + 1));
+                return empty_type!(out, SimpleSimpleType::UtcTimeS);
+            },
+            Expr::LitUtcTimeMs(d) => {
                 let mut out = Tokens::new();
                 let i = ctx.query_args.len();
                 let d = d.to_rfc3339();
                 ctx.query_args.push(quote!(#d));
                 out.s(&format!("${}", i + 1));
-                return empty_type!(out, SimpleSimpleType::UtcTime);
+                return empty_type!(out, SimpleSimpleType::UtcTimeMs);
             },
             Expr::Param { name: x, type_: t } => {
                 let path = path.push_back(format!("Param ({})", x));
@@ -485,7 +489,6 @@ impl Expr {
                         let i = ctx.query_args.len();
                         e.insert((i, t.clone()));
                         let rust_type = match t.type_.type_ {
-                            SimpleSimpleType::Auto => quote!(i64),
                             SimpleSimpleType::U32 => quote!(u32),
                             SimpleSimpleType::I32 => quote!(i32),
                             SimpleSimpleType::I64 => quote!(i64),
@@ -494,7 +497,8 @@ impl Expr {
                             SimpleSimpleType::Bool => quote!(bool),
                             SimpleSimpleType::String => quote!(&str),
                             SimpleSimpleType::Bytes => quote!(&[u8]),
-                            SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                            SimpleSimpleType::UtcTimeS => quote!(chrono:: DateTime < chrono:: Utc >),
+                            SimpleSimpleType::UtcTimeMs => quote!(chrono:: DateTime < chrono:: Utc >),
                         };
                         let ident = format_ident!("{}", sanitize(x).1);
                         let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {

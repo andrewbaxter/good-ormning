@@ -40,7 +40,6 @@ impl Tokens {
 
 pub struct Errs_ {
     errs: Vec<String>,
-    err_ctx: Vec<Vec<(&'static str, String)>>,
 }
 
 #[derive(Clone)]
@@ -48,20 +47,17 @@ pub struct Errs(Rc<RefCell<Errs_>>);
 
 impl Errs {
     pub(crate) fn new() -> Self {
-        Self(Rc::new(RefCell::new(Errs_ {
-            errs: vec![],
-            err_ctx: vec![],
-        })))
+        Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })))
     }
 
-    pub fn err(&self, t: String) {
+    pub fn err(&self, path: &rpds::Vector<String>, t: String) {
         let mut s = self.0.as_ref().borrow_mut();
         let mut out = String::new();
-        for (i, (k, v)) in s.err_ctx.iter().flatten().enumerate() {
+        for (i, k) in path.iter().enumerate() {
             if i > 0 {
-                out.push_str(", ");
+                out.push_str("/");
             }
-            out.push_str(&format!("{}: {}", k, v));
+            out.push_str(k.as_ref());
         }
         out.push_str(" -- ");
         out.push_str(&t);
@@ -74,13 +70,5 @@ impl Errs {
             return Err(errs);
         }
         Ok(())
-    }
-
-    pub fn push_ctx(&self, v: Vec<(&'static str, String)>) {
-        self.0.borrow_mut().err_ctx.push(v);
-    }
-
-    pub fn pop_ctx(&self) {
-        self.0.borrow_mut().err_ctx.pop();
     }
 }

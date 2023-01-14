@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::{
     utils::Tokens,
-    pg::{
+    sqlite::{
         types::Type,
         schema::{
             table::TableId,
@@ -13,7 +13,7 @@ use crate::{
 use super::{
     utils::{
         QueryBody,
-        PgQueryCtx,
+        SqliteQueryCtx,
         build_returning_values,
     },
     expr::{
@@ -44,7 +44,7 @@ pub struct NamedSelectSource {
 impl NamedSelectSource {
     fn build(
         &self,
-        ctx: &mut PgQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
     ) -> (Vec<(FieldId, (String, Type))>, Tokens) {
         let mut out = Tokens::new();
@@ -113,7 +113,7 @@ pub struct Select {
 impl QueryBody for Select {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut super::utils::SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {

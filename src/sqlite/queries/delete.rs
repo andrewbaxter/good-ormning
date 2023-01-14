@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::{
     utils::Tokens,
-    pg::{
+    sqlite::{
         schema::table::TableId,
         QueryResCount,
     },
@@ -28,7 +28,7 @@ pub struct Delete {
 impl QueryBody for Delete {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut super::utils::SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {

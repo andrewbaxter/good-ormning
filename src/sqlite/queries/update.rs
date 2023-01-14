@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use crate::{
-    utils::Tokens,
-    pg::{
-        schema::table::TableId,
+    sqlite::{
+        schema::{
+            table::TableId,
+            field::FieldId,
+        },
         QueryResCount,
     },
+    utils::Tokens,
 };
 use super::{
     expr::{
@@ -15,20 +18,22 @@ use super::{
     utils::{
         QueryBody,
         build_returning,
+        build_set,
     },
     select::SelectOutput,
 };
 
-pub struct Delete {
-    pub(crate) table: TableId,
-    pub(crate) where_: Option<Expr>,
-    pub(crate) returning: Vec<SelectOutput>,
+pub struct Update {
+    pub table: TableId,
+    pub values: Vec<(FieldId, Expr)>,
+    pub where_: Option<Expr>,
+    pub returning: Vec<SelectOutput>,
 }
 
-impl QueryBody for Delete {
+impl QueryBody for Update {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut super::utils::SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
@@ -37,7 +42,7 @@ impl QueryBody for Delete {
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for delete", self.table));
+                ctx.errs.err(path, format!("Unknown table {} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
@@ -46,7 +51,8 @@ impl QueryBody for Delete {
 
         // Build query
         let mut out = Tokens::new();
-        out.s("delete from").id(&self.table.0);
+        out.s("update").id(&self.table.0);
+        build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

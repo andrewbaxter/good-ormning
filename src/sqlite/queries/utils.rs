@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+};
 use proc_macro2::TokenStream;
 use crate::{
-    pg::{
+    sqlite::{
         types::Type,
         schema::{
             table::TableId,
@@ -24,7 +26,7 @@ use super::{
     select::SelectOutput,
 };
 
-pub struct PgQueryCtx<'a> {
+pub struct SqliteQueryCtx<'a> {
     pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>,
     pub(crate) errs: Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
@@ -32,7 +34,7 @@ pub struct PgQueryCtx<'a> {
     pub(crate) query_args: Vec<TokenStream>,
 }
 
-impl<'a> PgQueryCtx<'a> {
+impl<'a> SqliteQueryCtx<'a> {
     pub(crate) fn new(errs: Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
         Self {
             tables: tables,
@@ -47,14 +49,14 @@ impl<'a> PgQueryCtx<'a> {
 pub trait QueryBody {
     fn build(
         &self,
-        ctx: &mut PgQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens);
 }
 
 pub fn build_set(
-    ctx: &mut PgQueryCtx,
+    ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
@@ -81,7 +83,7 @@ pub fn build_set(
 }
 
 pub fn build_returning_values(
-    ctx: &mut PgQueryCtx,
+    ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
@@ -120,7 +122,7 @@ pub fn build_returning_values(
 }
 
 pub fn build_returning(
-    ctx: &mut PgQueryCtx,
+    ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,

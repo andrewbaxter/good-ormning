@@ -2,3 +2,4 @@
 /Cargo.lock
 /.vscode/
 /integrationtests/tests/pg_gen_*
+/integrationtests/tests/sqlite_gen_*

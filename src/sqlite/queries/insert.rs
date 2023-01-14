@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+};
 use crate::{
-    pg::{
+    sqlite::{
         schema::{
             field::FieldId,
             table::TableId,
@@ -38,7 +40,7 @@ pub struct Insert {
 impl QueryBody for Insert {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut super::utils::SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {

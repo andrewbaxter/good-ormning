@@ -1,16 +1,41 @@
 # GOOD-ORMNING
 
-This aims to be a very-safe, minimal-boilerplate ORM for Rust. Like other Rust ORMs, it doesn't abstract away from actual database workflows, but instead aims to enhance type checking with normal SQL.
+Good-ormning is an ORM, probably?
 
-Good-Ormning works by defining database schema and queries. Migrations are automatically generated between schema versions, and queries are checked against the information in the schema.
+You
+
+1. Define schemas and queries in `build.rs`
+2. `good-ormning` generates a migration function and functions for each queries
+
+**Features**
+
+- No macros
+- No generics
+- No traits
+- No boilerplate duplicating stuff in the schema
+- Automatic migrations, no migration-schema mismatches
+- Query parameter type checking - no runtime errors due to parameter types, counts, or ordering
+- Query logic type checking via a query simulation
+- Query result type checking - no runtime errors due to result types, counts, or ordering
+- Fast to generate, low runtime overhead
+
+Like other Rust ORMs, Good-ormning doesn't abstract away from actual database workflows, but instead aims to enhance type checking with normal SQL.
 
 See Comparisons, below, for information on how Good-Ormning differs from other Rust ORMs.
 
-The current status is: Alpha - nominally works, but expect bugs. The generated code is easy to check and type safety should prevent most runtime issues, but you may run into yet-unsupported SQL features.
+**Current status**
 
-Supported databases:
+Alpha:
+
+- Basic features work
+- Incomplete test coverage
+- Missing advanced features
+- Some ergonomics issues, interfaces may change in upcoming releases
+
+**Supported databases**:
 
 - PostgreSQL
+- Sqlite
 
 ## Getting started
 
@@ -19,6 +44,7 @@ Supported databases:
 1. You'll need the following runtime dependencies:
 
    - `tokio-postgres` for PostgreSQL
+   - `rusqlite` for Sqlite
    - `hex_literal` if you use byte array literals in any queries
 
    And `build.rs` dependencies:
@@ -26,27 +52,72 @@ Supported databases:
    - `good-ormning`
 
 2. Create a `build.rs` and define your initial schema version and queries
-3. Call `goodormning::generate` to output the generated code
-4. In your code, after creating a database connection, call `migrate` to get a database handle with the queries you defined as methods
+3. Call `goodormning::generate()` to output the generated code
+4. In your code, after creating a database connection, call `migrate`
 
 ### Schema changes
 
 1. Copy your previous version schema, leaving the old schema version untouched. Modify the new schema and queries as you wish.
-2. Upon calling `migrate` the database will be updated to the new schema version.
-
-If any of your queries don't work with the new schema, you'll be informed during the build.
+2. Pass both the old and new schema versions to `goodormning::generate()`, which will generate the new migration statements.
+3. At runtime, the `migrate` call will make sure the database is updated to the new schema version.
 
 ## Example
 
 This `build.rs` file
 
 ```rust
-
+fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    let mut latest_version = Version::default();
+    let users = latest_version.table("zQLEK3CT0");
+    let id = users.field(&mut latest_version, "zLAPH3H29", "id", field_i64().auto_increment().build());
+    let name = users.field(&mut latest_version, "zLQI9HQUQ", "name", field_str().build());
+    goodormning::sqlite::generate(&root.join("tests/sqlite_gen_hello_world.rs"), vec![
+        // Versions
+        (0usize, latest_version)
+    ], vec![
+        // Queries
+        new_insert(&users, vec![(name.id.clone(), Expr::Param {
+            name: "text".into(),
+            type_: name.def.type_.type_.clone(),
+        })]).build_query("create_user", QueryResCount::None),
+        new_select(&users).where_(Expr::BinOp {
+            left: Box::new(Expr::Field(id.id.clone())),
+            op: BinOp::Equals,
+            right: Box::new(Expr::Param {
+                name: "id".into(),
+                type_: id.def.type_.type_.clone(),
+            }),
+        }).output_fields(&[&id, &name]).build_query("get_user", QueryResCount::One),
+        new_select(&users).output_field(&id).build_query("list_users", QueryResCount::Many)
+    ]).unwrap();
+}
 ```
 
 Generates this code
 
 ```rust
+
+```
+
+And can be used like
+
+```rust
+fn main() {
+    use sqlite_gen_hello_world as queries;
+
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    queries::migrate(&mut db)?;
+    queries::new_user(&mut db, "rust human")?;
+    for user_id in queries::list_users(&mut db)? {
+        let user = queries::get_user(&mut db, user_id)?;
+        println!("User {}: {}", user_id, user);
+    }
+    Ok(())
+}
+```
+
+```
 
 ```
 

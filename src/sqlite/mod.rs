@@ -13,8 +13,11 @@ use std::{
     fs,
 };
 use crate::{
-    pg::{
-        types::Type,
+    sqlite::{
+        types::{
+            Type,
+            type_i64,
+        },
         queries::expr::ExprValName,
     },
     utils::Errs,
@@ -22,7 +25,7 @@ use crate::{
 use self::{
     queries::{
         utils::{
-            PgQueryCtx,
+            SqliteQueryCtx,
             QueryBody,
         },
         insert::{
@@ -48,7 +51,7 @@ use self::{
         },
         utils::{
             MigrateNode,
-            PgMigrateCtx,
+            SqliteMigrateCtx,
         },
         table::{
             TableId,
@@ -59,6 +62,7 @@ use self::{
             FieldDef,
             NodeField_,
             FieldType,
+            field_i64,
         },
         index::{
             IndexId,
@@ -562,6 +566,17 @@ impl Version {
 }
 
 impl Table {
+    /// Get a FieldId for the "rowid" column
+    pub fn rowid(&self) -> Field {
+        Field {
+            id: FieldId(self.0.clone(), "rowid".into()),
+            def: FieldDef {
+                name: "rowid".into(),
+                type_: field_i64().build(),
+            },
+        }
+    }
+
     /// Define a field
     pub fn field(&self, v: &mut Version, id: impl ToString, name: impl ToString, type_: FieldType) -> Field {
         let out_id = FieldId(self.0.clone(), id.to_string());
@@ -710,7 +725,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             field_lookup: &HashMap<TableId, HashMap<FieldId, (String, Type)>>,
             q: &dyn QueryBody,
         ) {
-            let mut qctx = PgQueryCtx::new(errs.clone(), &field_lookup);
+            let mut qctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
             let e_res = q.build(&mut qctx, path, QueryResCount::None);
             if !qctx.rust_args.is_empty() {
                 qctx.errs.err(path, format!("Migration statements can't receive arguments"));
@@ -718,7 +733,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             let statement = e_res.1.to_string();
             let args = qctx.query_args;
             migration.push(quote!{
-                txn.execute(#statement, &[#(& #args,) *]).await ?;
+                txn.execute(#statement, rusqlite::params![#(#args,) *]) ?;
             });
         }
 
@@ -764,17 +779,27 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         errs.err(&path, format!("Duplicate field id {}", f.id));
                     }
                 },
+                Node::Table(t) => {
+                    match field_lookup.entry(t.id.clone()) {
+                        std::collections::hash_map::Entry::Occupied(_) => { },
+                        std::collections::hash_map::Entry::Vacant(e) => {
+                            e.insert(HashMap::new());
+                        },
+                    };
+                    let table = field_lookup.get_mut(&t.id).unwrap();
+                    table.insert(FieldId(t.id.clone(), "rowid".into()), ("rowid".into(), type_i64().build()));
+                },
                 _ => { },
             };
         }
 
         // Main migrations
         {
-            let mut state = PgMigrateCtx::new(errs.clone());
+            let mut state = SqliteMigrateCtx::new(errs.clone());
             crate::graphmigrate::migrate(&mut state, prev_version.take().map(|s| s.schema), &version.schema);
             for statement in &state.statements {
                 migration.push(quote!{
-                    txn.execute(#statement, &[]).await ?;
+                    txn.execute(#statement, ()) ?;
                 });
             }
         }
@@ -808,7 +833,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
         for q in queries {
             let path = rpds::vector![format!("Query {}", q.name)];
-            let mut ctx = PgQueryCtx::new(errs.clone(), &field_lookup);
+            let mut ctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
             let res = QueryBody::build(q.body.as_ref(), &mut ctx, &path, q.res_count.clone());
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
@@ -831,7 +856,6 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         return None;
                     }
                     let mut ident: TokenStream = match v.type_.type_ {
-                        types::SimpleSimpleType::Auto => quote!(i64),
                         types::SimpleSimpleType::U32 => quote!(u32),
                         types::SimpleSimpleType::I32 => quote!(i32),
                         types::SimpleSimpleType::I64 => quote!(i64),
@@ -840,13 +864,36 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         types::SimpleSimpleType::Bool => quote!(bool),
                         types::SimpleSimpleType::String => quote!(String),
                         types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
-                        types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
+                        types::SimpleSimpleType::UtcTimeS => quote!(chrono:: DateTime < chrono:: Utc >),
+                        types::SimpleSimpleType::UtcTimeMs => quote!(chrono:: DateTime < chrono:: Utc >),
                     };
                     if v.opt {
                         ident = quote!(Option < #ident >);
                     }
-                    let mut unforward = quote!{
-                        let x: #ident = r.get(#i);
+                    let mut unforward = match v.type_.type_ {
+                        types::SimpleSimpleType::U32 |
+                        types::SimpleSimpleType::I32 |
+                        types::SimpleSimpleType::I64 |
+                        types::SimpleSimpleType::F32 |
+                        types::SimpleSimpleType::F64 |
+                        types::SimpleSimpleType::Bool |
+                        types::SimpleSimpleType::String |
+                        types::SimpleSimpleType::Bytes => {
+                            quote!{
+                                let x: #ident = r.get(#i) ?;
+                            }
+                        },
+                        types::SimpleSimpleType::UtcTimeS => {
+                            quote!{
+                                let x: i64 = r.get(#i) ?;
+                                let x = chrono::Utc.timestamp_opt(x, 0)?;
+                            }
+                        },
+                        types::SimpleSimpleType::UtcTimeMs => {
+                            quote!{
+                                let x: chrono:: DateTime::< chrono:: Utc >:: parse_from_rfc3339(& r.get(#i) ?) ?;
+                            }
+                        },
                     };
                     if let Some(custom) = &v.type_.custom {
                         ident = match syn::parse_str::<syn::Path>(&custom) {
@@ -933,16 +980,16 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     (res_ident.to_token_stream(), res_def, unforward)
                 }
             };
-            let db_arg = quote!(db: &mut impl tokio_postgres::GenericClient);
+            let db_arg = quote!(db: &mut rusqlite::Connection);
             match q.res_count {
                 QueryResCount::None => {
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result <(),
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result <(),
                         GoodError > {
                             db.execute(
                                 #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                                rusqlite::params![#(#args_forward,) *]
+                            ).map_err(|e| GoodError(e.to_string())) ?;
                             Ok(())
                         }
                     });
@@ -952,12 +999,14 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                         GoodError > {
-                            let r = db.query_opt(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                            let mut stmt = db.prepare(#q_text) ?;
+                            let mut rows =
+                                stmt
+                                    .query(rusqlite::params![#(#args_forward,) *])
+                                    .map_err(|e| GoodError(e.to_string()))?;
+                            let r = rows.next()?;
                             if let Some(r) = r {
                                 return Ok(Some(#unforward_res));
                             }
@@ -970,12 +1019,19 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                         GoodError > {
-                            let r = db.query_one(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                            let mut stmt = db.prepare(#q_text) ?;
+                            let mut rows =
+                                stmt
+                                    .query(rusqlite::params![#(#args_forward,) *])
+                                    .map_err(|e| GoodError(e.to_string()))?;
+                            let r =
+                                rows
+                                    .next()?
+                                    .ok_or_else(
+                                        || GoodError("Query expected to return one row but returned no rows".into()),
+                                    )?;
                             Ok(#unforward_res)
                         }
                     });
@@ -985,13 +1041,15 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
                         GoodError > {
                             let mut out = vec![];
-                            for r in db.query(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ? {
+                            let mut stmt = db.prepare(#q_text) ?;
+                            let mut rows =
+                                stmt
+                                    .query(rusqlite::params![#(#args_forward,) *])
+                                    .map_err(|e| GoodError(e.to_string()))?;
+                            while let Some(r) = rows.next() ? {
                                 out.push(#unforward_res);
                             }
                             Ok(out)
@@ -1013,39 +1071,44 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             }
         }
         impl std::error::Error for GoodError { }
-        pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
+        impl From<rusqlite::Error> for GoodError {
+            fn from(value: rusqlite::Error) -> Self {
+                GoodError(value.to_string())
+            }
+        }
+        pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
         GoodError > {
-            let txn = db.transaction().await.map_err(|e| GoodError(e.to_string()))?;
+            let txn = db.transaction().map_err(|e| GoodError(e.to_string()))?;
             match(|| {
-                async {
-                    txn.execute("create table if not exists __good_version (version bigint not null);", &[]).await?;
-                    let version = match txn.query_opt("select * from __good_version limit 1", &[]).await? {
-                        Some(r) => {
-                            let ver: i64 = r.get("version");
-                            ver
-                        },
-                        None => {
-                            let ver: i64 =
-                                txn
-                                    .query_one(
-                                        "insert into __good_version (version) values (-1) returning version",
-                                        &[],
-                                    )
-                                    .await?
-                                    .get("version");
-                            ver
-                        },
-                    };
-                    #(
-                        #migrations
-                    ) * txn.execute("update __good_version set version = $1", &[& #last_version_i]).await ?;
-                    let out: Result <(),
-                    tokio_postgres::Error >= Ok(());
-                    out
-                }
-            })().await {
+                txn.execute("create table if not exists __good_version (version bigint not null);", ())?;
+                let mut stmt = txn.prepare("select version from __good_version limit 1")?;
+                let mut rows = stmt.query(())?;
+                let version = match rows.next()? {
+                    Some(r) => {
+                        let ver: i64 = r.get(0usize)?;
+                        ver
+                    },
+                    None => {
+                        let mut stmt =
+                            txn.prepare("insert into __good_version (version) values (-1) returning version")?;
+                        let mut rows = stmt.query(())?;
+                        let ver: i64 =
+                            rows
+                                .next()?
+                                .ok_or_else(|| GoodError("Insert version failed to return any values".into()))?
+                                .get(0usize)?;
+                        ver
+                    },
+                };
+                #(
+                    #migrations
+                ) * txn.execute("update __good_version set version = $1", rusqlite::params![#last_version_i]) ?;
+                let out: Result <(),
+                GoodError >= Ok(());
+                out
+            })() {
                 Err(e) => {
-                    match txn.rollback().await {
+                    match txn.rollback() {
                         Err(e1) => {
                             return Err(
                                 GoodError(
@@ -1058,12 +1121,12 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             );
                         },
                         Ok(_) => {
-                            return Err(GoodError(e.to_string()));
+                            return Err(e);
                         },
                     };
                 }
                 Ok(_) => {
-                    match txn.commit().await {
+                    match txn.commit() {
                         Err(e) => {
                             return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
                         },
@@ -1107,7 +1170,7 @@ mod test {
         path::PathBuf,
         str::FromStr,
     };
-    use crate::pg::{
+    use crate::sqlite::{
         new_select,
         QueryResCount,
         new_insert,
@@ -1115,32 +1178,12 @@ mod test {
     use super::{
         schema::field::{
             field_str,
-            field_auto,
+            field_i32,
         },
         generate,
         Version,
         queries::expr::Expr,
     };
-
-    #[test]
-    fn test_add_field_serial_bad() {
-        assert!(generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
-            // Versions (previous)
-            (0usize, {
-                let mut v = Version::default();
-                let bananna = v.table("bananna");
-                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
-                v
-            }),
-            (1usize, {
-                let mut v = Version::default();
-                let bananna = v.table("bananna");
-                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
-                bananna.field(&mut v, "zPREUVAOD", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
-                v
-            })
-        ], vec![]).is_err());
-    }
 
     #[test]
     #[should_panic]
@@ -1157,7 +1200,7 @@ mod test {
                 let mut v = Version::default();
                 let bananna = v.table("bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
-                bananna.field(&mut v, "z437INV6D", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
+                bananna.field(&mut v, "z437INV6D", "zomzom", field_i32().build());
                 v
             })
         ], vec![]).unwrap();
