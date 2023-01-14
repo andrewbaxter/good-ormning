@@ -94,20 +94,20 @@ pub struct Join {
 }
 
 #[derive(Clone, Debug)]
-pub struct SelectOutput {
+pub struct Returning {
     pub e: Expr,
     pub rename: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Select {
-    pub(crate) table: NamedSelectSource,
-    pub(crate) output: Vec<SelectOutput>,
-    pub(crate) join: Vec<Join>,
-    pub(crate) where_: Option<Expr>,
-    pub(crate) group: Vec<Expr>,
-    pub(crate) order: Vec<(Expr, Order)>,
-    pub(crate) limit: Option<usize>,
+    pub table: NamedSelectSource,
+    pub returning: Vec<Returning>,
+    pub join: Vec<Join>,
+    pub where_: Option<Expr>,
+    pub group: Vec<Expr>,
+    pub order: Vec<(Expr, Order)>,
+    pub limit: Option<usize>,
 }
 
 impl QueryBody for Select {
@@ -160,10 +160,10 @@ impl QueryBody for Select {
         // Build query
         let mut out = Tokens::new();
         out.s("select");
-        if self.output.is_empty() {
+        if self.returning.is_empty() {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
         }
-        let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.output, res_count);
+        let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.returning, res_count);
         out.s("from");
         out.s(&source.1.to_string());
         for join in joins {

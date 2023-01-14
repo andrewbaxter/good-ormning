@@ -76,7 +76,7 @@ impl SqliteNodeDataDispatch for NodeTable_ {
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
         let mut stmt = Tokens::new();
         stmt.s("create table").id(&self.id.0).s("(");
-        for (i, f) in self.fields.iter().enumerate() {
+        for (i, f) in self.fields.iter().filter(|f| &f.0.1 != "rowid").enumerate() {
             if i > 0 {
                 stmt.s(",");
             }

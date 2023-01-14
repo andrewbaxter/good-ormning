@@ -219,6 +219,9 @@ impl SqliteNodeData for NodeField_ {
 impl SqliteNodeDataDispatch for NodeField_ {
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
         let path = self.path();
+        if &self.id.1 == "rowid" {
+            return;
+        }
         let mut stmt = Tokens::new();
         stmt
             .s("alter table")
@@ -256,6 +259,9 @@ impl SqliteNodeDataDispatch for NodeField_ {
     }
 
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
+        if &self.id.1 == "rowid" {
+            return;
+        }
         ctx
             .statements
             .push(Tokens::new().s("alter table").id(&self.id.0.0).s("drop column").id(&self.id.1).to_string());

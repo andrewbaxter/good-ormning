@@ -16,13 +16,13 @@ use super::{
         QueryBody,
         build_returning,
     },
-    select::SelectOutput,
+    select::Returning,
 };
 
 pub struct Delete {
     pub(crate) table: TableId,
     pub(crate) where_: Option<Expr>,
-    pub(crate) returning: Vec<SelectOutput>,
+    pub(crate) returning: Vec<Returning>,
 }
 
 impl QueryBody for Delete {

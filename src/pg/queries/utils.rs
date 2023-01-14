@@ -21,7 +21,7 @@ use super::{
         Expr,
         check_assignable,
     },
-    select::SelectOutput,
+    select::Returning,
 };
 
 pub struct PgQueryCtx<'a> {
@@ -85,7 +85,7 @@ pub fn build_returning_values(
     path: &rpds::Vector<String>,
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
-    outputs: &Vec<SelectOutput>,
+    outputs: &Vec<Returning>,
     res_count: QueryResCount,
 ) -> ExprType {
     if outputs.is_empty() {
@@ -124,7 +124,7 @@ pub fn build_returning(
     path: &rpds::Vector<String>,
     scope: &HashMap<FieldId, (String, Type)>,
     out: &mut Tokens,
-    outputs: &Vec<SelectOutput>,
+    outputs: &Vec<Returning>,
     res_count: QueryResCount,
 ) -> ExprType {
     if !outputs.is_empty() {

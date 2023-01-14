@@ -91,8 +91,8 @@ fn main() {
                 name: "id".into(),
                 type_: id.def.type_.type_.clone(),
             }),
-        }).output_fields(&[&name, &points]).build_query("get_user", QueryResCount::One),
-        new_select(&users).output_field(&id).build_query("list_users", QueryResCount::Many)
+        }).return_fields(&[&name, &points]).build_query("get_user", QueryResCount::One),
+        new_select(&users).return_field(&id).build_query("list_users", QueryResCount::Many)
     ]).unwrap();
 }
 ```
@@ -295,6 +295,7 @@ Good-ormning is functionally most similar to Diesel.
 - Requires many macros, trait implementations
 - To synchronize your migrations and in-code schema, you can use the CLI with a live database with migrations applied. However, this resets any custom SQL types in the schema with the built-in SQL types. Alternatively you can maintain the schema by hand (and risk query issues due to typos, mismatches).
 - Column count limitations, slow build times
+- Supports more syntax, withstood test of time
 
 #### Good-ormning
 
@@ -305,6 +306,7 @@ Good-ormning is functionally most similar to Diesel.
 - Migrations are automatically derived via a diff between schema versions plus additional migration metadata
 - Clear error messages, thanks to no macros, generics, traits
 - Code generation is fast, compiling the simple generated code is also fast
+- Alpha
 
 ### Vs SQLx
 

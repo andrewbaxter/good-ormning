@@ -586,7 +586,8 @@ impl Expr {
                     if i > 0 {
                         out.s(",");
                     }
-                    arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    let (_, tokens) = arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    out.s(&tokens.to_string());
                 }
                 out.s(")");
                 return (ExprType(vec![(ExprValName::empty(), type_.clone())]), out);

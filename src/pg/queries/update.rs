@@ -20,14 +20,14 @@ use super::{
         build_returning,
         build_set,
     },
-    select::SelectOutput,
+    select::Returning,
 };
 
 pub struct Update {
     pub table: TableId,
     pub values: Vec<(FieldId, Expr)>,
     pub where_: Option<Expr>,
-    pub returning: Vec<SelectOutput>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Update {

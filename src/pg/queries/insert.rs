@@ -20,19 +20,23 @@ use super::{
         build_returning,
         build_set,
     },
-    select::SelectOutput,
+    select::Returning,
 };
 
 pub enum InsertConflict {
     DoNothing,
-    Update(Vec<(FieldId, Expr)>),
+    DoUpdate(Vec<(FieldId, Expr)>),
+}
+
+pub enum InsertConflictConstraint {
+    Fields(Vec<FieldId>),
 }
 
 pub struct Insert {
-    pub(crate) table: TableId,
-    pub(crate) values: Vec<(FieldId, Expr)>,
-    pub(crate) on_conflict: Option<InsertConflict>,
-    pub(crate) returning: Vec<SelectOutput>,
+    pub table: TableId,
+    pub values: Vec<(FieldId, Expr)>,
+    pub on_conflict: Option<(InsertConflictConstraint, InsertConflict)>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Insert {
@@ -81,22 +85,36 @@ impl QueryBody for Insert {
             out.s(&res.1.to_string());
         }
         out.s(")");
-        if let Some(c) = &self.on_conflict {
+        if let Some((constraint, conflict)) = &self.on_conflict {
             out.s("on conflict");
-            match c {
-                InsertConflict::DoNothing => {
-                    out.s("do nothing");
+            match constraint {
+                InsertConflictConstraint::Fields(f) => {
+                    out.s("(");
+                    for (i, f) in f.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        out.id(&f.1);
+                    }
+                    out.s(")");
                 },
-                InsertConflict::Update(values) => {
+            }
+            out.s("do");
+            match conflict {
+                InsertConflict::DoNothing => {
+                    out.s("nothing");
+                },
+                InsertConflict::DoUpdate(values) => {
+                    out.s("update");
                     build_set(ctx, path, &scope, &mut out, values);
                 },
             }
         }
         match (&res_count, &self.on_conflict) {
-            (QueryResCount::MaybeOne, Some(InsertConflict::Update(_))) => {
+            (QueryResCount::MaybeOne, Some((_, InsertConflict::DoUpdate(_)))) => {
                 ctx.errs.err(path, format!("Insert with [on conflict update] will always return a row"));
             },
-            (QueryResCount::One, Some(InsertConflict::DoNothing)) => {
+            (QueryResCount::One, Some((_, InsertConflict::DoNothing))) => {
                 ctx.errs.err(path, format!("Insert with [on conflict do nothing] may not return a row"));
             },
             (QueryResCount::Many, _) => {
@@ -105,8 +123,8 @@ impl QueryBody for Insert {
             (QueryResCount::None, _) | (QueryResCount::One, None) | (QueryResCount::MaybeOne, None) => {
                 // handled elsewhere, nop
             },
-            (QueryResCount::One, Some(InsertConflict::Update(_))) |
-            (QueryResCount::MaybeOne, Some(InsertConflict::DoNothing)) => {
+            (QueryResCount::One, Some((_, InsertConflict::DoUpdate(_)))) |
+            (QueryResCount::MaybeOne, Some((_, InsertConflict::DoNothing))) => {
                 // ok
             },
         }

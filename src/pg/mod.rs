@@ -28,10 +28,11 @@ use self::{
         insert::{
             Insert,
             InsertConflict,
+            InsertConflictConstraint,
         },
         expr::Expr,
         select::{
-            SelectOutput,
+            Returning,
             Select,
             NamedSelectSource,
             JoinSource,
@@ -96,38 +97,39 @@ pub struct InsertBuilder {
 }
 
 impl InsertBuilder {
-    pub fn on_conflict(mut self, v: InsertConflict) -> Self {
-        self.q.on_conflict = Some(v);
+    pub fn on_index_conflict(mut self, f: &[&Field], v: InsertConflict) -> Self {
+        self.q.on_conflict =
+            Some((InsertConflictConstraint::Fields(f.iter().map(|f| f.id.clone()).collect()), v));
         self
     }
 
-    pub fn returning(mut self, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: None,
         });
         self
     }
 
-    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: Some(name.to_string()),
         });
         self
     }
 
-    pub fn returning_field(mut self, f: &Field) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(Returning {
             e: Expr::Field(f.id.clone()),
             rename: None,
         });
         self
     }
 
-    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+    pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
-            self.q.returning.push(SelectOutput {
+            self.q.returning.push(Returning {
                 e: Expr::Field(f.id.clone()),
                 rename: None,
             });
@@ -135,7 +137,7 @@ impl InsertBuilder {
         self
     }
 
-    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
         self
     }
@@ -177,33 +179,33 @@ pub struct SelectBuilder {
 }
 
 impl SelectBuilder {
-    pub fn output(mut self, v: Expr) -> Self {
-        self.q.output.push(SelectOutput {
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: None,
         });
         self
     }
 
-    pub fn named_output(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.output.push(SelectOutput {
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: Some(name.to_string()),
         });
         self
     }
 
-    pub fn output_field(mut self, f: &Field) -> Self {
-        self.q.output.push(SelectOutput {
+    pub fn return_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(Returning {
             e: Expr::Field(f.id.clone()),
             rename: None,
         });
         self
     }
 
-    pub fn output_fields(mut self, f: &[&Field]) -> Self {
+    pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
-            self.q.output.push(SelectOutput {
+            self.q.returning.push(Returning {
                 e: Expr::Field(f.id.clone()),
                 rename: None,
             });
@@ -211,28 +213,33 @@ impl SelectBuilder {
         self
     }
 
-    pub fn output_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
-        self.q.output.extend(f);
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
         self
     }
 
-    pub fn join(mut self, v: Join) -> Self {
-        self.q.join.push(v);
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
         self
     }
 
-    pub fn where_(mut self, v: Expr) -> Self {
-        self.q.where_ = Some(v);
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
         self
     }
 
-    pub fn group(mut self, v: Vec<Expr>) -> Self {
-        self.q.group = v;
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
         self
     }
 
-    pub fn order(mut self, v: Vec<(Expr, Order)>) -> Self {
-        self.q.order = v;
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        self
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
         self
     }
 
@@ -283,33 +290,33 @@ impl UpdateBuilder {
         self
     }
 
-    pub fn returning(mut self, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: None,
         });
         self
     }
 
-    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: Some(name.to_string()),
         });
         self
     }
 
-    pub fn returning_field(mut self, f: &Field) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(Returning {
             e: Expr::Field(f.id.clone()),
             rename: None,
         });
         self
     }
 
-    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+    pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
-            self.q.returning.push(SelectOutput {
+            self.q.returning.push(Returning {
                 e: Expr::Field(f.id.clone()),
                 rename: None,
             });
@@ -317,7 +324,7 @@ impl UpdateBuilder {
         self
     }
 
-    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
         self
     }
@@ -364,33 +371,33 @@ impl DeleteBuilder {
         self
     }
 
-    pub fn returning(mut self, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: None,
         });
         self
     }
 
-    pub fn named_returning(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
             e: v,
             rename: Some(name.to_string()),
         });
         self
     }
 
-    pub fn returning_field(mut self, f: &Field) -> Self {
-        self.q.returning.push(SelectOutput {
+    pub fn return_field(mut self, f: &Field) -> Self {
+        self.q.returning.push(Returning {
             e: Expr::Field(f.id.clone()),
             rename: None,
         });
         self
     }
 
-    pub fn returning_fields(mut self, f: &[&Field]) -> Self {
+    pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
-            self.q.returning.push(SelectOutput {
+            self.q.returning.push(Returning {
                 e: Expr::Field(f.id.clone()),
                 rename: None,
             });
@@ -398,7 +405,7 @@ impl DeleteBuilder {
         self
     }
 
-    pub fn returning_from_iter(mut self, f: impl Iterator<Item = SelectOutput>) -> Self {
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
         self
     }
@@ -465,7 +472,7 @@ pub fn new_select(table: &Table) -> SelectBuilder {
             source: JoinSource::Table(table.0.clone()),
             alias: None,
         },
-        output: vec![],
+        returning: vec![],
         join: vec![],
         where_: None,
         group: vec![],
@@ -479,7 +486,7 @@ pub fn new_select(table: &Table) -> SelectBuilder {
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
     SelectBuilder { q: Select {
         table: source,
-        output: vec![],
+        returning: vec![],
         join: vec![],
         where_: None,
         group: vec![],
@@ -590,9 +597,8 @@ impl Table {
     /// Define a constraint
     pub fn constraint(&self, v: &mut Version, id: &str, type_: ConstraintType) {
         let id = ConstraintId(self.0.clone(), id.into());
-        let d = ConstraintDef { type_: type_ };
         let mut deps = vec![Id::Table(self.0.clone())];
-        match &d.type_ {
+        match &type_ {
             ConstraintType::PrimaryKey(x) => {
                 for f in &x.fields {
                     if f.0 != self.0 {
@@ -638,18 +644,18 @@ impl Table {
         }
         if v.schema.insert(Id::Constraint(id.clone()), MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
             id: id.clone(),
-            def: d,
+            def: ConstraintDef { type_: type_ },
         }))).is_some() {
             panic!("Constraint with id {} aleady exists", id.0)
         };
     }
 
     /// Define an index
-    pub fn index(&self, id: impl ToString, fields: Vec<FieldId>) -> IndexBuilder {
+    pub fn index(&self, id: impl ToString, fields: &[&Field]) -> IndexBuilder {
         IndexBuilder {
             id: IndexId(self.0.clone(), id.to_string()),
             d: IndexDef {
-                field_ids: fields,
+                field_ids: fields.iter().map(|f| f.id.clone()).collect(),
                 unique: false,
             },
         }
@@ -760,9 +766,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         },
                     };
                     let table = field_lookup.get_mut(&f.id.0).unwrap();
-                    if table.insert(f.id.clone(), (f.def.name.clone(), f.def.type_.type_.clone())).is_some() {
-                        errs.err(&path, format!("Duplicate field id {}", f.id));
-                    }
+                    table.insert(f.id.clone(), (f.def.name.clone(), f.def.type_.type_.clone()));
                 },
                 _ => { },
             };
@@ -1194,7 +1198,7 @@ mod test {
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
                 vec![(0usize, v)],
-                vec![new_select(&bananna).output_field(&hizat).build_query("x", QueryResCount::None)],
+                vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
             ).is_err()
         );
     }
@@ -1224,7 +1228,7 @@ mod test {
                 vec![(0usize, v)],
                 vec![
                     new_insert(&bananna, vec![(hizat.id.clone(), Expr::LitString("hoy".into()))])
-                        .returning_field(&hizat)
+                        .return_field(&hizat)
                         .build_query("x", QueryResCount::None)
                 ],
             ).is_err()
