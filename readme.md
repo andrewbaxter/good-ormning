@@ -260,14 +260,25 @@ Use `type_*` `field_*` functions to get expression/field type builders. Use `new
 
 ### Custom types
 
-When defining a field in the schema, call `.custom("mycrate::MyType")` on the field type builder (or pass it in as `Some("mycreate::MyType".to_string())` if creating the type structure directly).
+When defining a field in the schema, call `.custom("mycrate::MyString", type_str().build())` on the field type builder (or pass it in as `Some("mycreate::MyType".to_string())` if creating the type structure directly).
 
-Custom types need to implement
+Custom types need to implement functions like this:
 
-1. `trait Into<T>` for the corresponding standard type (`i32`, `String`, etc.), if you use the type as a parameter in a query.
-2. `fn from_sql(T) -> Result<U, String>` for types used in query results, where `T` is the corresponding standard type and `U` is the custom type. This isn't part of a trait.
+```rust
+pub struct MyString(pub String);
 
-If you miss either you'll get a compile error that should indicate clearly what you need to do.
+impl MyString {
+    pub fn to_sql(&self) -> &str {
+        &self.0
+    }
+
+    pub fn from_sql(s: String) -> Result<Self, MyErr> {
+        Ok(Self(s))
+    }
+}
+```
+
+Any `std::err::Error` can be used for the error. The `to_sql` result and `from_sql` arguments should correspond to the base type you specified. If you're not sure what type that is, guess, and when you compile you'll get an compiler error saying which type you need.
 
 ## Comparisons
 

@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct MyString(pub String);
 #[derive(Debug)]
 pub struct MyErr;
 
@@ -12,6 +10,9 @@ impl Display for MyErr {
 }
 
 impl std::error::Error for MyErr { }
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct MyString(pub String);
 
 impl MyString {
     pub fn to_sql(&self) -> &str {
