@@ -8,6 +8,7 @@ use anyhow::Result;
 
 pub mod pg_gen_base_insert;
 pub mod pg_gen_param_i32;
+pub mod pg_gen_param_utctime;
 pub mod pg_gen_param_opt_i32;
 pub mod pg_gen_param_opt_i32_null;
 pub mod pg_gen_param_custom;
@@ -64,6 +65,17 @@ async fn test_param_i32() -> Result<()> {
     pg_gen_param_i32::migrate(&mut db).await?;
     pg_gen_param_i32::insert_banan(&mut db, 22).await?;
     assert_eq!(pg_gen_param_i32::get_banan(&mut db).await?, 22);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_param_utctime() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
+    pg_gen_param_utctime::migrate(&mut db).await?;
+    pg_gen_param_utctime::insert_banan(&mut db, ref_date).await?;
+    assert_eq!(pg_gen_param_utctime::get_banan(&mut db).await?, ref_date);
     Ok(())
 }
 

@@ -5,6 +5,7 @@ use good_ormning::pg::{
         field_str,
         field_i32,
         field_bool,
+        field_utctime,
     },
     queries::{
         expr::{
@@ -53,6 +54,21 @@ pub fn build(root: &Path) {
         let bananna = v.table("zJCPRHK37");
         let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_i32().build());
         generate(&root.join("tests/pg_gen_param_i32.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(&bananna, vec![(hizat.id.clone(), Expr::Param {
+                name: "val".into(),
+                type_: hizat.def.type_.type_.clone(),
+            })]).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+        ]).unwrap();
+    }
+
+    // # (insert) Param: utctime
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zJCPRHK37");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime().build());
+        generate(&root.join("tests/pg_gen_param_utctime.rs"), vec![(0usize, v)], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.id.clone(), Expr::Param {
                 name: "val".into(),

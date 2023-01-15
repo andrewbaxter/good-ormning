@@ -3,6 +3,8 @@ use anyhow::Result;
 
 pub mod sqlite_gen_base_insert;
 pub mod sqlite_gen_param_i32;
+pub mod sqlite_gen_param_utctime_s;
+pub mod sqlite_gen_param_utctime_ms;
 pub mod sqlite_gen_param_opt_i32;
 pub mod sqlite_gen_param_opt_i32_null;
 pub mod sqlite_gen_param_custom;
@@ -54,6 +56,26 @@ fn test_param_i32() -> Result<()> {
     sqlite_gen_param_i32::migrate(&mut db)?;
     sqlite_gen_param_i32::insert_banan(&mut db, 22)?;
     assert_eq!(sqlite_gen_param_i32::get_banan(&mut db)?, 22);
+    Ok(())
+}
+
+#[test]
+fn test_param_utctime_s() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_param_utctime_s::migrate(&mut db)?;
+    let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
+    sqlite_gen_param_utctime_s::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_s::get_banan(&mut db)?, ref_date);
+    Ok(())
+}
+
+#[test]
+fn test_param_utctime_ms() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_param_utctime_ms::migrate(&mut db)?;
+    let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
+    sqlite_gen_param_utctime_ms::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_ms::get_banan(&mut db)?, ref_date);
     Ok(())
 }
 

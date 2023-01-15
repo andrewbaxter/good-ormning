@@ -514,6 +514,18 @@ impl Expr {
                         } else {
                             (rust_type, quote!(#ident))
                         };
+                        rust_forward = match t.type_.type_ {
+                            SimpleSimpleType::U32 => rust_forward,
+                            SimpleSimpleType::I32 => rust_forward,
+                            SimpleSimpleType::I64 => rust_forward,
+                            SimpleSimpleType::F32 => rust_forward,
+                            SimpleSimpleType::F64 => rust_forward,
+                            SimpleSimpleType::Bool => rust_forward,
+                            SimpleSimpleType::String => rust_forward,
+                            SimpleSimpleType::Bytes => rust_forward,
+                            SimpleSimpleType::UtcTimeS => quote!(#rust_forward.timestamp()),
+                            SimpleSimpleType::UtcTimeMs => quote!(#rust_forward.to_rfc3339()),
+                        };
                         if t.opt {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));

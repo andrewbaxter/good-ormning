@@ -906,12 +906,18 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         types::SimpleSimpleType::UtcTimeS => {
                             quote!{
                                 let x: i64 = r.get(#i) ?;
-                                let x = chrono::Utc.timestamp_opt(x, 0)?;
+                                let x = chrono::TimeZone::timestamp_opt(&chrono::Utc, x, 0).unwrap();
                             }
                         },
                         types::SimpleSimpleType::UtcTimeMs => {
                             quote!{
-                                let x: chrono:: DateTime::< chrono:: Utc >:: parse_from_rfc3339(& r.get(#i) ?) ?;
+                                let x: String = r.get(#i) ?;
+                                let x =
+                                    chrono::DateTime::<chrono::Utc>::from(
+                                        chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
+                                            &x,
+                                        ).map_err(|e| GoodError(e.to_string()))?,
+                                    );
                             }
                         },
                     };

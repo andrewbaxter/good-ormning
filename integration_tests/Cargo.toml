@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+chrono = "0.4.23"
 rusqlite = "0.28.0"
 testcontainers = { version = "0.14.0", features = ["tokio"] }
 tokio = { version = "1.24.1", features = ["macros", "rt"] }
@@ -13,4 +14,4 @@ tokio = { version = "1.24.1", features = ["macros", "rt"] }
 
 [dev-dependencies]
 anyhow = "1.0.68"
-tokio-postgres = "0.7.7"
+tokio-postgres = { version = "0.7.7", features = ["with-chrono-0_4"] }
