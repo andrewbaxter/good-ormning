@@ -58,7 +58,7 @@ impl QueryBody for Insert {
 
         // Build query
         let mut out = Tokens::new();
-        out.s("insert into").id(&self.table.0).s("(");
+        out.s("insert into").id(&self.table.at(ctx.version)).s("(");
         for (i, (k, _)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");

@@ -225,7 +225,7 @@ impl SqliteNodeDataDispatch for NodeField_ {
         let mut stmt = Tokens::new();
         stmt
             .s("alter table")
-            .id(&self.id.0.0)
+            .id(&self.id.0.at(ctx.version))
             .s("add column")
             .id(&self.id.1)
             .s(to_sql_type(&self.def.type_.type_.type_.type_));
@@ -233,7 +233,7 @@ impl SqliteNodeDataDispatch for NodeField_ {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
                 let qctx_fields = HashMap::new();
-                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), &qctx_fields);
+                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), ctx.version, &qctx_fields);
                 let e_res = d.build(&mut qctx, &path, &HashMap::new());
                 check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
@@ -264,7 +264,14 @@ impl SqliteNodeDataDispatch for NodeField_ {
         }
         ctx
             .statements
-            .push(Tokens::new().s("alter table").id(&self.id.0.0).s("drop column").id(&self.id.1).to_string());
+            .push(
+                Tokens::new()
+                    .s("alter table")
+                    .id(&self.id.0.at(ctx.version - 1))
+                    .s("drop column")
+                    .id(&self.id.1)
+                    .to_string(),
+            );
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {

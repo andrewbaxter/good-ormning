@@ -73,7 +73,7 @@ impl NodeDataDispatch for NodeConstraint_ {
 
     fn create(&self, ctx: &mut PgMigrateCtx) {
         let mut stmt = Tokens::new();
-        stmt.s("alter table").id(&self.id.0.0).s("add constraint").id(&self.id.1);
+        stmt.s("alter table").id(&self.id.0.at(ctx.version)).s("add constraint").id(&self.id.1);
         match &self.def.type_ {
             ConstraintType::PrimaryKey(x) => {
                 stmt.s("primary key (").f(|t| {
@@ -96,7 +96,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                 }).s(") references ").f(|t| {
                     for (i, id) in x.fields.iter().enumerate() {
                         if i == 0 {
-                            t.id(&id.1.0.0).s("(");
+                            t.id(&id.1.0.at(ctx.version)).s("(");
                         } else {
                             t.s(",");
                         }
@@ -116,7 +116,12 @@ impl NodeDataDispatch for NodeConstraint_ {
         ctx
             .statements
             .push(
-                Tokens::new().s("alter table").id(&self.id.0.0).s("drop constraint").id(&self.id.1).to_string(),
+                Tokens::new()
+                    .s("alter table")
+                    .id(&self.id.0.at(ctx.version - 1))
+                    .s("drop constraint")
+                    .id(&self.id.1)
+                    .to_string(),
             );
     }
 }

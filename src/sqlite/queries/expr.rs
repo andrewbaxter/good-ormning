@@ -554,7 +554,7 @@ impl Expr {
                                     x,
                                     scope
                                         .iter()
-                                        .map(|e| format!("{}.{} ({})", e.0.0.0, e.0.1, e.1.0))
+                                        .map(|e| format!("{}.{} ({})", e.0.0.at(ctx.version), e.0.1, e.1.0))
                                         .collect::<Vec<String>>()
                                 ),
                             );
@@ -562,7 +562,7 @@ impl Expr {
                     },
                 };
                 let mut out = Tokens::new();
-                out.id(&x.0.0).s(".").id(&x.1);
+                out.id(&x.0.at(ctx.version)).s(".").id(&x.1);
                 return (ExprType(vec![(ExprValName::field(x.clone(), t.0), t.1.clone())]), out);
             },
             Expr::BinOp { left, op, right } => {

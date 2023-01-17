@@ -32,11 +32,17 @@ pub struct SqliteQueryCtx<'a> {
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
     pub(crate) query_args: Vec<TokenStream>,
+    pub(crate) version: i64,
 }
 
 impl<'a> SqliteQueryCtx<'a> {
-    pub(crate) fn new(errs: Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
+    pub(crate) fn new(
+        errs: Errs,
+        version: i64,
+        tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>,
+    ) -> Self {
         Self {
+            version: version,
             tables: tables,
             errs: errs,
             rust_arg_lookup: Default::default(),

@@ -46,7 +46,7 @@ impl QueryBody for Delete {
 
         // Build query
         let mut out = Tokens::new();
-        out.s("delete from").id(&self.table.0);
+        out.s("delete from").id(&self.table.at(ctx.version));
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

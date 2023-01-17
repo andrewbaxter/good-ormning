@@ -61,7 +61,7 @@ impl NodeDataDispatch for NodeIndex_ {
             if self.def.unique {
                 t.s("unique");
             }
-        }).s("index").id(&self.id.1).s("on").id(&self.id.0.0).s("(").f(|t| {
+        }).s("index").id(&self.id.1).s("on").id(&self.id.0.at(ctx.version)).s("(").f(|t| {
             for (i, id) in self.def.field_ids.iter().enumerate() {
                 if i > 0 {
                     t.s(",");

@@ -9,13 +9,15 @@ use super::{
 pub(crate) struct SqliteMigrateCtx {
     pub(crate) errs: Errs,
     pub statements: Vec<String>,
+    pub version: i64,
 }
 
 impl SqliteMigrateCtx {
-    pub fn new(errs: Errs) -> Self {
+    pub fn new(errs: Errs, version: i64) -> Self {
         Self {
             errs: errs,
             statements: Default::default(),
+            version: version,
         }
     }
 }

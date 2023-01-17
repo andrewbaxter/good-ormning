@@ -1,7 +1,47 @@
 use std::{
     cell::RefCell,
     rc::Rc,
+    path::Path,
+    fs,
 };
+use quote::quote;
+use proc_macro2::TokenStream;
+
+pub struct Output {
+    pub(crate) data: Vec<TokenStream>,
+}
+
+impl Output {
+    pub fn new() -> Output {
+        Output { data: vec![] }
+    }
+
+    pub fn write(self, path: &Path) -> Result<(), String> {
+        if let Some(p) = path.parent() {
+            if let Err(e) = fs::create_dir_all(&p) {
+                return Err(format!("Error creating output parent directories {}: {:?}", p.to_string_lossy(), e));
+            }
+        }
+        let data = self.data;
+        let tokens = quote!{
+            #(#data) *
+        };
+        match genemichaels::format_str(&tokens.to_string(), &genemichaels::FormatConfig::default()) {
+            Ok(src) => {
+                match fs::write(path, src.rendered.as_bytes()) {
+                    Ok(_) => { },
+                    Err(e) => return Err(
+                        format!("Failed to write generated code to {}: {:?}", path.to_string_lossy(), e),
+                    ),
+                };
+            },
+            Err(e) => {
+                return Err(format!("Error formatting generated code: {:?}\n{}", e, tokens));
+            },
+        };
+        Ok(())
+    }
+}
 
 pub struct Tokens(String);
 

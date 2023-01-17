@@ -64,7 +64,7 @@ impl NamedSelectSource {
                         return (vec![], Tokens::new());
                     },
                 };
-                out.id(&s.0);
+                out.id(&s.at(ctx.version));
                 new_fields.iter().map(|e| (e.0.clone(), e.1.clone())).collect()
             },
         };

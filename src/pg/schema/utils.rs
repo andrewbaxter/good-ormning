@@ -8,13 +8,15 @@ use super::{
 
 pub(crate) struct PgMigrateCtx {
     pub(crate) errs: Errs,
-    pub statements: Vec<String>,
+    pub(crate) statements: Vec<String>,
+    pub(crate) version: i64,
 }
 
 impl PgMigrateCtx {
-    pub fn new(errs: Errs) -> Self {
+    pub fn new(errs: Errs, version: i64) -> Self {
         Self {
             errs: errs,
+            version: version,
             statements: Default::default(),
         }
     }

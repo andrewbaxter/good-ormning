@@ -51,7 +51,7 @@ impl QueryBody for Update {
 
         // Build query
         let mut out = Tokens::new();
-        out.s("update").id(&self.table.0);
+        out.s("update").id(&self.table.at(ctx.version));
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");

@@ -35,6 +35,12 @@ impl Display for TableId {
     }
 }
 
+impl TableId {
+    pub fn at(&self, version: i64) -> String {
+        format!("{}_v{}", self.0, version)
+    }
+}
+
 #[derive(Clone)]
 pub struct NodeTable_ {
     pub id: TableId,
@@ -43,13 +49,15 @@ pub struct NodeTable_ {
 
 impl NodeTable_ {
     pub fn compare(&self, _old: &Self, _created: &HashSet<Id>) -> Comparison {
-        Comparison::DoNothing
+        Comparison::Update
     }
 }
 
 impl SqliteNodeData for NodeTable_ {
-    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {
-        unreachable!();
+    fn update(&self, ctx: &mut SqliteMigrateCtx, _old: &Self) {
+        let mut stmt = Tokens::new();
+        stmt.s("alter table").id(&self.id.at(ctx.version - 1)).s("rename to").id(&self.id.at(ctx.version));
+        ctx.statements.push(stmt.to_string());
     }
 }
 
@@ -75,7 +83,7 @@ impl SqliteNodeDataDispatch for NodeTable_ {
 
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
         let mut stmt = Tokens::new();
-        stmt.s("create table").id(&self.id.0).s("(");
+        stmt.s("create table").id(&self.id.at(ctx.version)).s("(");
         for (i, f) in self.fields.iter().filter(|f| &f.0.1 != "rowid").enumerate() {
             if i > 0 {
                 stmt.s(",");
@@ -90,6 +98,6 @@ impl SqliteNodeDataDispatch for NodeTable_ {
     }
 
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
-        ctx.statements.push(Tokens::new().s("drop table").id(&self.id.0).to_string());
+        ctx.statements.push(Tokens::new().s("drop table").id(&self.id.at(ctx.version - 1)).to_string());
     }
 }
