@@ -28,7 +28,6 @@ use self::{
         insert::{
             Insert,
             InsertConflict,
-            InsertConflictConstraint,
         },
         expr::Expr,
         select::{
@@ -97,9 +96,16 @@ pub struct InsertBuilder {
 }
 
 impl InsertBuilder {
-    pub fn on_index_conflict(mut self, f: &[&Field], v: InsertConflict) -> Self {
-        self.q.on_conflict =
-            Some((InsertConflictConstraint::Fields(f.iter().map(|f| f.id.clone()).collect()), v));
+    pub fn on_conflict_do_update(mut self, f: &[&Field], v: Vec<(FieldId, Expr)>) -> Self {
+        self.q.on_conflict = Some(InsertConflict::DoUpdate {
+            conflict: f.iter().map(|f| f.id.clone()).collect(),
+            set: v,
+        });
+        self
+    }
+
+    pub fn on_conflict_do_nothing(mut self) -> Self {
+        self.q.on_conflict = Some(InsertConflict::DoNothing);
         self
     }
 

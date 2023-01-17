@@ -19,7 +19,6 @@ use good_ormning::pg::{
             JoinType,
             Order,
         },
-        insert::InsertConflict,
     },
     generate,
     new_insert,
@@ -160,7 +159,7 @@ pub fn build(root: &Path) {
                     type_: hizat.def.type_.type_.clone(),
                 })])
                     .return_named("one", Expr::LitI32(1))
-                    .on_index_conflict(&[&hizat], InsertConflict::DoNothing)
+                    .on_conflict_do_nothing()
                     .build_query("insert_banan", QueryResCount::MaybeOne)
             ],
         ).unwrap();
@@ -182,14 +181,11 @@ pub fn build(root: &Path) {
             }), (two.id.clone(), Expr::Param {
                 name: "two".into(),
                 type_: two.def.type_.type_.clone(),
-            })])
-                .return_field(&two)
-                .on_index_conflict(&[&hizat], InsertConflict::DoUpdate(vec![(two.id.clone(), Expr::BinOp {
-                    left: Box::new(Expr::Field(two.id.clone())),
-                    op: BinOp::Plus,
-                    right: Box::new(Expr::LitI32(1)),
-                })]))
-                .build_query("insert_banan", QueryResCount::One)],
+            })]).return_field(&two).on_conflict_do_update(&[&hizat], vec![(two.id.clone(), Expr::BinOp {
+                left: Box::new(Expr::Field(two.id.clone())),
+                op: BinOp::Plus,
+                right: Box::new(Expr::LitI32(1)),
+            })]).build_query("insert_banan", QueryResCount::One)],
         ).unwrap();
     }
 
