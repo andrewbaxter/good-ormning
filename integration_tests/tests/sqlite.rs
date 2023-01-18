@@ -22,6 +22,8 @@ pub mod sqlite_gen_select_group_by;
 pub mod sqlite_gen_select_order;
 pub mod sqlite_gen_select_limit;
 pub mod sqlite_gen_migrate_add_field;
+pub mod sqlite_gen_migrate_detect_1;
+pub mod sqlite_gen_migrate_detect_2;
 pub mod sqlite_gen_migrate_remove_field;
 pub mod sqlite_gen_migrate_add_table;
 pub mod sqlite_gen_migrate_remove_table;
@@ -258,6 +260,14 @@ fn test_migrate_add_field() -> Result<()> {
         },
         None => assert!(false),
     };
+    Ok(())
+}
+
+#[test]
+fn test_migrate_detect() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_migrate_detect_2::migrate(&mut db)?;
+    assert!(matches!(sqlite_gen_migrate_detect_1::get_banan(&mut db), Err(good_ormning::runtime::Error::BadSchema)));
     Ok(())
 }
 

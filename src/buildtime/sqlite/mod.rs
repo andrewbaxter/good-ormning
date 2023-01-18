@@ -852,71 +852,90 @@ pub fn generate_migrations(output: &mut Output, versions: &Vec<(i64, Version)>) 
     output.data.push(quote!{
         pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
         good_ormning:: runtime:: Error > {
-            let txn = db.transaction()?;
-            match(|| {
-                txn.execute("create table if not exists __good_version (version bigint not null);", ())?;
-                let mut stmt = txn.prepare("select version from __good_version limit 1")?;
-                let mut rows = stmt.query(())?;
-                let version = match rows.next()? {
-                    Some(r) => {
-                        let ver: i64 = r.get(0usize)?;
-                        ver
-                    },
-                    None => {
-                        let mut stmt =
-                            txn.prepare("insert into __good_version (version) values (-1) returning version")?;
-                        let mut rows = stmt.query(())?;
-                        let ver: i64 =
-                            rows
-                                .next()?
-                                .ok_or_else(
-                                    || good_ormning::runtime::Error::Other(
-                                        "Insert version failed to return any values".into(),
-                                    ),
-                                )?
-                                .get(0usize)?;
-                        ver
-                    },
-                };
-                #(
-                    #migrations
-                ) * txn.execute("update __good_version set version = $1", rusqlite::params![#last_version_i]) ?;
-                let out: Result <(),
-                good_ormning::runtime::Error >= Ok(());
-                out
-            })() {
-                Err(e) => {
-                    match txn.rollback() {
-                        Err(e1) => {
-                            return Err(
-                                good_ormning::runtime::Error::Other(
-                                    format!(
-                                        "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                        e,
-                                        e1
-                                    ),
-                                ),
-                            );
+            db.execute(
+                "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
+                (),
+            )?;
+            db.execute(
+                "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
+                (),
+            )?;
+            loop {
+                let txn = db.transaction()?;
+                match(|| {
+                    let mut stmt =
+                        txn.prepare(
+                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
+                        )?;
+                    let mut rows = stmt.query(())?;
+                    let version = match rows.next()? {
+                        Some(r) => {
+                            let ver: i64 = r.get(0usize)?;
+                            ver
                         },
-                        Ok(_) => {
-                            return Err(e);
-                        },
+                        None => return Ok(false),
                     };
-                }
-                Ok(_) => {
-                    match txn.commit() {
-                        Err(e) => {
-                            return Err(
-                                good_ormning::runtime::Error::Other(
-                                    format!("Error committing the migration transaction: {}", e),
+                    drop(rows);
+                    stmt.finalize()?;
+                    if version > #last_version_i {
+                        return Err(
+                            good_ormning::runtime::Error::Other(
+                                format!(
+                                    "The latest known version is {}, but the schema is at unknown version {}",
+                                    #last_version_i,
+                                    version
                                 ),
-                            );
-                        },
-                        Ok(_) => { },
-                    };
+                            ),
+                        );
+                    }
+                    #(
+                        #migrations
+                    ) * txn.execute(
+                        "update __good_version set version = $1, lock = 0",
+                        rusqlite::params![#last_version_i]
+                    ) ?;
+                    let out: Result < bool,
+                    good_ormning::runtime::Error >= Ok(true);
+                    out
+                })() {
+                    Err(e) => {
+                        match txn.rollback() {
+                            Err(e1) => {
+                                return Err(
+                                    good_ormning::runtime::Error::Other(
+                                        format!(
+                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
+                                            e,
+                                            e1
+                                        ),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                return Err(e);
+                            },
+                        };
+                    }
+                    Ok(migrated) => {
+                        match txn.commit() {
+                            Err(e) => {
+                                return Err(
+                                    good_ormning::runtime::Error::Other(
+                                        format!("Error committing the migration transaction: {}", e),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                if migrated {
+                                    return Ok(())
+                                } else {
+                                    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
+                                }
+                            },
+                        };
+                    }
                 }
             }
-            Ok(())
         }
     });
     errs.raise()?;
@@ -926,7 +945,7 @@ pub fn generate_migrations(output: &mut Output, versions: &Vec<(i64, Version)>) 
 pub fn generate_queries(
     output: &mut Output,
     version: &(i64, Version),
-    queries: Vec<Query>,
+    queries: &Vec<Query>,
 ) -> Result<(), Vec<String>> {
     let mut errs = Errs::new();
     let mut field_lookup = HashMap::new();
@@ -1077,7 +1096,7 @@ pub fn generate_queries(
                         (e.get().clone(), None)
                     },
                     std::collections::hash_map::Entry::Vacant(e) => {
-                        let ident = if let Some(name) = q.res_name {
+                        let ident = if let Some(name) = &q.res_name {
                             format_ident!("{}", name)
                         } else {
                             format_ident!("DbRes{}", res_type_count)
@@ -1174,7 +1193,7 @@ pub fn generate_queries(
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
-pub fn generate(output: &Path, versions: Vec<(i64, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+pub fn generate(output: &Path, versions: &Vec<(i64, Version)>, queries: &Vec<Query>) -> Result<(), Vec<String>> {
     let mut out = Output::new();
     let mut errs = vec![];
     if let Err(e) = generate_migrations(&mut out, &versions) {

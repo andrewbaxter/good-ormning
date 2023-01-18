@@ -817,67 +817,97 @@ pub fn generate_migrations(output: &mut Output, versions: &Vec<(i64, Version)>) 
     output.data.push(quote!{
         pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
         good_ormning:: runtime:: Error > {
-            let txn = db.transaction().await?;
-            match(|| {
-                async {
-                    txn.execute("create table if not exists __good_version (version bigint not null);", &[]).await?;
-                    let version = match txn.query_opt("select * from __good_version limit 1", &[]).await? {
-                        Some(r) => {
-                            let ver: i64 = r.get("version");
-                            ver
-                        },
-                        None => {
-                            let ver: i64 =
-                                txn
-                                    .query_one(
-                                        "insert into __good_version (version) values (-1) returning version",
-                                        &[],
-                                    )
-                                    .await?
-                                    .get("version");
-                            ver
-                        },
-                    };
-                    #(
-                        #migrations
-                    ) * txn.execute("update __good_version set version = $1", &[& #last_version_i]).await ?;
-                    let out: Result <(),
-                    tokio_postgres::Error >= Ok(());
-                    out
-                }
-            })().await {
-                Err(e) => {
-                    match txn.rollback().await {
-                        Err(e1) => {
+            db
+                .execute(
+                    "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
+                    &[],
+                )
+                .await?;
+            db
+                .execute(
+                    "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
+                    &[],
+                )
+                .await?;
+            loop {
+                let txn = db.transaction().await?;
+                match(|| {
+                    async {
+                        let version =
+                            match txn
+                                .query_opt(
+                                    "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
+                                    &[],
+                                )
+                                .await? {
+                                Some(r) => {
+                                    let ver: i64 = r.get("version");
+                                    ver
+                                },
+                                None => {
+                                    return Ok(false);
+                                },
+                            };
+                        if version > #last_version_i {
                             return Err(
                                 good_ormning::runtime::Error::Other(
                                     format!(
-                                        "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                        e,
-                                        e1
+                                        "The latest known version is {}, but the schema is at unknown version {}",
+                                        #last_version_i,
+                                        version
                                     ),
                                 ),
                             );
-                        },
-                        Ok(_) => {
-                            return Err(good_ormning::runtime::Error::Other(e.to_string()));
-                        },
-                    };
-                }
-                Ok(_) => {
-                    match txn.commit().await {
-                        Err(e) => {
-                            return Err(
-                                good_ormning::runtime::Error::Other(
-                                    format!("Error committing the migration transaction: {}", e),
-                                ),
-                            );
-                        },
-                        Ok(_) => { },
-                    };
+                        }
+                        #(
+                            #migrations
+                        ) * txn.execute(
+                            "update __good_version set version = $1, lock = 0",
+                            &[& #last_version_i]
+                        ).await ?;
+                        let out: Result < bool,
+                        good_ormning::runtime::Error >= Ok(true);
+                        out
+                    }
+                })().await {
+                    Err(e) => {
+                        match txn.rollback().await {
+                            Err(e1) => {
+                                return Err(
+                                    good_ormning::runtime::Error::Other(
+                                        format!(
+                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
+                                            e,
+                                            e1
+                                        ),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                return Err(good_ormning::runtime::Error::Other(e.to_string()));
+                            },
+                        };
+                    }
+                    Ok(migrated) => {
+                        match txn.commit().await {
+                            Err(e) => {
+                                return Err(
+                                    good_ormning::runtime::Error::Other(
+                                        format!("Error committing the migration transaction: {}", e),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                if migrated {
+                                    return Ok(())
+                                } else {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(5 * 1000)).await;
+                                }
+                            },
+                        };
+                    }
                 }
             }
-            Ok(())
         }
     });
     errs.raise()?;
@@ -887,7 +917,7 @@ pub fn generate_migrations(output: &mut Output, versions: &Vec<(i64, Version)>) 
 pub fn generate_queries(
     output: &mut Output,
     version: &(i64, Version),
-    queries: Vec<Query>,
+    queries: &Vec<Query>,
 ) -> Result<(), Vec<String>> {
     let mut errs = Errs::new();
     let mut field_lookup = HashMap::new();
@@ -1010,7 +1040,7 @@ pub fn generate_queries(
                         (e.get().clone(), None)
                     },
                     std::collections::hash_map::Entry::Vacant(e) => {
-                        let ident = if let Some(name) = q.res_name {
+                        let ident = if let Some(name) = &q.res_name {
                             format_ident!("{}", name)
                         } else {
                             format_ident!("DbRes{}", res_type_count)
@@ -1094,7 +1124,7 @@ pub fn generate_queries(
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
-pub fn generate(output: &Path, versions: Vec<(i64, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+pub fn generate(output: &Path, versions: &Vec<(i64, Version)>, queries: &Vec<Query>) -> Result<(), Vec<String>> {
     let mut out = Output::new();
     let mut errs = vec![];
     if let Err(e) = generate_migrations(&mut out, &versions) {

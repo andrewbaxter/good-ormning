@@ -22,7 +22,7 @@ impl From<rusqlite::Error> for Error {
     fn from(value: rusqlite::Error) -> Self {
         match &value {
             rusqlite::Error::SqliteFailure(_, Some(m)) => {
-                if m.contains("table") && m.ends_with("does not exist") {
+                if m.starts_with("no such table") {
                     return Self::BadSchema
                 }
                 return Self::Other(value.to_string())
