@@ -26,6 +26,8 @@ pub mod pg_gen_select_group_by;
 pub mod pg_gen_select_order;
 pub mod pg_gen_select_limit;
 pub mod pg_gen_migrate_add_field;
+pub mod pg_gen_migrate_detect_1;
+pub mod pg_gen_migrate_detect_2;
 pub mod pg_gen_migrate_remove_field;
 pub mod pg_gen_migrate_add_table;
 pub mod pg_gen_migrate_remove_table;
@@ -275,6 +277,17 @@ async fn test_migrate_add_field() -> Result<()> {
         },
         None => assert!(false),
     };
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_detect() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_detect_2::migrate(&mut db).await?;
+    assert!(
+        matches!(pg_gen_migrate_detect_1::get_banan(&mut db).await, Err(good_ormning::runtime::Error::BadSchema))
+    );
     Ok(())
 }
 
