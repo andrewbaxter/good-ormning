@@ -1,5 +1,5 @@
 use std::path::Path;
-use good_ormning::pg::{
+use good_ormning::buildtime::pg::{
     Version,
     schema::field::{
         field_str,

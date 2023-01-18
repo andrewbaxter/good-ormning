@@ -1,5 +1,5 @@
 use std::path::Path;
-use good_ormning::sqlite::{
+use good_ormning::buildtime::sqlite::{
     Version,
     schema::field::{
         field_str,
