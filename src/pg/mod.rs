@@ -1023,65 +1023,100 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             }
         }
         impl std::error::Error for GoodError { }
+        impl From<tokio_postgres::Error> for GoodError {
+            fn from(value: tokio_postgres::Error) -> Self {
+                GoodError(value.to_string())
+            }
+        }
         pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
         GoodError > {
-            let txn = db.transaction().await.map_err(|e| GoodError(e.to_string()))?;
-            match(|| {
-                async {
-                    txn.execute("create table if not exists __good_version (version bigint not null);", &[]).await?;
-                    let version = match txn.query_opt("select * from __good_version limit 1", &[]).await? {
-                        Some(r) => {
-                            let ver: i64 = r.get("version");
-                            ver
-                        },
-                        None => {
-                            let ver: i64 =
-                                txn
-                                    .query_one(
-                                        "insert into __good_version (version) values (-1) returning version",
-                                        &[],
-                                    )
-                                    .await?
-                                    .get("version");
-                            ver
-                        },
-                    };
-                    #(
-                        #migrations
-                    ) * txn.execute("update __good_version set version = $1", &[& #last_version_i]).await ?;
-                    let out: Result <(),
-                    tokio_postgres::Error >= Ok(());
-                    out
-                }
-            })().await {
-                Err(e) => {
-                    match txn.rollback().await {
-                        Err(e1) => {
+            db
+                .execute(
+                    "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
+                    &[],
+                )
+                .await?;
+            db
+                .execute(
+                    "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
+                    &[],
+                )
+                .await?;
+            loop {
+                let txn = db.transaction().await?;
+                match(|| {
+                    async {
+                        let version =
+                            match txn
+                                .query_opt(
+                                    "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
+                                    &[],
+                                )
+                                .await? {
+                                Some(r) => {
+                                    let ver: i64 = r.get("version");
+                                    ver
+                                },
+                                None => {
+                                    return Ok(false);
+                                },
+                            };
+                        if version > #last_version_i {
                             return Err(
                                 GoodError(
                                     format!(
-                                        "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                        e,
-                                        e1
+                                        "The latest known version is {}, but the schema is at unknown version {}",
+                                        #last_version_i,
+                                        version
                                     ),
                                 ),
                             );
-                        },
-                        Ok(_) => {
-                            return Err(GoodError(e.to_string()));
-                        },
-                    };
-                }
-                Ok(_) => {
-                    match txn.commit().await {
-                        Err(e) => {
-                            return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                        },
-                        Ok(_) => { },
-                    };
+                        }
+                        #(
+                            #migrations
+                        ) * txn.execute(
+                            "update __good_version set version = $1, lock = 0",
+                            &[& #last_version_i]
+                        ).await ?;
+                        let out: Result < bool,
+                        GoodError >= Ok(true);
+                        out
+                    }
+                })().await {
+                    Err(e) => {
+                        match txn.rollback().await {
+                            Err(e1) => {
+                                return Err(
+                                    GoodError(
+                                        format!(
+                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
+                                            e,
+                                            e1
+                                        ),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                return Err(GoodError(e.to_string()));
+                            },
+                        };
+                    }
+                    Ok(migrated) => {
+                        match txn.commit().await {
+                            Err(e) => {
+                                return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
+                            },
+                            Ok(_) => {
+                                if migrated {
+                                    return Ok(())
+                                } else {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(5 * 1000)).await;
+                                }
+                            },
+                        };
+                    }
                 }
             }
-            Ok(())
         }
         #(#db_others) *
     };

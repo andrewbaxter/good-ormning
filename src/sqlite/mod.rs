@@ -1104,63 +1104,86 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
         pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
         GoodError > {
-            let txn = db.transaction().map_err(|e| GoodError(e.to_string()))?;
-            match(|| {
-                txn.execute("create table if not exists __good_version (version bigint not null);", ())?;
-                let mut stmt = txn.prepare("select version from __good_version limit 1")?;
-                let mut rows = stmt.query(())?;
-                let version = match rows.next()? {
-                    Some(r) => {
-                        let ver: i64 = r.get(0usize)?;
-                        ver
-                    },
-                    None => {
-                        let mut stmt =
-                            txn.prepare("insert into __good_version (version) values (-1) returning version")?;
-                        let mut rows = stmt.query(())?;
-                        let ver: i64 =
-                            rows
-                                .next()?
-                                .ok_or_else(|| GoodError("Insert version failed to return any values".into()))?
-                                .get(0usize)?;
-                        ver
-                    },
-                };
-                #(
-                    #migrations
-                ) * txn.execute("update __good_version set version = $1", rusqlite::params![#last_version_i]) ?;
-                let out: Result <(),
-                GoodError >= Ok(());
-                out
-            })() {
-                Err(e) => {
-                    match txn.rollback() {
-                        Err(e1) => {
-                            return Err(
-                                GoodError(
-                                    format!(
-                                        "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                        e,
-                                        e1
-                                    ),
+            db.execute(
+                "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
+                (),
+            )?;
+            db.execute(
+                "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
+                (),
+            )?;
+            loop {
+                let txn = db.transaction()?;
+                match(|| {
+                    let mut stmt =
+                        txn.prepare(
+                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
+                        )?;
+                    let mut rows = stmt.query(())?;
+                    let version = match rows.next()? {
+                        Some(r) => {
+                            let ver: i64 = r.get(0usize)?;
+                            ver
+                        },
+                        None => return Ok(false),
+                    };
+                    drop(rows);
+                    stmt.finalize()?;
+                    if version > #last_version_i {
+                        return Err(
+                            GoodError(
+                                format!(
+                                    "The latest known version is {}, but the schema is at unknown version {}",
+                                    #last_version_i,
+                                    version
                                 ),
-                            );
-                        },
-                        Ok(_) => {
-                            return Err(e);
-                        },
-                    };
-                }
-                Ok(_) => {
-                    match txn.commit() {
-                        Err(e) => {
-                            return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                        },
-                        Ok(_) => { },
-                    };
+                            ),
+                        );
+                    }
+                    #(
+                        #migrations
+                    ) * txn.execute(
+                        "update __good_version set version = $1, lock = 0",
+                        rusqlite::params![#last_version_i]
+                    ) ?;
+                    let out: Result < bool,
+                    GoodError >= Ok(true);
+                    out
+                })() {
+                    Err(e) => {
+                        match txn.rollback() {
+                            Err(e1) => {
+                                return Err(
+                                    GoodError(
+                                        format!(
+                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
+                                            e,
+                                            e1
+                                        ),
+                                    ),
+                                );
+                            },
+                            Ok(_) => {
+                                return Err(e);
+                            },
+                        };
+                    }
+                    Ok(migrated) => {
+                        match txn.commit() {
+                            Err(e) => {
+                                return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
+                            },
+                            Ok(_) => {
+                                if migrated {
+                                    return Ok(())
+                                } else {
+                                    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
+                                }
+                            },
+                        };
+                    }
                 }
             }
-            Ok(())
         }
         #(#db_others) *
     };
