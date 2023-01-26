@@ -498,6 +498,29 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
+    // # Migrate - rename field
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zTWA93SX0", "bannna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        generate(&root.join("tests/sqlite_gen_migrate_rename_field.rs"), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("zTWA93SX0", "bannna");
+                bananna.field(&mut v, "z437INV6D", "hozot", field_str().build());
+                v
+            }),
+            (1usize, v)
+        ], vec![
+            // Queries
+            new_insert(
+                &bananna,
+                vec![(hizat.clone(), Expr::LitString("nizoot".into()))],
+            ).build_query("ins", QueryResCount::None)
+        ]).unwrap();
+    }
+
     // # Migrate - remove field
     {
         let mut v = Version::default();
@@ -543,6 +566,29 @@ pub fn build(root: &Path) {
             new_insert(&two, vec![(field_two.clone(), Expr::Param {
                 name: "two".into(),
                 type_: field_two.type_.type_.clone(),
+            })]).build_query("two", QueryResCount::None)
+        ]).unwrap();
+    }
+
+    // # Migrate - rename table
+    {
+        let mut v = Version::default();
+        let bananna = v.table("z4RGW742J", "bana");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        generate(&root.join("tests/sqlite_gen_migrate_rename_table.rs"), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("z4RGW742J", "bnanana");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            }),
+            (1usize, v)
+        ], vec![
+            // Queries
+            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
+                name: "two".into(),
+                type_: hizat.type_.type_.clone(),
             })]).build_query("two", QueryResCount::None)
         ]).unwrap();
     }

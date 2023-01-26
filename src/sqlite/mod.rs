@@ -10,7 +10,6 @@ use quote::{
 use std::{
     collections::{
         HashMap,
-        HashSet,
     },
     path::Path,
     fs,
@@ -24,7 +23,10 @@ use crate::{
         query::expr::ExprValName,
         graph::utils::SqliteMigrateCtx,
     },
-    utils::Errs,
+    utils::{
+        Errs,
+        sanitize_ident,
+    },
 };
 use self::{
     query::{
@@ -90,7 +92,6 @@ use self::{
 pub mod types;
 pub mod query;
 pub mod schema;
-pub mod utils;
 pub mod graph;
 
 /// The number of results this query returns. This determines if the return type is
@@ -689,7 +690,7 @@ impl Table {
                 MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ { def: out.clone() })),
             )
             .is_some() {
-            panic!("Constraint with id {}.{} aleady exists", self.schema_id, out.schema_id)
+            panic!("Constraint with schema id {}.{} aleady exists", self.schema_id, out.schema_id)
         };
     }
 
@@ -763,34 +764,83 @@ impl IndexBuilder {
 ///
 /// * Error - a list of validation or generation errors that occurred
 pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
-    for (_, v) in &versions {
-        let mut tables = HashSet::new();
-        let mut fields = HashSet::new();
-        let mut constraints = HashSet::new();
-        let mut indexs = HashSet::new();
-        for n in v.schema.values() {
-            match &n.body {
-                Node::Table(t) => {
-                    if tables.insert(&t.def.id) {
-                        panic!("Duplicate table id {}", t.def.id);
-                    }
-                },
-                Node::Field(f) => {
-                    if fields.insert((&f.def.table.schema_id, &f.def.id)) {
-                        panic!("Duplicate field id {} in table {}", f.def.id, f.def.table);
-                    }
-                },
-                Node::Constraint(c) => {
-                    if constraints.insert((&c.def.table.schema_id, &c.def.id)) {
-                        panic!("Duplicate constraint id {} in table {}", c.def.id, c.def.table);
-                    }
-                },
-                Node::Index(i) => {
-                    if indexs.insert((&i.def.table.schema_id, &i.def.id)) {
-                        panic!("Duplicate index id {} in table {}", i.def.id, i.def.table);
-                    }
-                },
+    {
+        let mut prev_relations: HashMap<&String, String> = HashMap::new();
+        let mut prev_fields = HashMap::new();
+        let mut prev_constraints = HashMap::new();
+        for (v_i, v) in &versions {
+            let mut relations = HashMap::new();
+            let mut fields = HashMap::new();
+            let mut constraints = HashMap::new();
+            for n in v.schema.values() {
+                match &n.body {
+                    Node::Table(t) => {
+                        let id = &t.def.id;
+                        let comp_id = format!("table {}", t.def.schema_id);
+                        if relations.insert(id, comp_id.clone()).is_some() {
+                            panic!("Duplicate table id {} -- {}", t.def.id, t.def);
+                        }
+                        if let Some(schema_id) = prev_relations.get(id) {
+                            if schema_id != &comp_id {
+                                panic!(
+                                    "Table {} id in version {} swapped with another relation since previous version; unsupported",
+                                    t.def,
+                                    v_i
+                                );
+                            }
+                        }
+                    },
+                    Node::Field(f) => {
+                        let id = (&f.def.table.schema_id, &f.def.id);
+                        if fields.insert(id, f.def.schema_id.clone()).is_some() {
+                            panic!("Duplicate field id {} -- {}", f.def.id, f.def);
+                        }
+                        if let Some(schema_id) = prev_fields.get(&id) {
+                            if schema_id != &f.def.schema_id {
+                                panic!(
+                                    "Field {} id in version {} swapped with another field since previous version; unsupported",
+                                    f.def,
+                                    v_i
+                                );
+                            }
+                        }
+                    },
+                    Node::Constraint(c) => {
+                        let id = (&c.def.table.schema_id, &c.def.id);
+                        if constraints.insert(id, c.def.schema_id.clone()).is_some() {
+                            panic!("Duplicate constraint id {} -- {}", c.def.id, c.def);
+                        }
+                        if let Some(schema_id) = prev_constraints.get(&id) {
+                            if schema_id != &c.def.schema_id {
+                                panic!(
+                                    "Constraint {} id in version {} swapped with another constraint since previous version; unsupported",
+                                    c.def,
+                                    v_i
+                                );
+                            }
+                        }
+                    },
+                    Node::Index(i) => {
+                        let id = &i.def.id;
+                        let comp_id = format!("index {}", i.def.schema_id);
+                        if relations.insert(id, comp_id.clone()).is_some() {
+                            panic!("Duplicate index id {} -- {}", i.def.id, i.def);
+                        }
+                        if let Some(schema_id) = prev_relations.get(&id) {
+                            if schema_id != &comp_id {
+                                panic!(
+                                    "Index {} id in version {} swapped with another relation since previous version; unsupported",
+                                    i.def,
+                                    v_i
+                                );
+                            }
+                        }
+                    },
+                }
             }
+            prev_relations = relations;
+            prev_fields = fields;
+            prev_constraints = constraints;
         }
     }
     let mut errs = Errs::new();
@@ -1004,7 +1054,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             };
                         }
                     }
-                    return Some((format_ident!("{}", utils::sanitize(&k.id).1), ident, quote!({
+                    return Some((format_ident!("{}", sanitize_ident(&k.id).1), ident, quote!({
                         #unforward x
                     })));
                 }

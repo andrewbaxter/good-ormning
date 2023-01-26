@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+};
 use crate::{
     pg::{
-        schema::{
-            field::FieldId,
-            table::TableId,
-        },
         QueryResCount,
+        schema::{
+            field::Field,
+            table::Table,
+        },
     },
     utils::Tokens,
 };
@@ -14,6 +16,7 @@ use super::{
         Expr,
         ExprType,
         check_assignable,
+        ExprValName,
     },
     utils::{
         QueryBody,
@@ -26,16 +29,16 @@ use super::{
 pub enum InsertConflict {
     DoNothing,
     DoUpdate {
-        conflict: Vec<FieldId>,
-        set: Vec<(FieldId, Expr)>,
+        conflict: Vec<Field>,
+        set: Vec<(Field, Expr)>,
     },
 }
 
 pub struct Insert {
-    pub table: TableId,
-    pub values: Vec<(FieldId, Expr)>,
-    pub on_conflict: Option<InsertConflict>,
-    pub returning: Vec<Returning>,
+    pub(crate) table: Table,
+    pub(crate) values: Vec<(Field, Expr)>,
+    pub(crate) on_conflict: Option<InsertConflict>,
+    pub(crate) returning: Vec<Returning>,
 }
 
 impl QueryBody for Insert {
@@ -47,40 +50,40 @@ impl QueryBody for Insert {
     ) -> (ExprType, Tokens) {
         // Prep
         let mut scope = HashMap::new();
-        for (k, v) in match ctx.tables.get(&self.table) {
+        for (field, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
                 ctx.errs.err(path, format!("Unknown table {} for insert", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(k.clone(), v.clone());
+            scope.insert(ExprValName::field(field), v.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("insert into").id(&self.table.0).s("(");
-        for (i, (k, _)) in self.values.iter().enumerate() {
+        out.s("insert into").id(&self.table.id).s("(");
+        for (i, (field, _)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");
             }
-            out.id(&k.1);
+            out.id(&field.id);
         }
         out.s(") values (");
-        for (i, (k, v)) in self.values.iter().enumerate() {
+        for (i, (field, val)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");
             }
-            let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
+            let field_type = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
                 Some(t) => t,
                 None => {
-                    ctx.errs.err(path, format!("Insert destination value field {} is not known", k));
+                    ctx.errs.err(path, format!("Insert destination value field {} is not known", field));
                     continue;
                 },
             };
-            let path = path.push_back(format!("Insert value {} ({} {})", i, k, field_type.0));
-            let res = v.build(ctx, &path, &scope);
-            check_assignable(&mut ctx.errs, &path, &field_type.1, &res.0);
+            let path = path.push_back(format!("Insert value {} ({})", i, field));
+            let res = val.build(ctx, &path, &scope);
+            check_assignable(&mut ctx.errs, &path, &field_type, &res.0);
             out.s(&res.1.to_string());
         }
         out.s(")");
@@ -96,7 +99,7 @@ impl QueryBody for Insert {
                         if i > 0 {
                             out.s(",");
                         }
-                        out.id(&f.1);
+                        out.id(&f.id);
                     }
                     out.s(")");
                     out.s("do update");

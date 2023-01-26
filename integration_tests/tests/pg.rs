@@ -26,8 +26,10 @@ pub mod pg_gen_select_group_by;
 pub mod pg_gen_select_order;
 pub mod pg_gen_select_limit;
 pub mod pg_gen_migrate_add_field;
+pub mod pg_gen_migrate_rename_field;
 pub mod pg_gen_migrate_remove_field;
 pub mod pg_gen_migrate_add_table;
+pub mod pg_gen_migrate_rename_table;
 pub mod pg_gen_migrate_remove_table;
 
 async fn db<
@@ -279,6 +281,15 @@ async fn test_migrate_add_field() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_migrate_rename_field() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_rename_field::migrate(&mut db).await?;
+    pg_gen_migrate_rename_field::ins(&mut db).await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_migrate_remove_field() -> Result<()> {
     let docker = testcontainers::clients::Cli::default();
     let (mut db, _cont) = db(&docker).await?;
@@ -293,6 +304,15 @@ async fn test_migrate_add_table() -> Result<()> {
     let (mut db, _cont) = db(&docker).await?;
     pg_gen_migrate_add_table::migrate(&mut db).await?;
     pg_gen_migrate_add_table::two(&mut db, 23).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_rename_table() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_rename_table::migrate(&mut db).await?;
+    pg_gen_migrate_rename_table::two(&mut db, "inset").await?;
     Ok(())
 }
 

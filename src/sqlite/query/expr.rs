@@ -26,12 +26,12 @@ use crate::{
                 Field,
             },
         },
-        utils::sanitize,
         QueryResCount,
     },
     utils::{
         Tokens,
         Errs,
+        sanitize_ident,
     },
 };
 use super::{
@@ -517,7 +517,7 @@ impl Expr {
                             SimpleSimpleType::UtcTimeS => quote!(chrono:: DateTime < chrono:: Utc >),
                             SimpleSimpleType::UtcTimeMs => quote!(chrono:: DateTime < chrono:: Utc >),
                         };
-                        let ident = format_ident!("{}", sanitize(x).1);
+                        let ident = format_ident!("{}", sanitize_ident(x).1);
                         let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {
                             let custom_ident = match syn::parse_str::<Path>(custom.as_str()) {
                                 Ok(p) => p,

@@ -1,31 +1,37 @@
 use std::collections::HashMap;
 use crate::{
-    utils::Tokens,
     pg::{
-        schema::table::TableId,
         QueryResCount,
+        schema::{
+            table::Table,
+            field::Field,
+        },
     },
+    utils::Tokens,
 };
 use super::{
     expr::{
         Expr,
         ExprType,
         check_bool,
+        ExprValName,
     },
     utils::{
         QueryBody,
         build_returning,
+        build_set,
     },
     select::Returning,
 };
 
-pub struct Delete {
-    pub table: TableId,
+pub struct Update {
+    pub table: Table,
+    pub values: Vec<(Field, Expr)>,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
 }
 
-impl QueryBody for Delete {
+impl QueryBody for Update {
     fn build(
         &self,
         ctx: &mut super::utils::PgQueryCtx,
@@ -37,16 +43,17 @@ impl QueryBody for Delete {
         for (k, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for delete", self.table));
+                ctx.errs.err(path, format!("Unknown table {} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(k.clone(), v.clone());
+            scope.insert(ExprValName::field(k), v.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("delete from").id(&self.table.0);
+        out.s("update").id(&self.table.id);
+        build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use crate::{
     graphmigrate::Comparison,
-    sqlite::schema::{
+    pg::schema::{
         constraint::{
             Constraint,
             ConstraintType,
@@ -11,9 +11,9 @@ use crate::{
 };
 use super::{
     utils::{
-        SqliteNodeDataDispatch,
-        SqliteMigrateCtx,
-        SqliteNodeData,
+        NodeDataDispatch,
+        PgMigrateCtx,
+        NodeData,
     },
     GraphId,
     Node,
@@ -26,21 +26,22 @@ pub(crate) struct NodeConstraint_ {
 
 impl NodeConstraint_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.def.table.schema_id.clone())) || self.def.type_ != old.def.type_ ||
-            self.def.id != old.def.id {
+        if created.contains(&GraphId::Table(self.def.table.schema_id.clone())) || self.def.type_ != old.def.type_ {
             Comparison::Recreate
+        } else if self.def.id != old.def.id {
+            Comparison::Update
         } else {
             Comparison::DoNothing
         }
     }
 }
 
-impl SqliteNodeDataDispatch for NodeConstraint_ {
+impl NodeDataDispatch for NodeConstraint_ {
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
 
-    fn create(&self, ctx: &mut SqliteMigrateCtx) {
+    fn create(&self, ctx: &mut PgMigrateCtx) {
         let mut stmt = Tokens::new();
         stmt.s("alter table").id(&self.def.table.id).s("add constraint").id(&self.def.id);
         match &self.def.type_ {
@@ -81,7 +82,7 @@ impl SqliteNodeDataDispatch for NodeConstraint_ {
         Some(other)
     }
 
-    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
+    fn delete(&self, ctx: &mut PgMigrateCtx) {
         ctx
             .statements
             .push(
@@ -95,8 +96,18 @@ impl SqliteNodeDataDispatch for NodeConstraint_ {
     }
 }
 
-impl SqliteNodeData for NodeConstraint_ {
-    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {
-        unreachable!()
+impl NodeData for NodeConstraint_ {
+    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
+        if self.def.id != old.def.id {
+            let mut stmt = Tokens::new();
+            stmt
+                .s("alter table")
+                .id(&self.def.table.0.id)
+                .s("rename constraint")
+                .id(&old.def.id)
+                .s("to")
+                .id(&self.def.id);
+            ctx.statements.push(stmt.to_string());
+        }
     }
 }

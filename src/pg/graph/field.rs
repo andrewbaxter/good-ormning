@@ -3,14 +3,15 @@ use std::collections::{
     HashMap,
 };
 use crate::{
-    sqlite::{
+    pg::{
         schema::field::Field,
         types::{
             to_sql_type,
             Type,
+            SimpleSimpleType,
         },
         query::{
-            utils::SqliteQueryCtx,
+            utils::PgQueryCtx,
             expr::{
                 ExprType,
                 ExprValName,
@@ -24,9 +25,9 @@ use crate::{
 use super::{
     GraphId,
     utils::{
-        SqliteNodeData,
-        SqliteMigrateCtx,
-        SqliteNodeDataDispatch,
+        NodeData,
+        PgMigrateCtx,
+        NodeDataDispatch,
     },
     Node,
 };
@@ -55,8 +56,8 @@ impl NodeField_ {
     }
 }
 
-impl SqliteNodeData for NodeField_ {
-    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
+impl NodeData for NodeField_ {
+    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
         if self.def.id != old.def.id {
             let mut stmt = Tokens::new();
             stmt
@@ -71,16 +72,27 @@ impl SqliteNodeData for NodeField_ {
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
         if t.type_.type_ != old_t.type_.type_ {
-            ctx.errs.err(&self.display_path(), format!("Column types cannot be changed in sqlite"));
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.def.table.id)
+                        .s("alter column")
+                        .id(&self.def.id)
+                        .s("set type")
+                        .s(to_sql_type(&t.type_.type_))
+                        .to_string(),
+                );
         }
     }
 }
 
-impl SqliteNodeDataDispatch for NodeField_ {
-    fn create(&self, ctx: &mut SqliteMigrateCtx) {
+impl NodeDataDispatch for NodeField_ {
+    fn create(&self, ctx: &mut PgMigrateCtx) {
         let path = self.display_path();
-        if &self.def.schema_id.0 == "rowid" {
-            return;
+        if matches!(self.def.type_.type_.type_.type_, SimpleSimpleType::Auto) {
+            ctx.errs.err(&path, format!("Auto (serial) fields can't be added after table creation"));
         }
         let mut stmt = Tokens::new();
         stmt
@@ -93,7 +105,7 @@ impl SqliteNodeDataDispatch for NodeField_ {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
                 let qctx_fields = HashMap::new();
-                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), &qctx_fields);
+                let mut qctx = PgQueryCtx::new(ctx.errs.clone(), &qctx_fields);
                 let e_res = d.build(&mut qctx, &path, &HashMap::new());
                 check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
@@ -116,12 +128,22 @@ impl SqliteNodeDataDispatch for NodeField_ {
             }
         }
         ctx.statements.push(stmt.to_string());
+        if !self.def.type_.type_.opt && self.def.type_.migration_default.is_some() {
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.def.table.id)
+                        .s("alter column")
+                        .id(&self.def.id)
+                        .s("drop default")
+                        .to_string(),
+                );
+        }
     }
 
-    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
-        if &self.def.schema_id.0 == "rowid" {
-            return;
-        }
+    fn delete(&self, ctx: &mut PgMigrateCtx) {
         ctx
             .statements
             .push(

@@ -3,11 +3,10 @@ use crate::{
     utils::Tokens,
     pg::{
         types::Type,
-        schema::{
-            table::TableId,
-            field::FieldId,
-        },
         QueryResCount,
+        schema::{
+            table::Table,
+        },
     },
 };
 use super::{
@@ -20,6 +19,7 @@ use super::{
         Expr,
         ExprType,
         check_bool,
+        ExprValName,
     },
 };
 
@@ -32,7 +32,7 @@ pub enum Order {
 #[derive(Clone, Debug)]
 pub enum JoinSource {
     Subsel(Box<Select>),
-    Table(TableId),
+    Table(Table),
 }
 
 #[derive(Clone, Debug)]
@@ -42,17 +42,13 @@ pub struct NamedSelectSource {
 }
 
 impl NamedSelectSource {
-    fn build(
-        &self,
-        ctx: &mut PgQueryCtx,
-        path: &rpds::Vector<String>,
-    ) -> (Vec<(FieldId, (String, Type))>, Tokens) {
+    fn build(&self, ctx: &mut PgQueryCtx, path: &rpds::Vector<String>) -> (Vec<(ExprValName, Type)>, Tokens) {
         let mut out = Tokens::new();
-        let mut new_fields: Vec<(FieldId, (String, Type))> = match &self.source {
+        let mut new_fields: Vec<(ExprValName, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res = s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
-                res.0.0.iter().map(|e| (e.0.field.clone(), (e.0.name.clone(), e.1.clone()))).collect()
+                res.0.0.clone()
             },
             JoinSource::Table(s) => {
                 let new_fields = match ctx.tables.get(&s) {
@@ -64,15 +60,15 @@ impl NamedSelectSource {
                         return (vec![], Tokens::new());
                     },
                 };
-                out.id(&s.0);
-                new_fields.iter().map(|e| (e.0.clone(), e.1.clone())).collect()
+                out.id(&s.id);
+                new_fields.iter().map(|e| (ExprValName::field(e.0), e.1.clone())).collect()
             },
         };
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];
             for (k, v) in new_fields {
-                new_fields2.push((FieldId(TableId(s.clone()), k.1.clone()), v));
+                new_fields2.push((k.with_alias(s), v));
             }
             new_fields = new_fields2;
         }
@@ -138,10 +134,10 @@ impl QueryBody for Select {
             match je.type_ {
                 JoinType::Left => {
                     for (k, mut v) in source.0 {
-                        if !v.1.opt {
-                            v.1 = Type {
+                        if !v.opt {
+                            v = Type {
                                 opt: true,
-                                type_: v.1.type_,
+                                type_: v.type_,
                             };
                         }
                         scope.insert(k, v);

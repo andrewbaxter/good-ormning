@@ -22,8 +22,10 @@ pub mod sqlite_gen_select_group_by;
 pub mod sqlite_gen_select_order;
 pub mod sqlite_gen_select_limit;
 pub mod sqlite_gen_migrate_add_field;
+pub mod sqlite_gen_migrate_rename_field;
 pub mod sqlite_gen_migrate_remove_field;
 pub mod sqlite_gen_migrate_add_table;
+pub mod sqlite_gen_migrate_rename_table;
 pub mod sqlite_gen_migrate_remove_table;
 pub mod sqlite_gen_hello_world;
 
@@ -262,6 +264,14 @@ fn test_migrate_add_field() -> Result<()> {
 }
 
 #[test]
+fn test_migrate_rename_field() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_migrate_rename_field::migrate(&mut db)?;
+    sqlite_gen_migrate_rename_field::ins(&mut db)?;
+    Ok(())
+}
+
+#[test]
 fn test_migrate_remove_field() -> Result<()> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_remove_field::migrate(&mut db)?;
@@ -274,6 +284,14 @@ fn test_migrate_add_table() -> Result<()> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_add_table::migrate(&mut db)?;
     sqlite_gen_migrate_add_table::two(&mut db, 23)?;
+    Ok(())
+}
+
+#[test]
+fn test_migrate_rename_table() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_migrate_rename_table::migrate(&mut db)?;
+    sqlite_gen_migrate_rename_table::two(&mut db, "inset")?;
     Ok(())
 }
 

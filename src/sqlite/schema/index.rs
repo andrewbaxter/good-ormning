@@ -28,6 +28,15 @@ pub struct Index_ {
 #[derive(Clone)]
 pub struct Index(pub Rc<Index_>);
 
+impl Display for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(
+            &format!("{}.{} ({}.{})", self.0.table.id, self.0.id, self.0.table.schema_id, self.0.schema_id),
+            f,
+        )
+    }
+}
+
 impl PartialEq for Index {
     fn eq(&self, other: &Self) -> bool {
         self.table == other.table && self.schema_id == other.schema_id
