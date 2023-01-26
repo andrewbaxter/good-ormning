@@ -9,7 +9,10 @@ use quote::{
 };
 use samevariant::samevariant;
 use syn::Path;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::Display,
+};
 use crate::{
     sqlite::{
         types::{
@@ -17,10 +20,11 @@ use crate::{
             SimpleSimpleType,
             SimpleType,
         },
-        queries::utils::QueryBody,
+        query::utils::QueryBody,
         schema::{
-            field::FieldId,
-            table::TableId,
+            field::{
+                Field,
+            },
         },
         utils::sanitize,
         QueryResCount,
@@ -60,7 +64,7 @@ pub enum Expr {
     /// aliased tables or field names, you'll have to instantiate `FieldId` yourself with the
     /// appropriate values. For synthetic values like function results you may need a `FieldId`
     ///  with an empty `TableId` (`""`).
-    Field(FieldId),
+    Field(Field),
     BinOp {
         left: Box<Expr>,
         op: BinOp,
@@ -93,30 +97,43 @@ pub enum Expr {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct ExprValName {
-    pub field: FieldId,
-    pub name: String,
+    pub table_id: String,
+    pub id: String,
 }
 
 impl ExprValName {
     pub(crate) fn local(name: String) -> Self {
         ExprValName {
-            field: FieldId(TableId("".into()), name.clone()),
-            name: name,
+            table_id: "".into(),
+            id: name,
         }
     }
 
     pub(crate) fn empty() -> Self {
         ExprValName {
-            field: FieldId(TableId("".into()), "".into()),
-            name: "".into(),
+            table_id: "".into(),
+            id: "".into(),
         }
     }
 
-    pub(crate) fn field(f: FieldId, name: String) -> Self {
+    pub(crate) fn field(f: &Field) -> Self {
         ExprValName {
-            field: f,
-            name: name,
+            table_id: f.table.id.clone(),
+            id: f.id.clone(),
         }
+    }
+
+    pub(crate) fn with_alias(&self, s: &str) -> ExprValName {
+        ExprValName {
+            table_id: s.into(),
+            id: self.id.clone(),
+        }
+    }
+}
+
+impl Display for ExprValName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&format!("{}.{}", self.table_id, self.id), f)
     }
 }
 
@@ -272,7 +289,7 @@ impl Expr {
         &self,
         ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
-        scope: &HashMap<FieldId, (String, Type)>,
+        scope: &HashMap<ExprValName, Type>,
     ) -> (ExprType, Tokens) {
         macro_rules! empty_type{
             ($o: expr, $t: expr) => {
@@ -289,7 +306,7 @@ impl Expr {
         fn do_bin_op(
             ctx: &mut SqliteQueryCtx,
             path: &rpds::Vector<String>,
-            scope: &HashMap<FieldId, (String, Type)>,
+            scope: &HashMap<ExprValName, Type>,
             op: &BinOp,
             exprs: &Vec<Expr>,
         ) -> (ExprType, Tokens) {
@@ -542,7 +559,8 @@ impl Expr {
                 return (ExprType(vec![(ExprValName::local(x.clone()), t.clone())]), out);
             },
             Expr::Field(x) => {
-                let t = match scope.get(x) {
+                let name = ExprValName::field(x);
+                let t = match scope.get(&name) {
                     Some(t) => t.clone(),
                     None => {
                         ctx
@@ -552,18 +570,15 @@ impl Expr {
                                 format!(
                                     "Expression references {} but this field isn't available here (available fields: {:?})",
                                     x,
-                                    scope
-                                        .iter()
-                                        .map(|e| format!("{}.{} ({})", e.0.0.0, e.0.1, e.1.0))
-                                        .collect::<Vec<String>>()
+                                    scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
                                 ),
                             );
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
                 let mut out = Tokens::new();
-                out.id(&x.0.0).s(".").id(&x.1);
-                return (ExprType(vec![(ExprValName::field(x.clone(), t.0), t.1.clone())]), out);
+                out.id(&x.table.id).s(".").id(&x.id);
+                return (ExprType(vec![(name, t.clone())]), out);
             },
             Expr::BinOp { left, op, right } => {
                 return do_bin_op(

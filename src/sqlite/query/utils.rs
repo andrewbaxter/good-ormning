@@ -5,11 +5,11 @@ use proc_macro2::TokenStream;
 use crate::{
     sqlite::{
         types::Type,
-        schema::{
-            table::TableId,
-            field::FieldId,
-        },
         QueryResCount,
+        schema::{
+            field::Field,
+            table::Table,
+        },
     },
     utils::{
         Tokens,
@@ -27,7 +27,7 @@ use super::{
 };
 
 pub struct SqliteQueryCtx<'a> {
-    pub(crate) tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>,
+    pub(crate) tables: &'a HashMap<Table, HashMap<Field, Type>>,
     pub(crate) errs: Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
@@ -35,7 +35,7 @@ pub struct SqliteQueryCtx<'a> {
 }
 
 impl<'a> SqliteQueryCtx<'a> {
-    pub(crate) fn new(errs: Errs, tables: &'a HashMap<TableId, HashMap<FieldId, (String, Type)>>) -> Self {
+    pub(crate) fn new(errs: Errs, tables: &'a HashMap<Table, HashMap<Field, Type>>) -> Self {
         Self {
             tables: tables,
             errs: errs,
@@ -58,26 +58,26 @@ pub trait QueryBody {
 pub fn build_set(
     ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
-    scope: &HashMap<FieldId, (String, Type)>,
+    scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
-    values: &Vec<(FieldId, Expr)>,
+    values: &Vec<(Field, Expr)>,
 ) {
     out.s("set");
-    for (i, (k, v)) in values.iter().enumerate() {
+    for (i, (field, val)) in values.iter().enumerate() {
         let path = path.push_back(format!("Set field {}", i));
         if i > 0 {
             out.s(",");
         }
-        out.id(&k.1).s("=");
-        let res = v.build(ctx, &path, &scope);
-        let field_type = match ctx.tables.get(&k.0).and_then(|t| t.get(&k)) {
+        out.id(&field.id).s("=");
+        let res = val.build(ctx, &path, &scope);
+        let field_type = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
             Some(t) => t,
             None => {
-                ctx.errs.err(&path, format!("Update destination value field {} is not known", k));
+                ctx.errs.err(&path, format!("Update destination value field {} is not known", field));
                 continue;
             },
         };
-        check_assignable(&mut ctx.errs, &path, &field_type.1, &res.0);
+        check_assignable(&mut ctx.errs, &path, field_type, &res.0);
         out.s(&res.1.to_string());
     }
 }
@@ -85,7 +85,7 @@ pub fn build_set(
 pub fn build_returning_values(
     ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
-    scope: &HashMap<FieldId, (String, Type)>,
+    scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
     outputs: &Vec<Returning>,
     res_count: QueryResCount,
@@ -124,7 +124,7 @@ pub fn build_returning_values(
 pub fn build_returning(
     ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
-    scope: &HashMap<FieldId, (String, Type)>,
+    scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
     outputs: &Vec<Returning>,
     res_count: QueryResCount,

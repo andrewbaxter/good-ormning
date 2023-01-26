@@ -1,55 +1,28 @@
 use std::{
     fmt::{
-        Display,
         Debug,
+        Display,
     },
-    collections::{
-        HashMap,
-        HashSet,
-    },
+    rc::Rc,
+    ops::Deref,
 };
 use crate::{
-    utils::Tokens,
     sqlite::{
         types::{
-            to_sql_type,
             SimpleSimpleType,
             SimpleType,
             Type,
         },
-        queries::{
+        query::{
             expr::{
                 Expr,
-                check_same,
-                ExprType,
-                ExprValName,
             },
-            utils::SqliteQueryCtx,
         },
     },
-    graphmigrate::Comparison,
 };
-use super::{
-    table::TableId,
-    utils::{
-        SqliteNodeData,
-        SqliteMigrateCtx,
-        SqliteNodeDataDispatch,
-    },
-    node::{
-        Node,
-        Id,
-    },
+use super::table::{
+    Table,
 };
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct FieldId(pub TableId, pub String);
-
-impl Display for FieldId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&format!("{}.{}", self.0, self.1), f)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct FieldType {
@@ -175,103 +148,50 @@ pub fn field_utctime_ms() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTimeMs)
 }
 
-#[derive(Clone)]
-pub struct FieldDef {
-    pub name: String,
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct SchemaFieldId(pub String);
+
+impl Display for SchemaFieldId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+#[derive(Debug)]
+pub struct Field_ {
+    pub table: Table,
+    pub schema_id: SchemaFieldId,
+    pub id: String,
     pub type_: FieldType,
 }
 
-#[derive(Clone)]
-pub(crate) struct NodeField_ {
-    pub id: FieldId,
-    pub def: FieldDef,
-}
+#[derive(Clone, Debug)]
+pub struct Field(pub Rc<Field_>);
 
-impl NodeField_ {
-    pub fn compare(&self, other: &Self, created: &HashSet<Id>) -> Comparison {
-        if created.contains(&Id::Table(self.id.0.clone())) {
-            return Comparison::Recreate;
-        }
-        let t = &self.def.type_.type_;
-        let other_t = &other.def.type_.type_;
-        if t.opt != other_t.opt || t.type_.type_ != other_t.type_.type_ {
-            Comparison::Update
-        } else {
-            Comparison::DoNothing
-        }
-    }
-
-    fn path(&self) -> rpds::Vector<String> {
-        rpds::vector![format!("{} ({})", self.def.name, self.id)]
+impl std::hash::Hash for Field {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.schema_id.hash(state)
     }
 }
 
-impl SqliteNodeData for NodeField_ {
-    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
-        let t = &self.def.type_.type_;
-        let old_t = &old.def.type_.type_;
-        if t.type_.type_ != old_t.type_.type_ {
-            ctx.errs.err(&self.path(), format!("Column types cannot be changed in sqlite"));
-        }
+impl PartialEq for Field {
+    fn eq(&self, other: &Self) -> bool {
+        self.table == other.table && self.schema_id == other.schema_id
     }
 }
 
-impl SqliteNodeDataDispatch for NodeField_ {
-    fn create(&self, ctx: &mut SqliteMigrateCtx) {
-        let path = self.path();
-        if &self.id.1 == "rowid" {
-            return;
-        }
-        let mut stmt = Tokens::new();
-        stmt
-            .s("alter table")
-            .id(&self.id.0.0)
-            .s("add column")
-            .id(&self.id.1)
-            .s(to_sql_type(&self.def.type_.type_.type_.type_));
-        if !self.def.type_.type_.opt {
-            if let Some(d) = &self.def.type_.migration_default {
-                stmt.s("not null default");
-                let qctx_fields = HashMap::new();
-                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), &qctx_fields);
-                let e_res = d.build(&mut qctx, &path, &HashMap::new());
-                check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
-                    type_: self.def.type_.type_.type_.clone(),
-                    opt: false,
-                })]), &e_res.0);
-                if !qctx.rust_args.is_empty() {
-                    qctx
-                        .errs
-                        .err(
-                            &path,
-                            format!(
-                                "Default expressions must not have any parameters, but this has {} parameters",
-                                qctx.rust_args.len()
-                            ),
-                        );
-                }
-                stmt.s(&e_res.1.to_string());
-            } else {
-                ctx.errs.err(&path, format!("New column missing default"));
-            }
-        }
-        ctx.statements.push(stmt.to_string());
-    }
+impl Eq for Field { }
 
-    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
-        if &self.id.1 == "rowid" {
-            return;
-        }
-        ctx
-            .statements
-            .push(Tokens::new().s("alter table").id(&self.id.0.0).s("drop column").id(&self.id.1).to_string());
-    }
+impl Deref for Field {
+    type Target = Field_;
 
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
     }
+}
 
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+impl Display for Field {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&format!("{}.{} ({}.{})", self.table.id, self.id, self.table.schema_id.0, self.schema_id.0), f)
     }
 }

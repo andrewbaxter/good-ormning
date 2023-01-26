@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use crate::{
     utils::Tokens,
     sqlite::{
-        schema::table::TableId,
         QueryResCount,
+        schema::table::Table,
     },
 };
 use super::{
@@ -11,6 +11,7 @@ use super::{
         Expr,
         ExprType,
         check_bool,
+        ExprValName,
     },
     utils::{
         QueryBody,
@@ -20,7 +21,7 @@ use super::{
 };
 
 pub struct Delete {
-    pub(crate) table: TableId,
+    pub(crate) table: Table,
     pub(crate) where_: Option<Expr>,
     pub(crate) returning: Vec<Returning>,
 }
@@ -41,12 +42,12 @@ impl QueryBody for Delete {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(k.clone(), v.clone());
+            scope.insert(ExprValName::field(k), v.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("delete from").id(&self.table.0);
+        out.s("delete from").id(&self.table.id);
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

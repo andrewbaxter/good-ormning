@@ -8,21 +8,26 @@ use quote::{
     ToTokens,
 };
 use std::{
-    collections::HashMap,
+    collections::{
+        HashMap,
+        HashSet,
+    },
     path::Path,
     fs,
+    rc::Rc,
 };
 use crate::{
     sqlite::{
         types::{
             Type,
         },
-        queries::expr::ExprValName,
+        query::expr::ExprValName,
+        graph::utils::SqliteMigrateCtx,
     },
     utils::Errs,
 };
 use self::{
-    queries::{
+    query::{
         utils::{
             SqliteQueryCtx,
             QueryBody,
@@ -43,47 +48,50 @@ use self::{
         update::Update,
         delete::Delete,
     },
-    schema::{
-        node::{
-            Id,
-            Node,
-        },
-        utils::{
-            MigrateNode,
-            SqliteMigrateCtx,
-        },
-        table::{
-            TableId,
-            NodeTable_,
-        },
-        field::{
-            FieldId,
-            FieldDef,
-            NodeField_,
-            FieldType,
-        },
-        index::{
-            IndexId,
-            IndexDef,
-            NodeIndex_,
-        },
-        constraint::{
-            ConstraintDef,
-            ConstraintId,
-            ConstraintType,
-            NodeConstraint_,
-        },
-    },
     types::{
         SimpleType,
         SimpleSimpleType,
     },
+    schema::{
+        field::{
+            Field,
+            Field_,
+            SchemaFieldId,
+            FieldType,
+        },
+        table::{
+            Table,
+            Table_,
+            SchemaTableId,
+        },
+        constraint::{
+            ConstraintType,
+            Constraint_,
+            Constraint,
+            SchemaConstraintId,
+        },
+        index::{
+            Index_,
+            Index,
+            SchemaIndexId,
+        },
+    },
+    graph::{
+        table::NodeTable_,
+        GraphId,
+        utils::MigrateNode,
+        Node,
+        field::NodeField_,
+        constraint::NodeConstraint_,
+        index::NodeIndex_,
+    },
 };
 
 pub mod types;
-pub mod queries;
+pub mod query;
 pub mod schema;
 pub mod utils;
+pub mod graph;
 
 /// The number of results this query returns. This determines if the return type is
 /// void, `Option`, the value directly, or a `Vec`. It must be a valid value per the
@@ -125,7 +133,7 @@ impl InsertBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.id.clone()),
+            e: Expr::Field(f.clone()),
             rename: None,
         });
         self
@@ -134,7 +142,7 @@ impl InsertBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field(f.id.clone()),
+                e: Expr::Field((*f).clone()),
                 rename: None,
             });
         }
@@ -201,7 +209,7 @@ impl SelectBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.id.clone()),
+            e: Expr::Field(f.clone()),
             rename: None,
         });
         self
@@ -210,7 +218,7 @@ impl SelectBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field(f.id.clone()),
+                e: Expr::Field((*f).clone()),
                 rename: None,
             });
         }
@@ -312,7 +320,7 @@ impl UpdateBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.id.clone()),
+            e: Expr::Field(f.clone()),
             rename: None,
         });
         self
@@ -321,7 +329,7 @@ impl UpdateBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field(f.id.clone()),
+                e: Expr::Field((*f).clone()),
                 rename: None,
             });
         }
@@ -393,7 +401,7 @@ impl DeleteBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.id.clone()),
+            e: Expr::Field(f.clone()),
             rename: None,
         });
         self
@@ -402,7 +410,7 @@ impl DeleteBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field(f.id.clone()),
+                e: Expr::Field((*f).clone()),
                 rename: None,
             });
         }
@@ -460,9 +468,9 @@ pub struct Query {
 /// # Arguments
 ///
 /// * `values` - The fields to insert and their corresponding values
-pub fn new_insert(table: &Table, values: Vec<(FieldId, Expr)>) -> InsertBuilder {
+pub fn new_insert(table: &Table, values: Vec<(Field, Expr)>) -> InsertBuilder {
     InsertBuilder { q: Insert {
-        table: table.0.clone(),
+        table: table.clone(),
         values: values,
         on_conflict: None,
         returning: vec![],
@@ -473,7 +481,7 @@ pub fn new_insert(table: &Table, values: Vec<(FieldId, Expr)>) -> InsertBuilder 
 pub fn new_select(table: &Table) -> SelectBuilder {
     SelectBuilder { q: Select {
         table: NamedSelectSource {
-            source: JoinSource::Table(table.0.clone()),
+            source: JoinSource::Table(table.clone()),
             alias: None,
         },
         returning: vec![],
@@ -504,9 +512,9 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
 /// # Arguments
 ///
 /// * `values` - The fields to update and their corresponding values
-pub fn new_update(table: &Table, values: Vec<(FieldId, Expr)>) -> UpdateBuilder {
+pub fn new_update(table: &Table, values: Vec<(Field, Expr)>) -> UpdateBuilder {
     UpdateBuilder { q: Update {
-        table: table.0.clone(),
+        table: table.clone(),
         values: values,
         where_: None,
         returning: vec![],
@@ -520,41 +528,32 @@ pub fn new_update(table: &Table, values: Vec<(FieldId, Expr)>) -> UpdateBuilder 
 /// * `name` - This becomes the name of the generated rust function.
 pub fn new_delete(table: &Table) -> DeleteBuilder {
     DeleteBuilder { q: Delete {
-        table: table.0.clone(),
+        table: table.clone(),
         returning: vec![],
         where_: None,
     } }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Table(pub TableId);
-
-#[derive(Clone)]
-pub struct Field {
-    pub id: FieldId,
-    pub def: FieldDef,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Index(pub IndexId);
-
 /// The version represents the state of a schema at a point in time.
 #[derive(Default)]
 pub struct Version {
-    schema: HashMap<Id, MigrateNode>,
+    schema: HashMap<GraphId, MigrateNode>,
     pre_migration: Vec<Box<dyn QueryBody>>,
     post_migration: Vec<Box<dyn QueryBody>>,
 }
 
 impl Version {
     /// Define a table in the version
-    pub fn table(&mut self, id: &str) -> Table {
-        let out = Table(TableId(id.into()));
-        if self.schema.insert(Id::Table(out.0.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
-            id: out.0.clone(),
+    pub fn table(&mut self, schema_id: &str, id: &str) -> Table {
+        let out = Table(Rc::new(Table_ {
+            schema_id: SchemaTableId(schema_id.into()),
+            id: id.into(),
+        }));
+        if self.schema.insert(GraphId::Table(out.schema_id.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
+            def: out.clone(),
             fields: vec![],
         }))).is_some() {
-            panic!("Table with id {} already exists", out.0);
+            panic!("Table with schema id {} already exists", out.schema_id);
         };
         out
     }
@@ -574,37 +573,36 @@ impl Version {
 
 impl Table {
     /// Define a field
-    pub fn field(&self, v: &mut Version, id: impl ToString, name: impl ToString, type_: FieldType) -> Field {
-        let out_id = FieldId(self.0.clone(), id.to_string());
-        let d = FieldDef {
-            name: name.to_string(),
+    pub fn field(&self, v: &mut Version, schema_id: impl ToString, id: impl ToString, type_: FieldType) -> Field {
+        let out = Field(Rc::new(Field_ {
+            table: self.clone(),
+            schema_id: SchemaFieldId(schema_id.to_string()),
+            id: id.to_string(),
             type_: type_,
-        };
+        }));
+        if &out.id == "rowid" {
+            panic!("Use rowid_field to define a rowid field");
+        }
         if v
             .schema
             .insert(
-                Id::Field(out_id.clone()),
-                MigrateNode::new(vec![Id::Table(self.0.clone())], Node::field(NodeField_ {
-                    id: out_id.clone(),
-                    def: d.clone(),
-                })),
+                GraphId::Field(self.schema_id.clone(), out.schema_id.clone()),
+                MigrateNode::new(
+                    vec![GraphId::Table(self.schema_id.clone())],
+                    Node::field(NodeField_ { def: out.clone() }),
+                ),
             )
             .is_some() {
-            panic!("Field with id {} already exists", out_id.0);
+            panic!("Field with schema id {}.{} already exists", self.schema_id, out.schema_id);
         };
-        if &out_id.1 == "rowid" {
-            panic!("Use rowid_field to define a rowid field");
-        }
-        Field {
-            id: out_id,
-            def: d.clone(),
-        }
+        out
     }
 
     pub fn rowid_field(&self, v: &mut Version, custom_type: Option<String>) -> Field {
-        let out_id = FieldId(self.0.clone(), "rowid".into());
-        let d = FieldDef {
-            name: "rowid".into(),
+        let out = Field(Rc::new(Field_ {
+            table: self.clone(),
+            schema_id: SchemaFieldId("rowid".into()),
+            id: "rowid".into(),
             type_: FieldType {
                 type_: Type {
                     type_: SimpleType {
@@ -615,119 +613,133 @@ impl Table {
                 },
                 migration_default: None,
             },
-        };
+        }));
         if v
             .schema
             .insert(
-                Id::Field(out_id.clone()),
-                MigrateNode::new(vec![Id::Table(self.0.clone())], Node::field(NodeField_ {
-                    id: out_id.clone(),
-                    def: d.clone(),
-                })),
+                GraphId::Field(self.schema_id.clone(), out.schema_id.clone()),
+                MigrateNode::new(
+                    vec![GraphId::Table(self.schema_id.clone())],
+                    Node::field(NodeField_ { def: out.clone() }),
+                ),
             )
             .is_some() {
-            panic!("Field with id {} already exists", out_id.0);
+            panic!("Field with schema id {}.{} already exists", self.schema_id, out.schema_id);
         };
-        Field {
-            id: out_id,
-            def: d.clone(),
-        }
+        out
     }
 
     /// Define a constraint
-    pub fn constraint(&self, v: &mut Version, id: &str, type_: ConstraintType) {
-        let id = ConstraintId(self.0.clone(), id.into());
-        let d = ConstraintDef { type_: type_ };
-        let mut deps = vec![Id::Table(self.0.clone())];
-        match &d.type_ {
+    pub fn constraint(&self, v: &mut Version, schema_id: impl ToString, id: impl ToString, type_: ConstraintType) {
+        let out = Constraint(Rc::new(Constraint_ {
+            table: self.clone(),
+            schema_id: SchemaConstraintId(schema_id.to_string()),
+            id: id.to_string(),
+            type_: type_,
+        }));
+        let mut deps = vec![GraphId::Table(self.schema_id.clone())];
+        match &out.type_ {
             ConstraintType::PrimaryKey(x) => {
                 for f in &x.fields {
-                    if f.0 != self.0 {
+                    if &f.table != self {
                         panic!(
                             "Field {} in primary key constraint {} is in table {}, but constraint is in table {}",
-                            f.1,
-                            id,
-                            self.0,
-                            f.0
+                            f,
+                            out.id,
+                            f.table,
+                            self
                         );
                     }
-                    deps.push(Id::Field(f.clone()));
+                    deps.push(GraphId::Field(self.schema_id.clone(), f.schema_id.clone()));
                 }
             },
             ConstraintType::ForeignKey(x) => {
-                let mut last_foreign_table = None;
+                let mut last_foreign_table: Option<Field> = None;
                 for f in &x.fields {
-                    if f.0.0 != self.0 {
+                    if &f.0.table != self {
                         panic!(
                             "Local field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
-                            f.0.1,
-                            id,
-                            self.0,
-                            f.1.0
+                            f.0,
+                            out.id,
+                            f.0.table,
+                            self
                         );
                     }
-                    deps.push(Id::Field(f.0.clone()));
+                    deps.push(GraphId::Field(f.0.table.schema_id.clone(), f.0.schema_id.clone()));
                     if let Some(t) = last_foreign_table.take() {
-                        if t != f.1.0 {
+                        if t.table != f.1.table {
                             panic!(
                                 "Foreign field {} in foreign key constraint {} is in table {}, but constraint is in table {}",
-                                f.1.1,
-                                id,
-                                t,
-                                f.1.0
+                                f.1,
+                                out.id,
+                                f.1.table,
+                                self
                             );
                         }
                     }
-                    last_foreign_table = Some(f.1.0.clone());
-                    deps.push(Id::Field(f.1.clone()));
+                    last_foreign_table = Some(f.1.clone());
+                    deps.push(GraphId::Field(f.1.table.schema_id.clone(), f.1.schema_id.clone()));
                 }
             },
         }
-        if v.schema.insert(Id::Constraint(id.clone()), MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
-            id: id.clone(),
-            def: d,
-        }))).is_some() {
-            panic!("Constraint with id {} aleady exists", id.0)
+        if v
+            .schema
+            .insert(
+                GraphId::Constraint(self.schema_id.clone(), out.schema_id.clone()),
+                MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ { def: out.clone() })),
+            )
+            .is_some() {
+            panic!("Constraint with id {}.{} aleady exists", self.schema_id, out.schema_id)
         };
     }
 
     /// Define an index
-    pub fn index(&self, id: impl ToString, fields: &[&Field]) -> IndexBuilder {
+    pub fn index(&self, schema_id: impl ToString, id: impl ToString, fields: &[&Field]) -> IndexBuilder {
         IndexBuilder {
-            id: IndexId(self.0.clone(), id.to_string()),
-            d: IndexDef {
-                field_ids: fields.iter().map(|f| f.id.clone()).collect(),
-                unique: false,
-            },
+            table: self.clone(),
+            schema_id: schema_id.to_string(),
+            id: id.to_string(),
+            fields: fields.iter().map(|e| (*e).clone()).collect(),
+            unique: false,
         }
     }
 }
 
 pub struct IndexBuilder {
-    id: IndexId,
-    d: IndexDef,
+    table: Table,
+    schema_id: String,
+    id: String,
+    fields: Vec<Field>,
+    unique: bool,
 }
 
 impl IndexBuilder {
     pub fn unique(mut self) -> Self {
-        self.d.unique = true;
+        self.unique = true;
         self
     }
 
     pub fn build(self, v: &mut Version) -> Index {
+        let out = Index(Rc::new(Index_ {
+            table: self.table,
+            schema_id: SchemaIndexId(self.schema_id),
+            id: self.id,
+            fields: self.fields,
+            unique: self.unique,
+        }));
         if v
             .schema
             .insert(
-                Id::Index(self.id.clone()),
-                MigrateNode::new(vec![Id::Table(self.id.0.clone())], Node::table_index(NodeIndex_ {
-                    id: self.id.clone(),
-                    def: self.d,
-                })),
+                GraphId::Index(out.table.schema_id.clone(), out.schema_id.clone()),
+                MigrateNode::new(
+                    vec![GraphId::Table(out.table.schema_id.clone())],
+                    Node::table_index(NodeIndex_ { def: out.clone() }),
+                ),
             )
             .is_some() {
-            panic!("Index with id {} already exists", self.id);
+            panic!("Index with schema id {}.{} already exists", out.table.schema_id, out.schema_id);
         };
-        Index(self.id)
+        out
     }
 }
 
@@ -737,10 +749,50 @@ impl IndexBuilder {
 ///
 /// * `output` - the path to a single rust source file where the output will be written
 ///
+/// * `versions` - a list of database version ids and schema versions. The ids must be
+///    consecutive but can start from any number. Once a version has been applied to a
+///    production database it shouldn't be modified again (modifications should be done in a
+///    new version).
+///
+///    These will be turned into migrations as part of the `migrate` function.
+///
+/// * `queries` - a list of queries against the schema in the latest version. These will be
+///    turned into functions.
+///
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
 pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+    for (_, v) in &versions {
+        let mut tables = HashSet::new();
+        let mut fields = HashSet::new();
+        let mut constraints = HashSet::new();
+        let mut indexs = HashSet::new();
+        for n in v.schema.values() {
+            match &n.body {
+                Node::Table(t) => {
+                    if tables.insert(&t.def.id) {
+                        panic!("Duplicate table id {}", t.def.id);
+                    }
+                },
+                Node::Field(f) => {
+                    if fields.insert((&f.def.table.schema_id, &f.def.id)) {
+                        panic!("Duplicate field id {} in table {}", f.def.id, f.def.table);
+                    }
+                },
+                Node::Constraint(c) => {
+                    if constraints.insert((&c.def.table.schema_id, &c.def.id)) {
+                        panic!("Duplicate constraint id {} in table {}", c.def.id, c.def.table);
+                    }
+                },
+                Node::Index(i) => {
+                    if indexs.insert((&i.def.table.schema_id, &i.def.id)) {
+                        panic!("Duplicate index id {} in table {}", i.def.id, i.def.table);
+                    }
+                },
+            }
+        }
+    }
     let mut errs = Errs::new();
     let mut migrations = vec![];
     let mut prev_version: Option<Version> = None;
@@ -754,7 +806,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             errs: &mut Errs,
             path: &rpds::Vector<String>,
             migration: &mut Vec<TokenStream>,
-            field_lookup: &HashMap<TableId, HashMap<FieldId, (String, Type)>>,
+            field_lookup: &HashMap<Table, HashMap<Field, Type>>,
             q: &dyn QueryBody,
         ) {
             let mut qctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
@@ -800,14 +852,14 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         for v in version.schema.values() {
             match &v.body {
                 Node::Field(f) => {
-                    match field_lookup.entry(f.id.0.clone()) {
+                    match field_lookup.entry(f.def.table.clone()) {
                         std::collections::hash_map::Entry::Occupied(_) => { },
                         std::collections::hash_map::Entry::Vacant(e) => {
                             e.insert(HashMap::new());
                         },
                     };
-                    let table = field_lookup.get_mut(&f.id.0).unwrap();
-                    table.insert(f.id.clone(), (f.def.name.clone(), f.def.type_.type_.clone()));
+                    let table = field_lookup.get_mut(&f.def.table).unwrap();
+                    table.insert(f.def.clone(), f.def.type_.type_.clone());
                 },
                 _ => { },
             };
@@ -868,7 +920,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     k: &ExprValName,
                     v: &Type,
                 ) -> Option<(Ident, TokenStream, TokenStream)> {
-                    if k.name.is_empty() {
+                    if k.id.is_empty() {
                         errs.err(
                             path,
                             format!("Result element {} has no name; name it using `rename` if this is intentional", i),
@@ -952,7 +1004,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             };
                         }
                     }
-                    return Some((format_ident!("{}", utils::sanitize(&k.name).1), ident, quote!({
+                    return Some((format_ident!("{}", utils::sanitize(&k.id).1), ident, quote!({
                         #unforward x
                     })));
                 }
@@ -1231,7 +1283,7 @@ mod test {
         },
         generate,
         Version,
-        queries::expr::Expr,
+        query::expr::Expr,
     };
 
     #[test]
@@ -1241,13 +1293,13 @@ mod test {
             // Versions (previous)
             (0usize, {
                 let mut v = Version::default();
-                let bananna = v.table("bananna");
+                let bananna = v.table("zPAO2PJU4", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 v
             }),
             (1usize, {
                 let mut v = Version::default();
-                let bananna = v.table("bananna");
+                let bananna = v.table("zQZQ8E2WD", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 bananna.field(&mut v, "z437INV6D", "zomzom", field_i32().build());
                 v
@@ -1262,15 +1314,15 @@ mod test {
             // Versions (previous)
             (0usize, {
                 let mut v = Version::default();
-                let bananna = v.table("bananna");
+                let bananna = v.table("zSNS34DYI", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 v
             }),
             (1usize, {
                 let mut v = Version::default();
-                let bananna = v.table("bananna");
+                let bananna = v.table("zSNS34DYI", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
-                let bananna = v.table("bananna");
+                let bananna = v.table("zSNS34DYI", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 v
             })
@@ -1280,7 +1332,7 @@ mod test {
     #[test]
     fn test_res_count_none_bad() {
         let mut v = Version::default();
-        let bananna = v.table("bananna");
+        let bananna = v.table("z5S18LWQE", "bananna");
         let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
         assert!(
             generate(
@@ -1294,7 +1346,7 @@ mod test {
     #[test]
     fn test_select_nothing_bad() {
         let mut v = Version::default();
-        let bananna = v.table("bananna");
+        let bananna = v.table("zOOR88EQ9", "bananna");
         bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
         assert!(
             generate(
@@ -1308,14 +1360,14 @@ mod test {
     #[test]
     fn test_returning_none_bad() {
         let mut v = Version::default();
-        let bananna = v.table("bananna");
+        let bananna = v.table("zZPD1I2EF", "bananna");
         let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
                 vec![(0usize, v)],
                 vec![
-                    new_insert(&bananna, vec![(hizat.id.clone(), Expr::LitString("hoy".into()))])
+                    new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
                         .return_field(&hizat)
                         .build_query("x", QueryResCount::None)
                 ],

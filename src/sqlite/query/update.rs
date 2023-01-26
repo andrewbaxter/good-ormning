@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use crate::{
     sqlite::{
-        schema::{
-            table::TableId,
-            field::FieldId,
-        },
         QueryResCount,
+        schema::{
+            table::Table,
+            field::Field,
+        },
     },
     utils::Tokens,
 };
@@ -14,6 +14,7 @@ use super::{
         Expr,
         ExprType,
         check_bool,
+        ExprValName,
     },
     utils::{
         QueryBody,
@@ -24,8 +25,8 @@ use super::{
 };
 
 pub struct Update {
-    pub table: TableId,
-    pub values: Vec<(FieldId, Expr)>,
+    pub table: Table,
+    pub values: Vec<(Field, Expr)>,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
 }
@@ -46,12 +47,12 @@ impl QueryBody for Update {
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(k.clone(), v.clone());
+            scope.insert(ExprValName::field(k), v.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("update").id(&self.table.0);
+        out.s("update").id(&self.table.id);
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");

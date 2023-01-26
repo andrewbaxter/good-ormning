@@ -1,39 +1,37 @@
-use std::{
-    collections::HashSet,
-};
+use std::collections::HashSet;
 use enum_dispatch::enum_dispatch;
 use samevariant::samevariant;
 use crate::graphmigrate::Comparison;
-use super::{
-    table::{
-        NodeTable_,
-        TableId,
-    },
-    field::{
-        NodeField_,
-        FieldId,
-    },
-    constraint::{
-        NodeConstraint_,
-        ConstraintId,
-    },
-    index::{
-        NodeIndex_,
-        IndexId,
-    },
+use self::{
+    table::NodeTable_,
+    field::NodeField_,
+    constraint::NodeConstraint_,
+    index::NodeIndex_,
     utils::{
         SqliteMigrateCtx,
         SqliteNodeDataDispatch,
         SqliteNodeData,
     },
 };
+use super::schema::{
+    table::SchemaTableId,
+    field::SchemaFieldId,
+    constraint::SchemaConstraintId,
+    index::SchemaIndexId,
+};
+
+pub mod table;
+pub mod field;
+pub mod constraint;
+pub mod index;
+pub mod utils;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub enum Id {
-    Table(TableId),
-    Field(FieldId),
-    Constraint(ConstraintId),
-    Index(IndexId),
+pub enum GraphId {
+    Table(SchemaTableId),
+    Field(SchemaTableId, SchemaFieldId),
+    Constraint(SchemaTableId, SchemaConstraintId),
+    Index(SchemaTableId, SchemaIndexId),
 }
 
 #[derive(Clone)]
@@ -66,7 +64,7 @@ impl Node {
 
 impl<'a> crate::graphmigrate::NodeData for Node {
     type O = SqliteMigrateCtx;
-    type I = Id;
+    type I = GraphId;
 
     fn compare(&self, other: &Self, created: &HashSet<Self::I>) -> Comparison {
         match PairwiseNode::pairs(self, &other) {
