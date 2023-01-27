@@ -27,11 +27,11 @@ pub mod sqlite_gen_migrate_remove_field;
 pub mod sqlite_gen_migrate_add_table;
 pub mod sqlite_gen_migrate_rename_table;
 pub mod sqlite_gen_migrate_remove_table;
-pub mod sqlite_gen_hello_world;
+pub mod hello_world;
 
 #[test]
 fn test_hello_world() -> Result<()> {
-    use sqlite_gen_hello_world as queries;
+    use hello_world as queries;
 
     let mut db = rusqlite::Connection::open_in_memory()?;
     queries::migrate(&mut db)?;

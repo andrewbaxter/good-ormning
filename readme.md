@@ -52,13 +52,13 @@ Alpha:
 
 2. Create a `build.rs` and define your initial schema version and queries
 3. Call `goodormning::generate()` to output the generated code
-4. In your code, after creating a database connection, call `migrate`
+4. In your code, after creating a database connection, call `initialize`
 
 ### Schema changes
 
 1. Copy your previous version schema, leaving the old schema version untouched. Modify the new schema and queries as you wish.
 2. Pass both the old and new schema versions to `goodormning::generate()`, which will generate the new migration statements.
-3. At runtime, the `migrate` call will make sure the database is updated to the new schema version.
+3. At runtime, call `migrate` when you're ready to perform the migration (ex: after upgrading all servers to support the new schema)
 
 ## Example
 
@@ -74,7 +74,7 @@ fn main() {
     let points = users.field(&mut latest_version, "zLAPH3H29", "points", field_i64().build());
     goodormning::sqlite::generate(&root.join("tests/sqlite_gen_hello_world.rs"), vec![
         // Versions
-        (0usize, latest_version)
+        (0, latest_version)
     ], vec![
         // Queries
         new_insert(&users, vec![(name.clone(), Expr::Param {
@@ -97,151 +97,14 @@ fn main() {
 }
 ```
 
-Generates this code
-
-```rust
-#[derive(Debug)]
-pub struct GoodError(pub String);
-
-impl std::fmt::Display for GoodError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for GoodError { }
-
-impl From<rusqlite::Error> for GoodError {
-    fn from(value: rusqlite::Error) -> Self {
-        GoodError(value.to_string())
-    }
-}
-
-pub fn migrate(db: &mut rusqlite::Connection) -> Result<(), GoodError> {
-    db.execute(
-        "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
-        (),
-    )?;
-    db.execute("insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;", ())?;
-    loop {
-        let txn = db.transaction()?;
-        match (|| {
-            let mut stmt =
-                txn.prepare("update __good_version set lock = 1 where rid = 0 and lock = 0 returning version")?;
-            let mut rows = stmt.query(())?;
-            let version = match rows.next()? {
-                Some(r) => {
-                    let ver: i64 = r.get(0usize)?;
-                    ver
-                },
-                None => return Ok(false),
-            };
-            drop(rows);
-            stmt.finalize()?;
-            if version > 0i64 {
-                return Err(
-                    GoodError(
-                        format!(
-                            "The latest known version is {}, but the schema is at unknown version {}",
-                            0i64,
-                            version
-                        ),
-                    ),
-                );
-            }
-            if version < 0i64 {
-                txn.execute("create table \"users\" ( \"name\" text not null , \"points\" integer not null )", ())?;
-            }
-            txn.execute("update __good_version set version = $1, lock = 0", rusqlite::params![0i64])?;
-            let out: Result<bool, GoodError> = Ok(true);
-            out
-        })() {
-            Err(e) => {
-                match txn.rollback() {
-                    Err(e1) => {
-                        return Err(
-                            GoodError(
-                                format!("{}\n\nRolling back the transaction due to the above also failed: {}", e, e1),
-                            ),
-                        );
-                    },
-                    Ok(_) => {
-                        return Err(e);
-                    },
-                };
-            },
-            Ok(migrated) => {
-                match txn.commit() {
-                    Err(e) => {
-                        return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                    },
-                    Ok(_) => {
-                        if migrated {
-                            return Ok(())
-                        } else {
-                            std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
-                        }
-                    },
-                };
-            },
-        }
-    }
-}
-
-pub fn create_user(db: &mut rusqlite::Connection, name: &str, points: i64) -> Result<(), GoodError> {
-    db
-        .execute("insert into \"users\" ( \"name\" , \"points\" ) values ( $1 , $2 )", rusqlite::params![name, points])
-        .map_err(|e| GoodError(e.to_string()))?;
-    Ok(())
-}
-
-pub struct DbRes1 {
-    pub name: String,
-    pub points: i64,
-}
-
-pub fn get_user(db: &mut rusqlite::Connection, id: i64) -> Result<DbRes1, GoodError> {
-    let mut stmt =
-        db.prepare(
-            "select \"users\" . \"name\" , \"users\" . \"points\" from \"users\" where ( \"users\" . \"rowid\" = $1 )",
-        )?;
-    let mut rows = stmt.query(rusqlite::params![id]).map_err(|e| GoodError(e.to_string()))?;
-    let r = rows.next()?.ok_or_else(|| GoodError("Query expected to return one row but returned no rows".into()))?;
-    Ok(DbRes1 {
-        name: {
-            let x: String = r.get(0usize)?;
-            x
-        },
-        points: {
-            let x: i64 = r.get(1usize)?;
-            x
-        },
-    })
-}
-
-pub fn list_users(db: &mut rusqlite::Connection) -> Result<Vec<i64>, GoodError> {
-    let mut out = vec![];
-    let mut stmt = db.prepare("select \"users\" . \"rowid\" from \"users\"")?;
-    let mut rows = stmt.query(rusqlite::params![]).map_err(|e| GoodError(e.to_string()))?;
-    while let Some(r) = rows.next()? {
-        out.push({
-            let x: i64 = r.get(0usize)?;
-            x
-        });
-    }
-    Ok(out)
-}
-
-```
-
-And can be used like
+Generates this code <integration_tests/tests/hello_world.rs> and can be used like:
 
 ```rust
 fn main() {
-    use sqlite_gen_hello_world as queries;
+    use hello_world as queries;
 
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
-    queries::migrate(&mut db).unwrap();
+    queries::initialize(&mut db).unwrap();
     queries::create_user(&mut db, "rust human", 0).unwrap();
     for user_id in queries::list_users(&mut db).unwrap() {
         let user = queries::get_user(&mut db, user_id).unwrap();
@@ -256,6 +119,17 @@ User 1: rust human
 ```
 
 ## Usage details
+
+### `initialize` and `migrate`
+
+The normal way to use these is
+
+1. Call `initialize` every time the server starts
+2. Trigger `migrate` after server upgrades, but not automatically
+
+`initialize` sets up the latest database version in new environments but does nothing otherwise, so it's safe to run at every startup.
+
+`migrate` performs incremental migrations from any intermediate version to the latest version. While you can use this instead of (rather than in addition to) `initialize` in single-server environments, if you're doing migrations with a fleet of servers you'd do this after all the servers have been updated to backwards-compatibly support the new schema. Once all the servers are upgraded you trigger `migrate` and the servers will start using new TODO
 
 ### Schema IDs and IDs
 

@@ -26,6 +26,8 @@ use crate::{
     utils::{
         Errs,
         sanitize_ident,
+        DOCSTRING_MIGRATE,
+        DOCSTRING_INITIALIZE,
     },
 };
 use self::{
@@ -763,8 +765,12 @@ impl IndexBuilder {
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
-pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+pub fn generate(output: &Path, versions: Vec<(u32, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+    // Initial correctness checks
     {
+        if versions.is_empty() {
+            return Err(vec![format!("Generate called with empty versions")]);
+        }
         let mut prev_relations: HashMap<&String, String> = HashMap::new();
         let mut prev_fields = HashMap::new();
         let mut prev_constraints = HashMap::new();
@@ -844,12 +850,16 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
     }
     let mut errs = Errs::new();
-    let mut migrations = vec![];
-    let mut prev_version: Option<Version> = None;
-    let mut prev_version_i: Option<i64> = None;
-    let mut field_lookup = HashMap::new();
-    for (version_i, version) in versions {
-        let path = rpds::vector![format!("Migration to {}", version_i)];
+
+    // Generate initialization and incremental migrations
+    fn generate_migration(
+        errs: &mut Errs,
+        field_lookup: &mut HashMap<Table, HashMap<Field, Type>>,
+        path: rpds::Vector<String>,
+        prev_version: Option<(&Version, i64)>,
+        version: &Version,
+        version_i: i64,
+    ) -> TokenStream {
         let mut migration = vec![];
 
         fn do_migration_query(
@@ -872,20 +882,22 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
 
         // Do pre-migrations
-        for (i, q) in version.pre_migration.iter().enumerate() {
-            do_migration_query(
-                &mut errs,
-                &path.push_back(format!("Pre-migration statement {}", i)),
-                &mut migration,
-                &field_lookup,
-                q.as_ref(),
-            );
+        if prev_version.is_some() {
+            for (i, q) in version.pre_migration.iter().enumerate() {
+                do_migration_query(
+                    errs,
+                    &path.push_back(format!("Pre-migration statement {}", i)),
+                    &mut migration,
+                    &field_lookup,
+                    q.as_ref(),
+                );
+            }
         }
 
         // Prep for current version
         field_lookup.clear();
         let version_i = version_i as i64;
-        if let Some(i) = prev_version_i {
+        if let Some((_, i)) = prev_version {
             if version_i != i as i64 + 1 {
                 errs.err(
                     &path,
@@ -918,7 +930,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         // Main migrations
         {
             let mut state = SqliteMigrateCtx::new(errs.clone());
-            crate::graphmigrate::migrate(&mut state, prev_version.take().map(|s| s.schema), &version.schema);
+            crate::graphmigrate::migrate(&mut state, prev_version.map(|s| &s.0.schema), &version.schema);
             for statement in &state.statements {
                 migration.push(quote!{
                     txn.execute(#statement, ()) ?;
@@ -929,7 +941,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         // Post-migration
         for (i, q) in version.post_migration.iter().enumerate() {
             do_migration_query(
-                &mut errs,
+                errs,
                 &path.push_back(format!("Post-migration statement {}", i)),
                 &mut migration,
                 &field_lookup,
@@ -937,16 +949,45 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             );
         }
 
-        // Build migration
-        migrations.push(quote!{
+        quote!{
             if version < #version_i {
                 #(#migration) *
             }
-        });
+        }
+    }
 
-        // Next iter prep
-        prev_version = Some(version);
-        prev_version_i = Some(version_i);
+    let initialization_statements = {
+        let (version_i, version) = versions.last().unwrap();
+        let mut field_lookup = HashMap::new();
+        generate_migration(
+            &mut errs,
+            &mut field_lookup,
+            rpds::vector![format!("Initialization to {}", version_i)],
+            None,
+            &version,
+            *version_i as i64,
+        )
+    };
+    let mut field_lookup = HashMap::new();
+    let mut migration_statements = vec![];
+    {
+        let mut prev_version: Option<(&Version, i64)> = None;
+        for (version_i, version) in &versions {
+            let version_i = *version_i as i64;
+            migration_statements.push(
+                generate_migration(
+                    &mut errs,
+                    &mut field_lookup,
+                    rpds::vector![
+                        format!("Migration from {} to {}", prev_version.map(|v| v.1).unwrap_or(-1), version_i)
+                    ],
+                    prev_version,
+                    &version,
+                    version_i,
+                ),
+            );
+            prev_version = Some((version, version_i));
+        }
     }
 
     // Generate queries
@@ -1188,8 +1229,92 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
     }
 
+    fn txn_body(
+        name: Ident,
+        docstring: String,
+        last_version_i: i64,
+        prebody: TokenStream,
+        body: TokenStream,
+    ) -> TokenStream {
+        quote!{
+            #[doc = #docstring] pub fn #name(db: &mut rusqlite::Connection) -> Result <(),
+            GoodError > {
+                #prebody loop {
+                    let txn = db.transaction()?;
+                    match(|| {
+                        let version = match lock_version(&txn)? {
+                            Some(v) => v,
+                            None => {
+                                return Ok(false);
+                            },
+                        };
+                        if version > #last_version_i {
+                            return Err(
+                                GoodError(
+                                    format!(
+                                        "The latest known version is {}, but the schema is at unknown version {}",
+                                        #last_version_i,
+                                        version
+                                    ),
+                                ),
+                            );
+                        }
+                        #body unlock_version(&txn, #last_version_i) ?;
+                        let out: Result < bool,
+                        GoodError >= Ok(true);
+                        out
+                    })() {
+                        Err(e) => {
+                            match txn.rollback() {
+                                Err(e1) => {
+                                    return Err(
+                                        GoodError(
+                                            format!(
+                                                "{}\n\nIn addition to above query error during the transaction, rollback failed: {}",
+                                                e,
+                                                e1
+                                            ),
+                                        ),
+                                    );
+                                },
+                                Ok(_) => {
+                                    return Err(e);
+                                },
+                            };
+                        }
+                        Ok(migrated) => {
+                            match txn.commit() {
+                                Err(e) => {
+                                    return Err(
+                                        GoodError(format!("Error committing the migration transaction: {}", e)),
+                                    );
+                                },
+                                Ok(_) => {
+                                    if migrated {
+                                        return Ok(())
+                                    } else {
+                                        std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
+                                    }
+                                },
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let last_version_i = versions.last().unwrap().0 as i64;
+    let initialize = txn_body(format_ident!("initialize"), DOCSTRING_INITIALIZE.into(), last_version_i, quote!{
+        prep_metadata_table(db)?;
+    }, initialization_statements);
+    let migrate = txn_body(format_ident!("migrate"), DOCSTRING_MIGRATE.into(), last_version_i, quote!{
+        prep_metadata_table(db)?;
+    }, quote!{
+        #(#migration_statements) *
+    });
+
     // Compile, output
-    let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
         #[derive(Debug)]
         pub struct GoodError(pub String);
@@ -1204,7 +1329,28 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 GoodError(value.to_string())
             }
         }
-        pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
+        fn lock_version(txn: &rusqlite::Transaction) -> Result < Option < i64 >,
+        GoodError > {
+            let mut stmt =
+                txn.prepare("update __good_version set lock = 1 where rid = 0 and lock = 0 returning version")?;
+            let mut rows = stmt.query(())?;
+            let version = match rows.next()? {
+                Some(r) => {
+                    let ver: i64 = r.get(0usize)?;
+                    ver
+                },
+                None => return Ok(None),
+            };
+            drop(rows);
+            stmt.finalize()?;
+            Ok(Some(version))
+        }
+        fn unlock_version(txn: &rusqlite::Transaction, v: i64) -> Result <(),
+        GoodError > {
+            txn.execute("update __good_version set version = $1, lock = 0", rusqlite::params![v])?;
+            Ok(())
+        }
+        fn prep_metadata_table(db: &mut rusqlite::Connection) -> Result <(),
         GoodError > {
             db.execute(
                 "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
@@ -1214,80 +1360,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
                 (),
             )?;
-            loop {
-                let txn = db.transaction()?;
-                match(|| {
-                    let mut stmt =
-                        txn.prepare(
-                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
-                        )?;
-                    let mut rows = stmt.query(())?;
-                    let version = match rows.next()? {
-                        Some(r) => {
-                            let ver: i64 = r.get(0usize)?;
-                            ver
-                        },
-                        None => return Ok(false),
-                    };
-                    drop(rows);
-                    stmt.finalize()?;
-                    if version > #last_version_i {
-                        return Err(
-                            GoodError(
-                                format!(
-                                    "The latest known version is {}, but the schema is at unknown version {}",
-                                    #last_version_i,
-                                    version
-                                ),
-                            ),
-                        );
-                    }
-                    #(
-                        #migrations
-                    ) * txn.execute(
-                        "update __good_version set version = $1, lock = 0",
-                        rusqlite::params![#last_version_i]
-                    ) ?;
-                    let out: Result < bool,
-                    GoodError >= Ok(true);
-                    out
-                })() {
-                    Err(e) => {
-                        match txn.rollback() {
-                            Err(e1) => {
-                                return Err(
-                                    GoodError(
-                                        format!(
-                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                            e,
-                                            e1
-                                        ),
-                                    ),
-                                );
-                            },
-                            Ok(_) => {
-                                return Err(e);
-                            },
-                        };
-                    }
-                    Ok(migrated) => {
-                        match txn.commit() {
-                            Err(e) => {
-                                return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                            },
-                            Ok(_) => {
-                                if migrated {
-                                    return Ok(())
-                                } else {
-                                    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
-                                }
-                            },
-                        };
-                    }
-                }
-            }
+            Ok(())
         }
-        #(#db_others) *
+        #initialize #migrate #(#db_others) *
     };
     if let Some(p) = output.parent() {
         if let Err(e) = fs::create_dir_all(&p) {
@@ -1341,13 +1416,13 @@ mod test {
     fn test_add_field_dup_bad() {
         generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
             // Versions (previous)
-            (0usize, {
+            (0, {
                 let mut v = Version::default();
                 let bananna = v.table("zPAO2PJU4", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 v
             }),
-            (1usize, {
+            (1, {
                 let mut v = Version::default();
                 let bananna = v.table("zQZQ8E2WD", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
@@ -1362,13 +1437,13 @@ mod test {
     fn test_add_table_dup_bad() {
         generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
             // Versions (previous)
-            (0usize, {
+            (0, {
                 let mut v = Version::default();
                 let bananna = v.table("zSNS34DYI", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
                 v
             }),
-            (1usize, {
+            (1, {
                 let mut v = Version::default();
                 let bananna = v.table("zSNS34DYI", "bananna");
                 bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
@@ -1387,7 +1462,7 @@ mod test {
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v)],
+                vec![(0, v)],
                 vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1401,7 +1476,7 @@ mod test {
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v)],
+                vec![(0, v)],
                 vec![new_select(&bananna).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1415,7 +1490,7 @@ mod test {
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v)],
+                vec![(0, v)],
                 vec![
                     new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
                         .return_field(&hizat)

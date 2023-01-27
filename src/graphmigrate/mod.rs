@@ -53,7 +53,7 @@ pub enum Comparison {
 
 type Version<T> = HashMap<<T as NodeData>::I, Node<T>>;
 
-pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>, version: &Version<T>) {
+pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<&Version<T>>, version: &Version<T>) {
     enum DiffNode<T: NodeData> {
         Create {
             new: T,
@@ -68,11 +68,11 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
     let mut delete_graph = Graph::new();
     let mut delete_graph_lookup = HashMap::new();
     if let Some(prev_version) = &prev_version {
-        for (k, n) in prev_version {
+        for (k, n) in *prev_version {
             let id = delete_graph.add(Some(n.body.clone()));
             delete_graph_lookup.insert(k, id);
         }
-        for (k, n) in prev_version {
+        for (k, n) in *prev_version {
             let gk = *delete_graph_lookup.get(k).unwrap();
             for dep in &n.deps {
                 delete_graph.edge(*delete_graph_lookup.get(dep).unwrap(), gk);

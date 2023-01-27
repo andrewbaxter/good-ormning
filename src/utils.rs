@@ -132,3 +132,13 @@ pub fn sanitize_ident(v: &str) -> (bool, String) {
         s => (false, s.into()),
     }
 }
+
+pub(crate) const DOCSTRING_INITIALIZE: &'static str =
+    "Sets up an uninitialized database, otherwise does nothing. Safe to call every start.";
+pub(crate) const DOCSTRING_MIGRATE: &'static str =
+    concat!(
+        "Does incremental migrations from the current migration to the latest version. ",
+        "In a single-server environment you can run this every startup, ",
+        "but otherwise you may wish to trigger this after old hosts are shut down ",
+        "during a backwards-compatible migration."
+    );
