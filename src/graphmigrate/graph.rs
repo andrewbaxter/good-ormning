@@ -1,11 +1,13 @@
 use std::collections::{
     HashMap,
     HashSet,
+    BTreeMap,
+    btree_map::Entry,
 };
 
 pub struct Graph<T> {
     pub data: Vec<T>,
-    edges: HashMap<usize, Vec<usize>>,
+    edges: BTreeMap<usize, Vec<usize>>,
 }
 
 impl<T> Graph<T> {
@@ -24,20 +26,19 @@ impl<T> Graph<T> {
 
     pub fn edge(&mut self, a: usize, b: usize) {
         match self.edges.entry(a) {
-            std::collections::hash_map::Entry::Occupied(mut e) => {
+            Entry::Occupied(mut e) => {
                 e.get_mut().push(b);
             },
-            std::collections::hash_map::Entry::Vacant(e) => {
+            Entry::Vacant(e) => {
                 e.insert(vec![b]);
             },
         };
     }
 
     pub fn reverse_edges(&mut self) {
-        let mut replace = HashMap::new();
-        replace.reserve(self.edges.len());
-        for (k, v) in self.edges.drain() {
-            replace.insert(k, v);
+        let mut replace = BTreeMap::new();
+        for (k, v) in &mut self.edges {
+            replace.insert(*k, v.split_off(0));
         }
         self.edges = replace;
     }

@@ -2,6 +2,7 @@ use std::{
     collections::{
         HashMap,
         HashSet,
+        BTreeMap,
     },
     hash::Hash,
 };
@@ -21,7 +22,7 @@ impl<T: Hash + PartialEq + Eq + Clone + Debug> NodeId for T { }
 // more cloning
 pub trait NodeData: Clone {
     type O;
-    type I: Hash + Eq + Clone + Debug;
+    type I: Hash + Eq + Clone + Debug + PartialOrd + Ord;
 
     fn compare(&self, old: &Self, created: &HashSet<Self::I>) -> Comparison;
     fn create_coalesce(&mut self, other: Self) -> Option<Self>;
@@ -51,7 +52,7 @@ pub enum Comparison {
     Recreate,
 }
 
-type Version<T> = HashMap<<T as NodeData>::I, Node<T>>;
+type Version<T> = BTreeMap<<T as NodeData>::I, Node<T>>;
 
 pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>, version: &Version<T>) {
     enum DiffNode<T: NodeData> {

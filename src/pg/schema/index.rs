@@ -8,7 +8,7 @@ use super::{
     table::Table,
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SchemaIndexId(pub String);
 
 impl Display for SchemaIndexId {

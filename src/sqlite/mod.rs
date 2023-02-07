@@ -10,6 +10,8 @@ use quote::{
 use std::{
     collections::{
         HashMap,
+        HashSet,
+        BTreeMap,
     },
     path::Path,
     fs,
@@ -95,8 +97,8 @@ pub mod schema;
 pub mod graph;
 
 /// The number of results this query returns. This determines if the return type is
-/// void, `Option`, the value directly, or a `Vec`. It must be a valid value per the
-/// query body (e.g. select can't have `None` res count).
+/// void, `Option`, the value directly, or a `Vec`. It must be a valid value per
+/// the query body (e.g. select can't have `None` res count).
 #[derive(Debug, Clone)]
 pub enum QueryResCount {
     None,
@@ -105,7 +107,8 @@ pub enum QueryResCount {
     Many,
 }
 
-/// See Insert for field descriptions. Call `build()` to get a finished query object.
+/// See Insert for field descriptions. Call `build()` to get a finished query
+/// object.
 pub struct InsertBuilder {
     pub q: Insert,
 }
@@ -174,8 +177,8 @@ impl InsertBuilder {
         }
     }
 
-    // Same as `build_query`, but specify a name for the result structure. Only valid if
-    // result is a record (not a single value).
+    // Same as `build_query`, but specify a name for the result structure. Only valid
+    // if result is a record (not a single value).
     pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
         Query {
             name: name.to_string(),
@@ -186,7 +189,8 @@ impl InsertBuilder {
     }
 }
 
-/// See Select for field descriptions. Call `build()` to get a finished query object.
+/// See Select for field descriptions. Call `build()` to get a finished query
+/// object.
 pub struct SelectBuilder {
     pub q: Select,
 }
@@ -280,8 +284,8 @@ impl SelectBuilder {
         }
     }
 
-    // Same as `build_query`, but specify a name for the result structure. Only valid if
-    // result is a record (not a single value).
+    // Same as `build_query`, but specify a name for the result structure. Only valid
+    // if result is a record (not a single value).
     pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
         Query {
             name: name.to_string(),
@@ -292,7 +296,8 @@ impl SelectBuilder {
     }
 }
 
-/// See Update for field descriptions. Call `build()` to get a finished query object.
+/// See Update for field descriptions. Call `build()` to get a finished query
+/// object.
 pub struct UpdateBuilder {
     pub q: Update,
 }
@@ -361,8 +366,8 @@ impl UpdateBuilder {
         }
     }
 
-    // Same as `build_query`, but specify a name for the result structure. Only valid if
-    // result is a record (not a single value).
+    // Same as `build_query`, but specify a name for the result structure. Only valid
+    // if result is a record (not a single value).
     pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
         Query {
             name: name.to_string(),
@@ -373,7 +378,8 @@ impl UpdateBuilder {
     }
 }
 
-/// See Delete for field descriptions. Call `build()` to get a finished query object.
+/// See Delete for field descriptions. Call `build()` to get a finished query
+/// object.
 pub struct DeleteBuilder {
     pub q: Delete,
 }
@@ -442,8 +448,8 @@ impl DeleteBuilder {
         }
     }
 
-    // Same as `build_query`, but specify a name for the result structure. Only valid if
-    // result is a record (not a single value).
+    // Same as `build_query`, but specify a name for the result structure. Only valid
+    // if result is a record (not a single value).
     pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
         Query {
             name: name.to_string(),
@@ -455,8 +461,8 @@ impl DeleteBuilder {
 }
 
 /// This represents an SQL query. A function will be generated which accepts a db
-/// connection and query parameters, and returns the query results. Call the `new_*`
-/// functions to get a builder.
+/// connection and query parameters, and returns the query results. Call the
+/// `new_*` functions to get a builder.
 pub struct Query {
     pub name: String,
     pub body: Box<dyn QueryBody>,
@@ -470,6 +476,12 @@ pub struct Query {
 ///
 /// * `values` - The fields to insert and their corresponding values
 pub fn new_insert(table: &Table, values: Vec<(Field, Expr)>) -> InsertBuilder {
+    let mut unique = HashSet::new();
+    for v in &values {
+        if !unique.insert(&v.0) {
+            panic!("Duplicate field {} in insert", v.0);
+        }
+    }
     InsertBuilder { q: Insert {
         table: table.clone(),
         values: values,
@@ -514,6 +526,12 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
 ///
 /// * `values` - The fields to update and their corresponding values
 pub fn new_update(table: &Table, values: Vec<(Field, Expr)>) -> UpdateBuilder {
+    let mut unique = HashSet::new();
+    for v in &values {
+        if !unique.insert(&v.0) {
+            panic!("Duplicate field {} in update", v.0);
+        }
+    }
     UpdateBuilder { q: Update {
         table: table.clone(),
         values: values,
@@ -538,7 +556,7 @@ pub fn new_delete(table: &Table) -> DeleteBuilder {
 /// The version represents the state of a schema at a point in time.
 #[derive(Default)]
 pub struct Version {
-    schema: HashMap<GraphId, MigrateNode>,
+    schema: BTreeMap<GraphId, MigrateNode>,
     pre_migration: Vec<Box<dyn QueryBody>>,
     post_migration: Vec<Box<dyn QueryBody>>,
 }
@@ -559,14 +577,14 @@ impl Version {
         out
     }
 
-    /// Add a query to execute before before migrating to this schema (applied immediately
-    /// before migration).
+    /// Add a query to execute before before migrating to this schema (applied
+    /// immediately before migration).
     pub fn pre_migration(&mut self, q: impl QueryBody + 'static) {
         self.pre_migration.push(Box::new(q));
     }
 
-    /// Add a query to execute after migrating to this schema version (applied immediately
-    /// after migration).
+    /// Add a query to execute after migrating to this schema version (applied
+    /// immediately after migration).
     pub fn post_migration(&mut self, q: impl QueryBody + 'static) {
         self.post_migration.push(Box::new(q));
     }
@@ -751,14 +769,14 @@ impl IndexBuilder {
 /// * `output` - the path to a single rust source file where the output will be written
 ///
 /// * `versions` - a list of database version ids and schema versions. The ids must be
-///    consecutive but can start from any number. Once a version has been applied to a
-///    production database it shouldn't be modified again (modifications should be done in a
-///    new version).
+///   consecutive but can start from any number. Once a version has been applied to a
+///   production database it shouldn't be modified again (modifications should be done
+///   in a new version).
 ///
-///    These will be turned into migrations as part of the `migrate` function.
+///   These will be turned into migrations as part of the `migrate` function.
 ///
-/// * `queries` - a list of queries against the schema in the latest version. These will be
-///    turned into functions.
+/// * `queries` - a list of queries against the schema in the latest version. These
+///   will be turned into functions.
 ///
 /// # Returns
 ///

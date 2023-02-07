@@ -26,7 +26,7 @@ pub mod constraint;
 pub mod index;
 pub mod utils;
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum GraphId {
     Table(SchemaTableId),
     Field(SchemaTableId, SchemaFieldId),

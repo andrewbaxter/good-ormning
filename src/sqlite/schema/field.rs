@@ -39,7 +39,8 @@ impl FieldType {
         }
     }
 
-    /// Create a field type from the specified value type, and provide a migration fill value.
+    /// Create a field type from the specified value type, and provide a migration fill
+    /// value.
     pub fn with_migration(t: &Type, def: Option<Expr>) -> Self {
         if t.opt {
             panic!("Optional fields can't have defaults.");
@@ -77,8 +78,9 @@ impl FieldBuilder {
         self
     }
 
-    /// Specify an expression to use to populate the new column in existing rows. This is must
-    /// be specified (only) for non-opt fields in a new version of an existing table.
+    /// Specify an expression to use to populate the new column in existing rows. This
+    /// is must be specified (only) for non-opt fields in a new version of an existing
+    /// table.
     pub fn migrate_fill(mut self, expr: Expr) -> FieldBuilder {
         if self.opt {
             panic!("Optional fields can't have migration fill expressions.");
@@ -87,8 +89,8 @@ impl FieldBuilder {
         self
     }
 
-    /// Use a custom Rust type for this field. This must be the full path to the type, like
-    /// `crate::abcdef::MyType`.
+    /// Use a custom Rust type for this field. This must be the full path to the type,
+    /// like `crate::abcdef::MyType`.
     pub fn custom(mut self, type_: impl ToString) -> FieldBuilder {
         self.custom = Some(type_.to_string());
         self
@@ -148,7 +150,7 @@ pub fn field_utctime_ms() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTimeMs)
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SchemaFieldId(pub String);
 
 impl Display for SchemaFieldId {

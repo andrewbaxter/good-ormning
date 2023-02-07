@@ -10,7 +10,7 @@ use super::{
     field::Field,
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SchemaConstraintId(pub String);
 
 impl Display for SchemaConstraintId {

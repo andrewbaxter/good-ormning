@@ -8,7 +8,7 @@ use std::{
     hash::Hash,
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SchemaTableId(pub String);
 
 impl Display for SchemaTableId {
