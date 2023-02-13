@@ -1,5 +1,8 @@
 # GOOD-ORMNING
 
+- On [crates.io](https://crates.io/crates/good-ormning)
+- On [docs.rs](https://docs.rs/good-ormning)
+
 Good-ormning is an ORM, probably? In a nutshell:
 
 1. Define schemas and queries in `build.rs`
@@ -265,7 +268,15 @@ Schema IDs are internal ids used for matching fields across versions, to identif
 
 ### Types and queries
 
-Use `type_*` `field_*` functions to get expression/field type builders. Use `new_insert/select/update/delete` to get a query builder for the associated query type.
+Use `type_*` `field_*` functions to get type builders for use in expressions/fields. Use `new_insert/select/update/delete` to get a query builder for the associated query type.
+
+There are also some helper functions for building queries, see
+
+- `set_field`, a shortcut for setting field values in INSERT and UPDATE
+- `field_eq`, a shortcut for an expression equating a field and a parameter
+- `expr_and`, a shortcut for AND expressions
+
+for the database you're using.
 
 ### Custom types
 

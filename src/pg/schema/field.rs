@@ -126,10 +126,6 @@ pub fn field_i64() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::I64)
 }
 
-pub fn field_u32() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::U32)
-}
-
 pub fn field_f32() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::F32)
 }

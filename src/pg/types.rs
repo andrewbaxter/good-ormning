@@ -1,7 +1,6 @@
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SimpleSimpleType {
     Auto,
-    U32,
     I32,
     I64,
     F32,
@@ -14,8 +13,7 @@ pub enum SimpleSimpleType {
 
 pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
     match t {
-        SimpleSimpleType::Auto => "serial",
-        SimpleSimpleType::U32 => "bigint",
+        SimpleSimpleType::Auto => "bigserial",
         SimpleSimpleType::I32 => "int",
         SimpleSimpleType::I64 => "bigint",
         SimpleSimpleType::F32 => "real",
@@ -60,8 +58,8 @@ impl TypeBuilder {
         self
     }
 
-    /// Use a custom Rust type for this type. This must be the full path to the type, like
-    /// `crate::abcdef::MyType`.
+    /// Use a custom Rust type for this type. This must be the full path to the type,
+    /// like `crate::abcdef::MyType`.
     pub fn custom(mut self, type_: impl ToString) -> TypeBuilder {
         self.custom = Some(type_.to_string());
         self
@@ -92,10 +90,6 @@ pub fn type_i32() -> TypeBuilder {
 
 pub fn type_i64() -> TypeBuilder {
     TypeBuilder::new(SimpleSimpleType::I64)
-}
-
-pub fn type_u32() -> TypeBuilder {
-    TypeBuilder::new(SimpleSimpleType::U32)
 }
 
 pub fn type_f32() -> TypeBuilder {

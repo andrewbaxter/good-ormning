@@ -92,11 +92,11 @@ pub fn build_returning_values(
 ) -> ExprType {
     if outputs.is_empty() {
         if !matches!(res_count, QueryResCount::None) {
-            ctx.errs.err(path, format!("Query has no outputs but res_count is None: {:?}", res_count));
+            ctx.errs.err(path, format!("Query has no outputs but res_count is, {:?}, not None", res_count));
         }
     } else {
         if matches!(res_count, QueryResCount::None) {
-            ctx.errs.err(&path, format!("Query has outputs but res_count is None: {:?}", res_count));
+            ctx.errs.err(&path, format!("Query has outputs so res_count must be not None, but is {:?}", res_count));
         }
     }
     let mut out_rec: Vec<(ExprValName, Type)> = vec![];

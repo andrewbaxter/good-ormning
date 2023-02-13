@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap,
+    collections::{
+        HashMap,
+        HashSet,
+    },
 };
 use crate::{
     pg::{
@@ -8,6 +11,7 @@ use crate::{
             field::Field,
             table::Table,
         },
+        types::SimpleSimpleType,
     },
     utils::Tokens,
 };
@@ -49,6 +53,15 @@ impl QueryBody for Insert {
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
         // Prep
+        let mut check_inserting_fields = HashSet::new();
+        for p in &self.values {
+            if p.0.type_.type_.opt {
+                continue;
+            }
+            if !check_inserting_fields.insert(p.0.clone()) {
+                ctx.errs.err(path, format!("Duplicate field {} in insert", p.0));
+            }
+        }
         let mut scope = HashMap::new();
         for (field, v) in match ctx.tables.get(&self.table) {
             Some(t) => t,
@@ -58,7 +71,12 @@ impl QueryBody for Insert {
             },
         } {
             scope.insert(ExprValName::field(field), v.clone());
+            if !field.type_.type_.opt && field.type_.type_.type_.type_ != SimpleSimpleType::Auto &&
+                !check_inserting_fields.remove(field) {
+                ctx.errs.err(path, format!("{} is a non-optional field but is missing in insert", field));
+            }
         }
+        drop(check_inserting_fields);
 
         // Build query
         let mut out = Tokens::new();

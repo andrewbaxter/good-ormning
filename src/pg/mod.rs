@@ -564,7 +564,7 @@ pub struct Version {
 }
 
 impl Version {
-    /// Define a table in the version
+    /// Define a table in this version
     pub fn table(&mut self, schema_id: &str, id: &str) -> Table {
         let out = Table(Rc::new(Table_ {
             schema_id: SchemaTableId(schema_id.into()),
@@ -580,13 +580,16 @@ impl Version {
     }
 
     /// Add a query to execute before before migrating to this schema (applied
-    /// immediately before migration).
+    /// immediately before migration).  Note that these may not run on new databases or
+    /// if you later delete early migrations, so these should only modify existing data
+    /// and not create new data (singleton rows, etc).  If you need those, do it with a
+    /// normal query executed manually against the latest version.
     pub fn pre_migration(&mut self, q: impl QueryBody + 'static) {
         self.pre_migration.push(Box::new(q));
     }
 
     /// Add a query to execute after migrating to this schema version (applied
-    /// immediately after migration).
+    /// immediately after migration). See other warnings from `pre_migration`.
     pub fn post_migration(&mut self, q: impl QueryBody + 'static) {
         self.post_migration.push(Box::new(q));
     }
@@ -965,7 +968,6 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     }
                     let mut ident: TokenStream = match v.type_.type_ {
                         types::SimpleSimpleType::Auto => quote!(i64),
-                        types::SimpleSimpleType::U32 => quote!(u32),
                         types::SimpleSimpleType::I32 => quote!(i32),
                         types::SimpleSimpleType::I64 => quote!(i64),
                         types::SimpleSimpleType::F32 => quote!(f32),

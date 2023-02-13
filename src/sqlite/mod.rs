@@ -578,13 +578,16 @@ impl Version {
     }
 
     /// Add a query to execute before before migrating to this schema (applied
-    /// immediately before migration).
+    /// immediately before migration).  Note that these may not run on new databases or
+    /// if you later delete early migrations, so these should only modify existing data
+    /// and not create new data (singleton rows, etc).  If you need those, do it with a
+    /// normal query executed manually against the latest version.
     pub fn pre_migration(&mut self, q: impl QueryBody + 'static) {
         self.pre_migration.push(Box::new(q));
     }
 
     /// Add a query to execute after migrating to this schema version (applied
-    /// immediately after migration).
+    /// immediately after migration). See other warnings from `pre_migration`.
     pub fn post_migration(&mut self, q: impl QueryBody + 'static) {
         self.post_migration.push(Box::new(q));
     }

@@ -41,8 +41,8 @@ use super::{
 
 #[derive(Clone, Debug)]
 pub enum Expr {
-    // A null value needs a type for type checking purposes. It will always be trated as an
-    // optional value.
+    // A null value needs a type for type checking purposes. It will always be trated
+    // as an optional value.
     LitNull(SimpleType),
     LitBool(bool),
     LitI32(i32),
@@ -54,24 +54,24 @@ pub enum Expr {
     LitBytes(Vec<u8>),
     LitUtcTimeS(DateTime<Utc>),
     LitUtcTimeMs(DateTime<Utc>),
-    /// A query parameter. This will become a parameter to the generated Rust function with
-    /// the specified `name` and `type_`.
+    /// A query parameter. This will become a parameter to the generated Rust function
+    /// with the specified `name` and `type_`.
     Param {
         name: String,
         type_: Type,
     },
-    /// This evaluates to the value of a field in the query main or joined tables. If you've
-    /// aliased tables or field names, you'll have to instantiate `FieldId` yourself with the
-    /// appropriate values. For synthetic values like function results you may need a `FieldId`
-    ///  with an empty `TableId` (`""`).
+    /// This evaluates to the value of a field in the query main or joined tables. If
+    /// you've aliased tables or field names, you'll have to instantiate `FieldId`
+    /// yourself with the appropriate values. For synthetic values like function
+    /// results you may need a `FieldId` with an empty `TableId` (`""`).
     Field(Field),
     BinOp {
         left: Box<Expr>,
         op: BinOp,
         right: Box<Expr>,
     },
-    /// This is the same as `BinOp` but allows chaining multiple expressions with the same
-    /// operator. This can be useful if you have many successive `AND`s or similar.
+    /// This is the same as `BinOp` but allows chaining multiple expressions with the
+    /// same operator. This can be useful if you have many successive `AND`s or similar.
     BinOpChain {
         op: BinOp,
         exprs: Vec<Expr>,
@@ -80,8 +80,9 @@ pub enum Expr {
         op: PrefixOp,
         right: Box<Expr>,
     },
-    /// Represents a call to an SQL function, like `collate()`. You must provide the type of
-    /// the result since we don't have a table of functions and their return types at present.
+    /// Represents a call to an SQL function, like `collate()`. You must provide the
+    /// type of the result since we don't have a table of functions and their return
+    /// types at present.
     Call {
         func: String,
         type_: Type,
@@ -89,9 +90,9 @@ pub enum Expr {
     },
     /// A sub SELECT query.
     Select(Box<Select>),
-    /// This is a synthetic expression, saying to treat the result of the expression as having
-    /// the specified type. Use this for casting between primitive types and Rust new-types
-    /// for instance.
+    /// This is a synthetic expression, saying to treat the result of the expression as
+    /// having the specified type. Use this for casting between primitive types and
+    /// Rust new-types for instance.
     Cast(Box<Expr>, Type),
 }
 
@@ -484,7 +485,15 @@ impl Expr {
                 let mut out = Tokens::new();
                 let i = ctx.query_args.len();
                 let d = d.to_rfc3339();
-                ctx.query_args.push(quote!(#d));
+                ctx
+                    .query_args
+                    .push(
+                        quote!(
+                            chrono:: DateTime::< chrono:: Utc >:: from(
+                                chrono:: DateTime:: parse_from_rfc3339(#d).unwrap()
+                            )
+                        ),
+                    );
                 out.s(&format!("${}", i + 1));
                 return empty_type!(out, SimpleSimpleType::UtcTimeMs);
             },
