@@ -71,6 +71,31 @@ impl NodeData for NodeField_ {
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
+        if t.opt && !old_t.opt {
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.def.table.id)
+                        .s("alter column")
+                        .id(&self.def.id)
+                        .s("drop not null")
+                        .to_string(),
+                );
+        } else if !t.opt && old_t.opt {
+            ctx
+                .statements
+                .push(
+                    Tokens::new()
+                        .s("alter table")
+                        .id(&self.def.table.id)
+                        .s("alter column")
+                        .id(&self.def.id)
+                        .s("set not null")
+                        .to_string(),
+                );
+        }
         if t.type_.type_ != old_t.type_.type_ {
             ctx
                 .statements

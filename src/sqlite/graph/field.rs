@@ -70,6 +70,9 @@ impl SqliteNodeData for NodeField_ {
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
+        if t.opt != old_t.opt {
+            ctx.errs.err(&self.display_path(), format!("Column optionality cannot be changed in sqlite"));
+        }
         if t.type_.type_ != old_t.type_.type_ {
             ctx.errs.err(&self.display_path(), format!("Column types cannot be changed in sqlite"));
         }

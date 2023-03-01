@@ -742,6 +742,10 @@ impl IndexBuilder {
     }
 
     pub fn build(self, v: &mut Version) -> Index {
+        let mut deps = vec![GraphId::Table(self.table.schema_id.clone())];
+        for field in &self.fields {
+            deps.push(GraphId::Field(field.table.schema_id.clone(), field.schema_id.clone()));
+        }
         let out = Index(Rc::new(Index_ {
             table: self.table,
             schema_id: SchemaIndexId(self.schema_id),
@@ -753,10 +757,7 @@ impl IndexBuilder {
             .schema
             .insert(
                 GraphId::Index(out.table.schema_id.clone(), out.schema_id.clone()),
-                MigrateNode::new(
-                    vec![GraphId::Table(out.table.schema_id.clone())],
-                    Node::table_index(NodeIndex_ { def: out.clone() }),
-                ),
+                MigrateNode::new(deps, Node::table_index(NodeIndex_ { def: out.clone() })),
             )
             .is_some() {
             panic!("Index with schema id {}.{} already exists", out.table.schema_id, out.schema_id);

@@ -47,7 +47,6 @@ Alpha:
 
    - `tokio-postgres` for PostgreSQL
    - `rusqlite` for Sqlite
-   - `hex_literal` if you use byte array literals in any queries
 
    And `build.rs` dependencies:
 

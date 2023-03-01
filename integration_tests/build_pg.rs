@@ -470,6 +470,29 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
+    // # Migrate - make field opt
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zTWA93SX0", "bannna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().opt().build());
+        generate(&root.join("tests/pg_gen_migrate_make_field_opt.rs"), vec![
+            // Versions (previous)
+            (0usize, {
+                let mut v = Version::default();
+                let bananna = v.table("zTWA93SX0", "bannna");
+                bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+                v
+            }),
+            (1usize, v)
+        ], vec![
+            // Queries
+            new_insert(
+                &bananna,
+                vec![(hizat.clone(), Expr::LitNull(hizat.type_.type_.type_.clone()))],
+            ).build_query("ins", QueryResCount::None)
+        ]).unwrap();
+    }
+
     // # Migrate - remove field
     {
         let mut v = Version::default();

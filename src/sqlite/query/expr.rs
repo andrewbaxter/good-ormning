@@ -460,41 +460,25 @@ impl Expr {
             },
             Expr::LitString(x) => {
                 let mut out = Tokens::new();
-                let i = ctx.query_args.len();
-                ctx.query_args.push(quote!(#x));
-                out.s(&format!("${}", i + 1));
+                out.s(&format!("'{}'", x.replace("'", "''")));
                 return empty_type!(out, SimpleSimpleType::String);
             },
             Expr::LitBytes(x) => {
                 let mut out = Tokens::new();
-                let i = ctx.query_args.len();
                 let h = hex::encode(&x);
-                ctx.query_args.push(quote!(hex_literal::hex!(#h)));
-                out.s(&format!("${}", i + 1));
+                out.s(&format!("x'{}'", h));
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
             Expr::LitUtcTimeS(d) => {
                 let mut out = Tokens::new();
-                let i = ctx.query_args.len();
                 let d = d.timestamp();
-                ctx.query_args.push(quote!(#d));
-                out.s(&format!("${}", i + 1));
+                out.s(&format!("{}", d));
                 return empty_type!(out, SimpleSimpleType::UtcTimeS);
             },
             Expr::LitUtcTimeMs(d) => {
                 let mut out = Tokens::new();
-                let i = ctx.query_args.len();
                 let d = d.to_rfc3339();
-                ctx
-                    .query_args
-                    .push(
-                        quote!(
-                            chrono:: DateTime::< chrono:: Utc >:: from(
-                                chrono:: DateTime:: parse_from_rfc3339(#d).unwrap()
-                            )
-                        ),
-                    );
-                out.s(&format!("${}", i + 1));
+                out.s(&format!("'{}'", d));
                 return empty_type!(out, SimpleSimpleType::UtcTimeMs);
             },
             Expr::Param { name: x, type_: t } => {

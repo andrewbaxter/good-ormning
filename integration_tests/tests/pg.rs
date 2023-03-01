@@ -28,6 +28,7 @@ pub mod pg_gen_select_limit;
 pub mod pg_gen_migrate_add_field;
 pub mod pg_gen_migrate_rename_field;
 pub mod pg_gen_migrate_remove_field;
+pub mod pg_gen_migrate_make_field_opt;
 pub mod pg_gen_migrate_add_table;
 pub mod pg_gen_migrate_rename_table;
 pub mod pg_gen_migrate_remove_table;
@@ -286,6 +287,15 @@ async fn test_migrate_rename_field() -> Result<()> {
     let (mut db, _cont) = db(&docker).await?;
     pg_gen_migrate_rename_field::migrate(&mut db).await?;
     pg_gen_migrate_rename_field::ins(&mut db).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_make_field_opt() -> Result<()> {
+    let docker = testcontainers::clients::Cli::default();
+    let (mut db, _cont) = db(&docker).await?;
+    pg_gen_migrate_make_field_opt::migrate(&mut db).await?;
+    pg_gen_migrate_make_field_opt::ins(&mut db).await?;
     Ok(())
 }
 

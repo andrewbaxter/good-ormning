@@ -67,7 +67,7 @@ impl QueryBody for Insert {
             },
         } {
             scope.insert(ExprValName::field(field), v.clone());
-            if !field.type_.type_.opt && !check_inserting_fields.remove(field) {
+            if !field.type_.type_.opt && field.schema_id.0 != "rowid" && !check_inserting_fields.remove(field) {
                 ctx.errs.err(path, format!("{} is a non-optional field but is missing in insert", field));
             }
         }
