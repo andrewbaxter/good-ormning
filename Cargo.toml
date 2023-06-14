@@ -27,4 +27,4 @@ stable-hash = "0.4.3"
 syn = "1.0.107"
 
 [workspace]
-members = ["integration_tests", "traits"]
+members = ["integration_tests", "runtime"]

@@ -8,7 +8,7 @@ chrono = "0.4.23"
 rusqlite = "0.28.0"
 testcontainers = { version = "0.14.0", features = ["tokio"] }
 tokio = { version = "1.24.1", features = ["macros", "rt"] }
-"good-ormning-traits" = { path = "../traits", features = [
+"good-ormning-runtime" = { path = "../runtime", features = [
     "chrono",
     "pg",
     "sqlite",

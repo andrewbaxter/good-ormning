@@ -45,6 +45,7 @@ Alpha:
 
 1. You'll need the following runtime dependencies:
 
+   - `good-ormning-traits` if you use any custom types (non-plain types)
    - `tokio-postgres` for PostgreSQL
    - `rusqlite` for Sqlite
 
@@ -56,6 +57,8 @@ Alpha:
 
    - `pg`
    - `sqlite`
+
+   plus maybe `chrono` for `DateTime` support.
 
 2. Create a `build.rs` and define your initial schema version and queries
 3. Call `goodormning::generate()` to output the generated code

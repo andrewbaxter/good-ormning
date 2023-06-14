@@ -1,8 +1,6 @@
 use std::borrow::Cow;
-use good_ormning_traits::{
-    pg::{
-        self,
-    },
+use good_ormning_runtime::{
+    pg,
     sqlite,
 };
 

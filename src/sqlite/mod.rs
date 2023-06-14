@@ -1213,19 +1213,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     // Compile, output
     let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
-        #[derive(Debug)]
-        pub struct GoodError(pub String);
-        impl std::fmt::Display for GoodError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                self.0.fmt(f)
-            }
-        }
-        impl std::error::Error for GoodError { }
-        impl From<rusqlite::Error> for GoodError {
-            fn from(value: rusqlite::Error) -> Self {
-                GoodError(value.to_string())
-            }
-        }
+        use good_ormning_runtime::GoodError;
         pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
         GoodError > {
             db.execute(
