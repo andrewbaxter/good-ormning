@@ -1,25 +1,30 @@
-use std::fmt::Display;
-
-#[derive(Debug)]
-pub struct MyErr;
-
-impl Display for MyErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        "".fmt(f)
-    }
-}
-
-impl std::error::Error for MyErr { }
+use std::borrow::Cow;
+use good_ormning_traits::{
+    pg::{
+        self,
+    },
+    sqlite,
+};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct MyString(pub String);
 
-impl MyString {
-    pub fn to_sql(&self) -> &str {
-        &self.0
+impl pg::GoodOrmningCustomString<MyString> for MyString {
+    fn to_sql(value: &MyString) -> &str {
+        &value.0
     }
 
-    pub fn from_sql(s: String) -> Result<Self, MyErr> {
+    fn from_sql(s: String) -> Result<MyString, String> {
+        Ok(Self(s))
+    }
+}
+
+impl sqlite::GoodOrmningCustomString<MyString> for MyString {
+    fn to_sql<'a>(value: &'a MyString) -> Cow<'a, str> {
+        Cow::Borrowed(&value.0)
+    }
+
+    fn from_sql(s: String) -> Result<MyString, String> {
         Ok(Self(s))
     }
 }

@@ -1,3 +1,4 @@
+#[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
     Utc,
@@ -19,6 +20,7 @@ use crate::{
             Type,
             SimpleSimpleType,
             SimpleType,
+            to_rust_types,
         },
         query::utils::QueryBody,
         schema::{
@@ -52,7 +54,9 @@ pub enum Expr {
     LitF64(f64),
     LitString(String),
     LitBytes(Vec<u8>),
+    #[cfg(feature = "chrono")]
     LitUtcTimeS(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
     LitUtcTimeMs(DateTime<Utc>),
     /// A query parameter. This will become a parameter to the generated Rust function
     /// with the specified `name` and `type_`.
@@ -176,7 +180,9 @@ pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<Str
             SimpleSimpleType::Bool => GeneralType::Bool,
             SimpleSimpleType::String => GeneralType::Blob,
             SimpleSimpleType::Bytes => GeneralType::Blob,
+            #[cfg(feature = "chrono")]
             SimpleSimpleType::UtcTimeS => GeneralType::Numeric,
+            #[cfg(feature = "chrono")]
             SimpleSimpleType::UtcTimeMs => GeneralType::Blob,
         }
     }
@@ -469,12 +475,14 @@ impl Expr {
                 out.s(&format!("x'{}'", h));
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
+            #[cfg(feature = "chrono")]
             Expr::LitUtcTimeS(d) => {
                 let mut out = Tokens::new();
                 let d = d.timestamp();
                 out.s(&format!("{}", d));
                 return empty_type!(out, SimpleSimpleType::UtcTimeS);
             },
+            #[cfg(feature = "chrono")]
             Expr::LitUtcTimeMs(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_rfc3339();
@@ -498,18 +506,9 @@ impl Expr {
                     std::collections::hash_map::Entry::Vacant(e) => {
                         let i = ctx.query_args.len();
                         e.insert((i, t.clone()));
-                        let rust_type = match t.type_.type_ {
-                            SimpleSimpleType::U32 => quote!(u32),
-                            SimpleSimpleType::I32 => quote!(i32),
-                            SimpleSimpleType::I64 => quote!(i64),
-                            SimpleSimpleType::F32 => quote!(f32),
-                            SimpleSimpleType::F64 => quote!(f64),
-                            SimpleSimpleType::Bool => quote!(bool),
-                            SimpleSimpleType::String => quote!(&str),
-                            SimpleSimpleType::Bytes => quote!(&[u8]),
-                            SimpleSimpleType::UtcTimeS => quote!(chrono:: DateTime < chrono:: Utc >),
-                            SimpleSimpleType::UtcTimeMs => quote!(chrono:: DateTime < chrono:: Utc >),
-                        };
+                        let rust_types = to_rust_types(&t.type_.type_);
+                        let custom_trait_ident = rust_types.custom_trait;
+                        let rust_type = rust_types.arg_type;
                         let ident = format_ident!("{}", sanitize_ident(x).1);
                         let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {
                             let custom_ident = match syn::parse_str::<Path>(custom.as_str()) {
@@ -519,7 +518,8 @@ impl Expr {
                                     return (ExprType(vec![]), Tokens::new());
                                 },
                             }.to_token_stream();
-                            let forward = quote!(#ident.to_sql());
+                            let forward =
+                                quote!(< #custom_ident as #custom_trait_ident < #custom_ident >>:: to_sql(& #ident));
                             (quote!(& #custom_ident), forward)
                         } else {
                             (rust_type, quote!(#ident))
@@ -533,7 +533,9 @@ impl Expr {
                             SimpleSimpleType::Bool => rust_forward,
                             SimpleSimpleType::String => rust_forward,
                             SimpleSimpleType::Bytes => rust_forward,
+                            #[cfg(feature = "chrono")]
                             SimpleSimpleType::UtcTimeS => quote!(#rust_forward.timestamp()),
+                            #[cfg(feature = "chrono")]
                             SimpleSimpleType::UtcTimeMs => quote!(#rust_forward.to_rfc3339()),
                         };
                         if t.opt {

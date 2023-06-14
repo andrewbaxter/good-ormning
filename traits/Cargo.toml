@@ -1,0 +1,13 @@
+[package]
+name = "good-ormning-traits"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+chrono = ["dep:chrono"]
+pg = []
+sqlite = []
+
+[dependencies]
+chrono = { version = "0.4.23", optional = true }

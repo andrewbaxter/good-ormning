@@ -13,7 +13,7 @@ Good-ormning is an ORM, probably? In a nutshell:
 
 - No macros
 - No generics
-- No traits
+- No traits (okay, simple traits for custom types to help guide implementations _only_)
 - No boilerplate duplicating stuff in the schema
 - Automatic migrations, no migration-schema mismatches
 - Query parameter type checking - no runtime errors due to parameter types, counts, or ordering
@@ -36,8 +36,8 @@ Alpha:
 
 ### Supported databases
 
-- PostgreSQL
-- Sqlite
+- PostgreSQL (feature `pg`)
+- Sqlite (feature `sqlite`)
 
 ## Getting started
 
@@ -51,6 +51,11 @@ Alpha:
    And `build.rs` dependencies:
 
    - `good-ormning`
+
+   And you _must_ enable one (or more) of the database features:
+
+   - `pg`
+   - `sqlite`
 
 2. Create a `build.rs` and define your initial schema version and queries
 3. Call `goodormning::generate()` to output the generated code
@@ -243,10 +248,10 @@ fn main() {
     use sqlite_gen_hello_world as queries;
 
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
-    queries::migrate(&mut db).unwrap();
-    queries::create_user(&mut db, "rust human", 0).unwrap();
-    for user_id in queries::list_users(&mut db).unwrap() {
-        let user = queries::get_user(&mut db, user_id).unwrap();
+    queries::migrate(&db).unwrap();
+    queries::create_user(&db, "rust human", 0).unwrap();
+    for user_id in queries::list_users(&db).unwrap() {
+        let user = queries::get_user(&db, user_id).unwrap();
         println!("User {}: {}", user_id, user.name);
     }
     Ok(())
@@ -259,20 +264,27 @@ User 1: rust human
 
 ## Usage details
 
+### Features
+
+- `pg` - enables generating code for PostgreSQL
+- `sqlite` - enables generating code for Sqlite
+- `chrono` - enable datetime field/expression types
+
 ### Schema IDs and IDs
 
-IDs are used both in SQL and Rust, so must be valid in both (however, some munging is applied to ids in Rust if they clash with keywords). Depending on the database, you can change IDs arbitrarily between schema versions but swapping IDs in consecutive versions isn't currently supported - if you need to do swaps do it over three different versions (like `v0`: `A` and `B`, `v1`: `A_` and `B`, `v2`: `B` and `A`).
+"Schema IDs" are internal ids used for matching fields across versions, to identify renames, deletes, etc. Schema IDs must not change once used in a version. I recommend using randomly generated IDs, via a macro. Changing Schema IDs is treated like a delete followed by a create.
 
-Schema IDs are internal ids used for matching fields across versions, to identify renames, deletes, etc. Schema IDs must not change once used in a version. I recommend using randomly generated IDs, via a macro.
+"IDs" are used both in SQL (for fields) and Rust (in parameters and returned data structures), so must be valid in both (however, some munging is automatically applied to ids in Rust if they clash with keywords). Depending on the database, you can change IDs arbitrarily between schema versions but swapping IDs in consecutive versions isn't currently supported - if you need to do swaps do it over three different versions (like `v0`: `A` and `B`, `v1`: `A_` and `B`, `v2`: `B` and `A`).
 
-### Types and queries
+### Query, expression and fields types
 
 Use `type_*` `field_*` functions to get type builders for use in expressions/fields. Use `new_insert/select/update/delete` to get a query builder for the associated query type.
 
 There are also some helper functions for building queries, see
 
+- `field_param`, a shortcut for a parameter matching the type and name of a field
 - `set_field`, a shortcut for setting field values in INSERT and UPDATE
-- `field_eq`, a shortcut for an expression equating a field and a parameter
+- `eq_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field` are shortcuts for expressions comparing a field and a parameter with the same type
 - `expr_and`, a shortcut for AND expressions
 
 for the database you're using.
@@ -281,23 +293,27 @@ for the database you're using.
 
 When defining a field in the schema, call `.custom("mycrate::MyString", type_str().build())` on the field type builder (or pass it in as `Some("mycreate::MyType".to_string())` if creating the type structure directly).
 
-Custom types need to implement functions like this:
+The type must have methods to convert to/from the native SQL types. There are traits to guide the implementation:
 
 ```rust
 pub struct MyString(pub String);
 
-impl MyString {
-    pub fn to_sql(&self) -> &str {
-        &self.0
+impl pg::GoodOrmningCustomString<MyString> for MyString {
+    fn to_sql(value: &MyString) -> &str {
+        &value.0
     }
 
-    pub fn from_sql(s: String) -> Result<Self, MyErr> {
+    fn from_sql(s: String) -> Result<MyString, String> {
         Ok(Self(s))
     }
 }
 ```
 
-Any `std::err::Error` can be used for the error. The `to_sql` result and `from_sql` arguments should correspond to the base type you specified. If you're not sure what type that is, guess, and when you compile you'll get an compiler error saying which type you need.
+### Parameters and return types
+
+Parameters with the same name are deduplicated - if you define a query with multiple parameters of the same name but different types you'll get an error.
+
+Return types with the same contents are similarly deduplicated (methods to make two queries that return the same fields will return the same type).
 
 ## Comparisons
 

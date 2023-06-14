@@ -2,6 +2,9 @@ use std::{
     cell::RefCell,
     rc::Rc,
 };
+use proc_macro2::{
+    TokenStream,
+};
 
 pub struct Tokens(String);
 
@@ -131,4 +134,10 @@ pub fn sanitize_ident(v: &str) -> (bool, String) {
         ),
         s => (false, s.into()),
     }
+}
+
+pub struct RustTypes {
+    pub custom_trait: TokenStream,
+    pub ret_type: TokenStream,
+    pub arg_type: TokenStream,
 }

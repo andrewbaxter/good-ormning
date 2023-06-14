@@ -19,7 +19,10 @@ use std::{
 };
 use crate::{
     pg::{
-        types::Type,
+        types::{
+            Type,
+            to_rust_types,
+        },
         query::expr::ExprValName,
         graph::utils::PgMigrateCtx,
     },
@@ -967,17 +970,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         );
                         return None;
                     }
-                    let mut ident: TokenStream = match v.type_.type_ {
-                        types::SimpleSimpleType::Auto => quote!(i64),
-                        types::SimpleSimpleType::I32 => quote!(i32),
-                        types::SimpleSimpleType::I64 => quote!(i64),
-                        types::SimpleSimpleType::F32 => quote!(f32),
-                        types::SimpleSimpleType::F64 => quote!(f64),
-                        types::SimpleSimpleType::Bool => quote!(bool),
-                        types::SimpleSimpleType::String => quote!(String),
-                        types::SimpleSimpleType::Bytes => quote!(Vec < u8 >),
-                        types::SimpleSimpleType::UtcTime => quote!(chrono:: DateTime < chrono:: Utc >),
-                    };
+                    let rust_types = to_rust_types(&v.type_.type_);
+                    let custom_trait_ident = rust_types.custom_trait;
+                    let mut ident = rust_types.ret_type;
                     if v.opt {
                         ident = quote!(Option < #ident >);
                     }
@@ -1002,7 +997,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         if v.opt {
                             unforward = quote!{
                                 #unforward let x = if let Some(x) = x {
-                                    Some(#ident:: from_sql(x).map_err(|e| GoodError(e.to_string())) ?)
+                                    Some(
+                                        < #ident as #custom_trait_ident < #ident >>:: from_sql(
+                                            x
+                                        ).map_err(|e| GoodError(e.to_string())) ?
+                                    )
                                 }
                                 else {
                                     None
@@ -1011,7 +1010,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             ident = quote!(Option < #ident >);
                         } else {
                             unforward = quote!{
-                                #unforward let x = #ident:: from_sql(x).map_err(|e| GoodError(e.to_string())) ?;
+                                #unforward let x =< #ident as #custom_trait_ident < #ident >>:: from_sql(
+                                    x
+                                ).map_err(|e| GoodError(e.to_string())) ?;
                             };
                         }
                     }

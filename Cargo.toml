@@ -1,6 +1,6 @@
 [package]
 name = "good-ormning"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 license = "ISC"
 description = "Maybe an ORM"
@@ -8,8 +8,14 @@ homepage = "https://github.com/andrewbaxter/good-ormning"
 repository = "https://github.com/andrewbaxter/good-ormning"
 readme = "readme.md"
 
+[features]
+default = []
+chrono = ["dep:chrono"]
+pg = []
+sqlite = []
+
 [dependencies]
-chrono = "0.4.23"
+chrono = { version = "0.4.23", optional = true }
 enum_dispatch = "0.3.9"
 genemichaels = "0.1.15"
 hex = "0.4.3"
@@ -21,4 +27,4 @@ stable-hash = "0.4.3"
 syn = "1.0.107"
 
 [workspace]
-members = ["integration_tests"]
+members = ["integration_tests", "traits"]

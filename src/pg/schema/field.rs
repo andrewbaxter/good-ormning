@@ -142,6 +142,7 @@ pub fn field_bytes() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::Bytes)
 }
 
+#[cfg(feature = "chrono")]
 pub fn field_utctime() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTime)
 }
