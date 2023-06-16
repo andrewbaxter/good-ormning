@@ -45,7 +45,7 @@ Alpha:
 
 1. You'll need the following runtime dependencies:
 
-   - `good-ormning-traits` if you use any custom types (non-plain types)
+   - `good-ormning-runtime`
    - `tokio-postgres` for PostgreSQL
    - `rusqlite` for Sqlite
 
@@ -342,7 +342,7 @@ Good-ormning is functionally most similar to Diesel.
 - You don't have to write any structures, everything is generated from schema and query info
 - Custom types can be incorporated into the schema with no boilerplate
 - Migrations are automatically derived via a diff between schema versions plus additional migration metadata
-- Clear error messages, thanks to no macros, generics, traits
+- Clear error messages, thanks to no macros, generics
 - Code generation is fast, compiling the simple generated code is also fast
 - Alpha
 
