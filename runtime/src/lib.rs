@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[cfg(feature = "pg")]
 pub mod pg;
 #[cfg(feature = "sqlite")]
@@ -14,16 +16,20 @@ impl std::fmt::Display for GoodError {
 
 impl std::error::Error for GoodError { }
 
-#[cfg(feature = "sqlite")]
-impl From<rusqlite::Error> for GoodError {
-    fn from(value: rusqlite::Error) -> Self {
-        GoodError(value.to_string())
-    }
+pub trait ToGoodError<T> {
+    fn to_good_error<F: FnOnce() -> String>(self, context: F) -> Result<T, GoodError>;
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError>;
 }
 
-#[cfg(feature = "pg")]
-impl From<tokio_postgres::Error> for GoodError {
-    fn from(value: tokio_postgres::Error) -> Self {
-        GoodError(value.to_string())
+impl<T, E: Display> ToGoodError<T> for Result<T, E> {
+    fn to_good_error<F: FnOnce() -> String>(self, context: F) -> Result<T, GoodError> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(GoodError(format!("{}: {}", context(), e))),
+        }
+    }
+
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
+        return self.to_good_error(|| format!("In query [{}]", query));
     }
 }

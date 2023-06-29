@@ -572,6 +572,7 @@ impl Version {
         if self.schema.insert(GraphId::Table(out.schema_id.clone()), MigrateNode::new(vec![], Node::table(NodeTable_ {
             def: out.clone(),
             fields: vec![],
+            constraints: vec![],
         }))).is_some() {
             panic!("Table with schema id {} already exists", out.schema_id);
         };
@@ -890,7 +891,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             let statement = e_res.1.to_string();
             let args = qctx.query_args;
             migration.push(quote!{
-                txn.execute(#statement, rusqlite::params![#(#args,) *]) ?;
+                {
+                    let query = #statement;
+                    txn.execute(query, rusqlite::params![#(#args,) *]).to_good_error_query(query)?
+                };
             });
         }
 
@@ -944,7 +948,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             crate::graphmigrate::migrate(&mut state, prev_version.take().map(|s| s.schema), &version.schema);
             for statement in &state.statements {
                 migration.push(quote!{
-                    txn.execute(#statement, ()) ?;
+                    {
+                        let query = #statement;
+                        txn.execute(query, ()).to_good_error_query(query)?
+                    };
                 });
             }
         }
@@ -1016,25 +1023,25 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         types::SimpleSimpleType::String |
                         types::SimpleSimpleType::Bytes => {
                             quote!{
-                                let x: #ident = r.get(#i) ?;
+                                let x: #ident = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                             }
                         },
                         #[cfg(feature = "chrono")]
                         types::SimpleSimpleType::UtcTimeS => {
                             quote!{
-                                let x: i64 = r.get(#i) ?;
+                                let x: i64 = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                                 let x = chrono::TimeZone::timestamp_opt(&chrono::Utc, x, 0).unwrap();
                             }
                         },
                         #[cfg(feature = "chrono")]
                         types::SimpleSimpleType::UtcTimeMs => {
                             quote!{
-                                let x: String = r.get(#i) ?;
+                                let x: String = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                                 let x =
                                     chrono::DateTime::<chrono::Utc>::from(
                                         chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
                                             &x,
-                                        ).map_err(|e| GoodError(e.to_string()))?,
+                                        ).to_good_error(|| format!("Getting result {}", #i))?,
                                     );
                             }
                         },
@@ -1060,7 +1067,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                     Some(
                                         < #ident as #custom_trait_ident < #ident >>:: from_sql(
                                             x
-                                        ).map_err(|e| GoodError(e)) ?
+                                        ).to_good_error(|| format!("Parsing result {}", #i)) ?
                                     )
                                 }
                                 else {
@@ -1072,7 +1079,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             unforward = quote!{
                                 #unforward let x =< #ident as #custom_trait_ident < #ident >>:: from_sql(
                                     x
-                                ).map_err(|e| GoodError(e.to_string())) ?;
+                                ).to_good_error(|| format!("Parsing result {}", #i)) ?;
                             };
                         }
                     }
@@ -1136,10 +1143,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub fn #ident(#db_arg, #(#args,) *) -> Result <(),
                         GoodError > {
-                            db.execute(
-                                #q_text,
-                                rusqlite::params![#(#args_forward,) *]
-                            ).map_err(|e| GoodError(e.to_string())) ?;
+                            let query = #q_text;
+                            db.execute(query, rusqlite::params![#(#args_forward,) *]).to_good_error_query(query)?;
                             Ok(())
                         }
                     });
@@ -1151,12 +1156,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                         GoodError > {
-                            let mut stmt = db.prepare(#q_text) ?;
+                            let query = #q_text;
+                            let mut stmt = db.prepare(query).to_good_error_query(query)?;
                             let mut rows =
-                                stmt
-                                    .query(rusqlite::params![#(#args_forward,) *])
-                                    .map_err(|e| GoodError(e.to_string()))?;
-                            let r = rows.next()?;
+                                stmt.query(rusqlite::params![#(#args_forward,) *]).to_good_error_query(query)?;
+                            let r = rows.next().to_good_error(|| format!("Getting row in query [{}]", query))?;
                             if let Some(r) = r {
                                 return Ok(Some(#unforward_res));
                             }
@@ -1171,16 +1175,21 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                         GoodError > {
-                            let mut stmt = db.prepare(#q_text) ?;
+                            let query = #q_text;
+                            let mut stmt = db.prepare(query).to_good_error_query(query)?;
                             let mut rows =
-                                stmt
-                                    .query(rusqlite::params![#(#args_forward,) *])
-                                    .map_err(|e| GoodError(e.to_string()))?;
+                                stmt.query(rusqlite::params![#(#args_forward,) *]).to_good_error_query(query)?;
                             let r =
                                 rows
-                                    .next()?
+                                    .next()
+                                    .to_good_error(|| format!("Getting row in query [{}]", query))?
                                     .ok_or_else(
-                                        || GoodError("Query expected to return one row but returned no rows".into()),
+                                        || GoodError(
+                                            format!(
+                                                "Expected to return one row but returned no rows in query [{}]",
+                                                query
+                                            ),
+                                        ),
                                     )?;
                             Ok(#unforward_res)
                         }
@@ -1194,12 +1203,13 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         pub fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
                         GoodError > {
                             let mut out = vec![];
-                            let mut stmt = db.prepare(#q_text) ?;
+                            let query = #q_text;
+                            let mut stmt = db.prepare(query).to_good_error_query(query)?;
                             let mut rows =
-                                stmt
-                                    .query(rusqlite::params![#(#args_forward,) *])
-                                    .map_err(|e| GoodError(e.to_string()))?;
-                            while let Some(r) = rows.next() ? {
+                                stmt.query(rusqlite::params![#(#args_forward,) *]).to_good_error_query(query)?;
+                            while let Some(
+                                r
+                            ) = rows.next().to_good_error(|| format!("Getting row in query [{}]", query)) ? {
                                 out.push(#unforward_res);
                             }
                             Ok(out)
@@ -1214,33 +1224,34 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
+        use good_ormning_runtime::ToGoodError;
         pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
         GoodError > {
-            db.execute(
-                "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
-                (),
-            )?;
-            db.execute(
-                "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
-                (),
-            )?;
+            {
+                let query =
+                    "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);";
+                db.execute(query, ()).to_good_error_query(query)?;
+            }
+            {
+                let query =
+                    "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;";
+                db.execute(query, ()).to_good_error_query(query)?;
+            }
             loop {
-                let txn = db.transaction()?;
+                let txn = db.transaction().to_good_error(|| "Starting transaction".to_string())?;
                 match(|| {
-                    let mut stmt =
-                        txn.prepare(
-                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
-                        )?;
-                    let mut rows = stmt.query(())?;
-                    let version = match rows.next()? {
+                    let query = "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
+                    let mut stmt = txn.prepare(query).to_good_error_query(query)?;
+                    let mut rows = stmt.query(()).to_good_error_query(query)?;
+                    let version = match rows.next().to_good_error_query(query)? {
                         Some(r) => {
-                            let ver: i64 = r.get(0usize)?;
+                            let ver: i64 = r.get(0usize).to_good_error_query(query)?;
                             ver
                         },
                         None => return Ok(false),
                     };
                     drop(rows);
-                    stmt.finalize()?;
+                    stmt.finalize().to_good_error_query(query)?;
                     if version > #last_version_i {
                         return Err(
                             GoodError(
@@ -1252,12 +1263,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             ),
                         );
                     }
-                    #(
-                        #migrations
-                    ) * txn.execute(
-                        "update __good_version set version = $1, lock = 0",
-                        rusqlite::params![#last_version_i]
-                    ) ?;
+                    #(#migrations) * let query = "update __good_version set version = $1, lock = 0";
+                    txn.execute(query, rusqlite::params![#last_version_i]).to_good_error_query(query)?;
                     let out: Result < bool,
                     GoodError >= Ok(true);
                     out

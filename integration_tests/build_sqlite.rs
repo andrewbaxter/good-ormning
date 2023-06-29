@@ -1,13 +1,19 @@
 use std::path::Path;
 use good_ormning::sqlite::{
     Version,
-    schema::field::{
-        field_str,
-        field_i64,
-        field_i32,
-        field_bool,
-        field_utctime_s,
-        field_utctime_ms,
+    schema::{
+        field::{
+            field_str,
+            field_i64,
+            field_i32,
+            field_bool,
+            field_utctime_s,
+            field_utctime_ms,
+        },
+        constraint::{
+            PrimaryKeyDef,
+            ConstraintType,
+        },
     },
     query::{
         expr::{
@@ -77,6 +83,20 @@ pub fn build(root: &Path) {
             })]).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
         ]).unwrap();
+    }
+
+    // # Primary key
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zEOIWAACJ", "bannanana");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_str().build());
+        bananna.constraint(
+            &mut v,
+            "z2KEN3UL1",
+            "hizat_pk",
+            ConstraintType::PrimaryKey(PrimaryKeyDef { fields: vec![hizat.clone()] }),
+        );
+        generate(&root.join("tests/sqlite_gen_constraint.rs"), vec![(0usize, v)], vec![]).unwrap();
     }
 
     // # (insert) Param: i32

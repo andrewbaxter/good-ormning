@@ -27,8 +27,8 @@ use crate::{
         graph::utils::PgMigrateCtx,
     },
     utils::{
-        sanitize_ident,
         Errs,
+        sanitize_ident,
     },
 };
 use self::{
@@ -860,7 +860,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             let statement = e_res.1.to_string();
             let args = qctx.query_args;
             migration.push(quote!{
-                txn.execute(#statement, &[#(& #args,) *]).await ?;
+                {
+                    let query = #statement;
+                    txn.execute(query, &[#(& #args,) *]).await.to_good_error_query(query) ?;
+                };
             });
         }
 
@@ -914,7 +917,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             crate::graphmigrate::migrate(&mut state, prev_version.take().map(|s| s.schema), &version.schema);
             for statement in &state.statements {
                 migration.push(quote!{
-                    txn.execute(#statement, &[]).await ?;
+                    {
+                        let query = #statement;
+                        txn.execute(query, &[]).await.to_good_error_query(query)?;
+                    };
                 });
             }
         }
@@ -1000,7 +1006,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                     Some(
                                         < #ident as #custom_trait_ident < #ident >>:: from_sql(
                                             x
-                                        ).map_err(|e| GoodError(e.to_string())) ?
+                                        ).to_good_error(|| format!("Parsing result {}", #i)) ?
                                     )
                                 }
                                 else {
@@ -1012,7 +1018,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             unforward = quote!{
                                 #unforward let x =< #ident as #custom_trait_ident < #ident >>:: from_sql(
                                     x
-                                ).map_err(|e| GoodError(e.to_string())) ?;
+                                ).to_good_error(|| format!("Parsing result {}", #i)) ?;
                             };
                         }
                     }
@@ -1076,10 +1082,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result <(),
                         GoodError > {
-                            db.execute(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                            let query = #q_text;
+                            db.execute(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                             Ok(())
                         }
                     });
@@ -1091,10 +1095,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                         GoodError > {
-                            let r = db.query_opt(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                            let query = #q_text;
+                            let r = db.query_opt(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                             if let Some(r) = r {
                                 return Ok(Some(#unforward_res));
                             }
@@ -1109,10 +1111,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     db_others.push(quote!{
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                         GoodError > {
-                            let r = db.query_one(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ?;
+                            let query = #q_text;
+                            let r = db.query_one(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                             Ok(#unforward_res)
                         }
                     });
@@ -1125,10 +1125,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
                         GoodError > {
                             let mut out = vec![];
-                            for r in db.query(
-                                #q_text,
-                                &[#(& #args_forward,) *]
-                            ).await.map_err(|e| GoodError(e.to_string())) ? {
+                            let query = #q_text;
+                            for r in db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ? {
                                 out.push(#unforward_res);
                             }
                             Ok(out)
@@ -1143,39 +1141,34 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
-        #[derive(Debug)] pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
+        use good_ormning_runtime::ToGoodError;
+        pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
         GoodError > {
-            db
-                .execute(
-                    "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
-                    &[],
-                )
-                .await?;
-            db
-                .execute(
-                    "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;",
-                    &[],
-                )
-                .await?;
+            {
+                let query =
+                    "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);";
+                db.execute(query, &[]).await.to_good_error_query(query)?;
+            }
+            {
+                let query =
+                    "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;";
+                db.execute(query, &[]).await.to_good_error_query(query)?;
+            }
             loop {
-                let txn = db.transaction().await?;
+                let txn = db.transaction().await.to_good_error(|| "Failed to start transaction".to_string())?;
                 match(|| {
                     async {
-                        let version =
-                            match txn
-                                .query_opt(
-                                    "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version",
-                                    &[],
-                                )
-                                .await? {
-                                Some(r) => {
-                                    let ver: i64 = r.get("version");
-                                    ver
-                                },
-                                None => {
-                                    return Ok(false);
-                                },
-                            };
+                        let query =
+                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
+                        let version = match txn.query_opt(query, &[]).await.to_good_error_query(query)? {
+                            Some(r) => {
+                                let ver: i64 = r.get("version");
+                                ver
+                            },
+                            None => {
+                                return Ok(false);
+                            },
+                        };
                         if version > #last_version_i {
                             return Err(
                                 GoodError(
@@ -1187,12 +1180,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                 ),
                             );
                         }
-                        #(
-                            #migrations
-                        ) * txn.execute(
-                            "update __good_version set version = $1, lock = 0",
-                            &[& #last_version_i]
-                        ).await ?;
+                        #(#migrations) * {
+                            let query = "update __good_version set version = $1, lock = 0";
+                            txn.execute(query, &[& #last_version_i]).await.to_good_error_query(query) ?;
+                        }
                         let out: Result < bool,
                         GoodError >= Ok(true);
                         out

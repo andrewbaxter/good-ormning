@@ -4,7 +4,6 @@ use crate::{
     sqlite::schema::{
         constraint::{
             Constraint,
-            ConstraintType,
         },
     },
     utils::Tokens,
@@ -33,6 +32,10 @@ impl NodeConstraint_ {
             Comparison::DoNothing
         }
     }
+
+    fn display_path(&self) -> rpds::Vector<String> {
+        rpds::vector![self.def.to_string()]
+    }
 }
 
 impl SqliteNodeDataDispatch for NodeConstraint_ {
@@ -41,40 +44,7 @@ impl SqliteNodeDataDispatch for NodeConstraint_ {
     }
 
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
-        let mut stmt = Tokens::new();
-        stmt.s("alter table").id(&self.def.table.id).s("add constraint").id(&self.def.id);
-        match &self.def.type_ {
-            ConstraintType::PrimaryKey(x) => {
-                stmt.s("primary key (").f(|t| {
-                    for (i, field) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(&field.id);
-                    }
-                }).s(")");
-            },
-            ConstraintType::ForeignKey(x) => {
-                stmt.s("foreign key (").f(|t| {
-                    for (i, pair) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(&pair.0.id);
-                    }
-                }).s(") references ").f(|t| {
-                    for (i, pair) in x.fields.iter().enumerate() {
-                        if i == 0 {
-                            t.id(&pair.1.table.id).s("(");
-                        } else {
-                            t.s(",");
-                        }
-                        t.id(&pair.1.id);
-                    }
-                }).s(")");
-            },
-        }
-        ctx.statements.push(stmt.to_string());
+        ctx.errs.err(&self.display_path(), format!("New constraints cannot be added after a table was created"));
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {

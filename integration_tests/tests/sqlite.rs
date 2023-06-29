@@ -2,6 +2,7 @@ use integration_tests::MyString;
 use anyhow::Result;
 
 pub mod sqlite_gen_base_insert;
+pub mod sqlite_gen_constraint;
 pub mod sqlite_gen_param_i32;
 pub mod sqlite_gen_param_utctime_s;
 pub mod sqlite_gen_param_utctime_ms;
@@ -49,6 +50,13 @@ fn test_base_insert() -> Result<()> {
     sqlite_gen_base_insert::migrate(&mut db)?;
     sqlite_gen_base_insert::insert_banan(&mut db, "soy")?;
     assert_eq!(sqlite_gen_base_insert::get_banan(&mut db)?, "soy");
+    Ok(())
+}
+
+#[test]
+fn test_constraint() -> Result<()> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_base_insert::migrate(&mut db)?;
     Ok(())
 }
 
