@@ -1,6 +1,6 @@
 [package]
 name = "good-ormning"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 license = "ISC"
 description = "Maybe an ORM"
@@ -28,3 +28,6 @@ syn = "1.0.107"
 
 [workspace]
 members = ["integration_tests", "runtime"]
+
+[package.metadata.docs.rs]
+all-features = true
