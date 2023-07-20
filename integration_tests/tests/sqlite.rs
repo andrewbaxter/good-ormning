@@ -1,3 +1,7 @@
+use chrono::{
+    Utc,
+    TimeZone,
+};
 use integration_tests::MyString;
 use anyhow::Result;
 
@@ -111,8 +115,28 @@ fn test_param_opt_i32_null() -> Result<()> {
 fn test_param_custom() -> Result<()> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_custom::migrate(&mut db)?;
-    sqlite_gen_param_custom::insert_banan(&mut db, &MyString("soy".into()))?;
-    assert_eq!(sqlite_gen_param_custom::get_banan(&mut db)?, MyString("soy".into()));
+    let x_0 = integration_tests::MyBool(true);
+    let x_1 = integration_tests::MyI32(13);
+    let x_2 = integration_tests::MyI64(-22);
+    let x_3 = integration_tests::MyU32(14);
+    let x_4 = integration_tests::MyF32(12.);
+    let x_5 = integration_tests::MyF64(99.);
+    let x_6 = integration_tests::MyBytes("hi".as_bytes().to_vec());
+    let x_7 = integration_tests::MyString("hogo".to_string());
+    let x_8 = integration_tests::MyUtctime(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
+    let x_9 = integration_tests::MyUtctime(Utc.with_ymd_and_hms(1999, 6, 14, 10, 13, 57).unwrap());
+    sqlite_gen_param_custom::insert_banan(&mut db, &x_0, &x_1, &x_2, &x_3, &x_4, &x_5, &x_6, &x_7, &x_8, &x_9)?;
+    let res = sqlite_gen_param_custom::get_banan(&mut db)?;
+    assert_eq!(x_0, res.x_0);
+    assert_eq!(x_1, res.x_1);
+    assert_eq!(x_2, res.x_2);
+    assert_eq!(x_3, res.x_3);
+    assert_eq!(x_4, res.x_4);
+    assert_eq!(x_5, res.x_5);
+    assert_eq!(x_6, res.x_6);
+    assert_eq!(x_7, res.x_7);
+    assert_eq!(x_8, res.x_8);
+    assert_eq!(x_9, res.x_9);
     Ok(())
 }
 

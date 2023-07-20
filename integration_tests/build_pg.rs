@@ -6,6 +6,12 @@ use good_ormning::pg::{
         field_i32,
         field_bool,
         field_utctime,
+        field_auto,
+        field_i64,
+        field_f32,
+        field_f64,
+        field_bytes,
+        Field,
     },
     query::{
         expr::{
@@ -19,6 +25,7 @@ use good_ormning::pg::{
             JoinType,
             Order,
         },
+        helpers::set_field,
     },
     generate,
     new_insert,
@@ -107,19 +114,38 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
-    // # (insert) Param: Custom
+    // # (insert) Param: All custom types
     {
         let mut v = Version::default();
         let bananna = v.table("zH2Q9TOLG", "bananna");
-        let hizat =
-            bananna.field(&mut v, "z437INV6D", "hizat", field_str().custom("integration_tests::MyString").build());
+        let mut custom_fields = vec![];
+        for (
+            i,
+            (schema_id, type_),
+        ) in [
+            ("zPZS1I5WW", field_auto().custom("integration_tests::MyAuto").build()),
+            ("z2A5WLQSQ", field_bool().custom("integration_tests::MyBool").build()),
+            ("zC06X4BAF", field_i32().custom("integration_tests::MyI32").build()),
+            ("z9JQDQ8ZB", field_i64().custom("integration_tests::MyI64").build()),
+            ("z2EVMW8C2", field_f32().custom("integration_tests::MyF32").build()),
+            ("zRVNTXIXT", field_f64().custom("integration_tests::MyF64").build()),
+            ("z7QZV8UAK", field_bytes().custom("integration_tests::MyBytes").build()),
+            ("zRERTXTL8", field_str().custom("integration_tests::MyString").build()),
+            ("z014O0O9R", field_utctime().custom("integration_tests::MyUtctime").build()),
+        ]
+            .into_iter()
+            .enumerate() {
+            custom_fields.push(bananna.field(&mut v, schema_id, format!("x_{}", i), type_));
+        }
         generate(&root.join("tests/pg_gen_param_custom.rs"), vec![(0usize, v)], vec![
             // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: hizat.type_.type_.clone(),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+            new_insert(
+                &bananna,
+                custom_fields.iter().map(|f| set_field(f)).collect(),
+            ).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna)
+                .return_fields(&custom_fields.iter().map(|f| f).collect::<Vec<&Field>>())
+                .build_query("get_banan", QueryResCount::One)
         ]).unwrap();
     }
 

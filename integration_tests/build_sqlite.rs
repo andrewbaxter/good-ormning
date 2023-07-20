@@ -9,6 +9,11 @@ use good_ormning::sqlite::{
             field_bool,
             field_utctime_s,
             field_utctime_ms,
+            Field,
+            field_u32,
+            field_f32,
+            field_f64,
+            field_bytes,
         },
         constraint::{
             PrimaryKeyDef,
@@ -28,6 +33,7 @@ use good_ormning::sqlite::{
             Order,
         },
         insert::InsertConflict,
+        helpers::set_field,
     },
     generate,
     new_insert,
@@ -174,19 +180,39 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
-    // # (insert) Param: Custom
+    // # (insert) Param: All custom types
     {
         let mut v = Version::default();
         let bananna = v.table("zH2Q9TOLG", "bananna");
-        let hizat =
-            bananna.field(&mut v, "z437INV6D", "hizat", field_str().custom("integration_tests::MyString").build());
+        let mut custom_fields = vec![];
+        for (
+            i,
+            (schema_id, type_),
+        ) in [
+            ("zPZS1I5WW", field_bool().custom("integration_tests::MyBool").build()),
+            ("zC06X4BAF", field_i32().custom("integration_tests::MyI32").build()),
+            ("z9JQDQ8ZB", field_i64().custom("integration_tests::MyI64").build()),
+            ("zM6UFN0J7", field_u32().custom("integration_tests::MyU32").build()),
+            ("zMSGIBKUC", field_f32().custom("integration_tests::MyF32").build()),
+            ("zQ23DTVF3", field_f64().custom("integration_tests::MyF64").build()),
+            ("zV3TUIVTU", field_bytes().custom("integration_tests::MyBytes").build()),
+            ("z7AJMBYHP", field_str().custom("integration_tests::MyString").build()),
+            ("zCKQAR1KC", field_utctime_s().custom("integration_tests::MyUtctime").build()),
+            ("z6BUG6P8R", field_utctime_ms().custom("integration_tests::MyUtctime").build()),
+        ]
+            .into_iter()
+            .enumerate() {
+            custom_fields.push(bananna.field(&mut v, schema_id, format!("x_{}", i), type_));
+        }
         generate(&root.join("tests/sqlite_gen_param_custom.rs"), vec![(0usize, v)], vec![
             // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: hizat.type_.type_.clone(),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+            new_insert(
+                &bananna,
+                custom_fields.iter().map(|f| set_field(f)).collect(),
+            ).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna)
+                .return_fields(&custom_fields.iter().map(|f| f).collect::<Vec<&Field>>())
+                .build_query("get_banan", QueryResCount::One)
         ]).unwrap();
     }
 

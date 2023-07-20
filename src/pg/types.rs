@@ -23,7 +23,7 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::I32 => "int",
         SimpleSimpleType::I64 => "bigint",
         SimpleSimpleType::F32 => "real",
-        SimpleSimpleType::F64 => "double",
+        SimpleSimpleType::F64 => "double precision",
         SimpleSimpleType::Bool => "bool",
         SimpleSimpleType::String => "text",
         SimpleSimpleType::Bytes => "bytea",

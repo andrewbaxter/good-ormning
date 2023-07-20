@@ -13,10 +13,10 @@ tokio = { version = "1.29.1", features = ["macros", "rt"] }
     "pg",
     "sqlite",
 ] }
+tokio-postgres = { git = "https://github.com/sfackler/rust-postgres", rev = "d16a9cd8956b86c489aad9e5b40490856b466c7e", features = [
+    "with-chrono-0_4",
+] }
+anyhow = "1.0.72"
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "pg", "sqlite"] }
-
-[dev-dependencies]
-anyhow = "1.0.72"
-tokio-postgres = { version = "0.7.8", features = ["with-chrono-0_4"] }

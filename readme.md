@@ -9,17 +9,22 @@ Good-ormning is an ORM, probably? In a nutshell:
 2. Good-ormning generates a function to set up/migrate the database
 3. Good-ormning generates functions for each query
 
+### Why you want it
+
+- You want end to end type safety, from table definition through queries, across versions
+- You want to do everything in Rust, you don't want to need to spin up a database and run SQL manually
+
 ### Features
 
 - No macros
 - No generics
 - No traits (okay, simple traits for custom types to help guide implementations _only_)
-- No boilerplate duplicating stuff in the schema
+- No boilerplate
 - Automatic migrations, no migration-schema mismatches
 - Query parameter type checking - no runtime errors due to parameter types, counts, or ordering
 - Query logic type checking via a query simulation
 - Query result type checking - no runtime errors due to result types, counts, or ordering
-- Fast to generate, low runtime overhead
+- Fast to generate, minimum runtime overhead
 
 Like other Rust ORMs, Good-ormning doesn't abstract away from actual database workflows, but instead aims to enhance type checking with normal SQL.
 
@@ -27,17 +32,15 @@ See Comparisons, below, for information on how Good-ormning differs from other R
 
 ### Current status
 
-Alpha:
-
-- Basic features work
+- Basic features work, this works for my basic uses
 - Moderate test coverage
-- Missing advanced features
+- Missing advanced features - let me know if there's something you want
 - Some ergonomics issues, interfaces may change in upcoming releases
 
 ### Supported databases
 
-- PostgreSQL (feature `pg`)
-- Sqlite (feature `sqlite`)
+- PostgreSQL (feature `pg`) via `tokio-postgres`
+- Sqlite (feature `sqlite`) via `rusqlite`
 
 ## Getting started
 
@@ -104,7 +107,7 @@ fn main() {
         // Versions
         (0usize, latest_version)
     ], vec![
-        // Queries
+        // Latest version queries
         new_insert(&users, vec![(name.clone(), Expr::Param {
             name: "name".into(),
             type_: name.type_.type_.clone(),
@@ -112,6 +115,7 @@ fn main() {
             name: "points".into(),
             type_: points.type_.type_.clone(),
         })]).build_query("create_user", QueryResCount::None),
+
         new_select(&users).where_(Expr::BinOp {
             left: Box::new(Expr::Field(id.clone())),
             op: BinOp::Equals,
@@ -120,12 +124,13 @@ fn main() {
                 type_: id.type_.type_.clone(),
             }),
         }).return_fields(&[&name, &points]).build_query("get_user", QueryResCount::One),
+
         new_select(&users).return_field(&id).build_query("list_users", QueryResCount::Many)
     ]).unwrap();
 }
 ```
 
-Generates this code
+Generates something like:
 
 ```rust,ignore
 pub fn migrate(db: &mut rusqlite::Connection) -> Result<(), GoodError> {
@@ -150,7 +155,7 @@ pub fn list_users(db: &mut rusqlite::Connection) -> Result<Vec<i64>, GoodError> 
 }
 ```
 
-And can be used like
+And can be used like:
 
 ```rust,ignore
 fn main() {
@@ -181,13 +186,15 @@ User 1: rust human
 
 ### Schema IDs and IDs
 
-"Schema IDs" are internal ids used for matching fields across versions, to identify renames, deletes, etc. Schema IDs must not change once used in a version. I recommend using randomly generated IDs, via a macro. Changing Schema IDs is treated like a delete followed by a create.
+"Schema IDs" are internal ids used for matching fields across versions, to identify renames, deletes, etc. Schema IDs must not change once used in a version. I recommend using randomly generated IDs, via a key macro. Changing Schema IDs will result in a delete followed by a create.
 
-"IDs" are used both in SQL (for fields) and Rust (in parameters and returned data structures), so must be valid in both (however, some munging is automatically applied to ids in Rust if they clash with keywords). Depending on the database, you can change IDs arbitrarily between schema versions but swapping IDs in consecutive versions isn't currently supported - if you need to do swaps do it over three different versions (like `v0`: `A` and `B`, `v1`: `A_` and `B`, `v2`: `B` and `A`).
+"IDs" are used both in SQL (for fields) and Rust (in parameters and returned data structures), so must be valid in both (however, some munging is automatically applied to ids in Rust if they clash with keywords). Depending on the database, you can change IDs arbitrarily between schema versions but swapping IDs in consecutive versions isn't currently supported - if you need to do swaps do it over three different versions (ex: `v0`: `A` and `B`, `v1`: `A_` and `B`, `v2`: `B` and `A`).
 
 ### Query, expression and fields types
 
-Use `type_*` `field_*` functions to get type builders for use in expressions/fields. Use `new_insert/select/update/delete` to get a query builder for the associated query type.
+Use `type_*` `field_*` functions to get type builders for use in expressions/fields.
+
+Use `new_insert/select/update/delete` to create query builders.
 
 There are also some helper functions for building queries, see
 
@@ -222,7 +229,7 @@ impl good_ormning_runtime::pg::GoodOrmningCustomString<MyString> for MyString {
 
 Parameters with the same name are deduplicated - if you define a query with multiple parameters of the same name but different types you'll get an error.
 
-Return types with the same contents are similarly deduplicated (methods to make two queries that return the same fields will return the same type).
+Different queries with the same multiple-field returns will use the same return type.
 
 ## Comparisons
 
@@ -266,10 +273,8 @@ Good-ormning is functionally most similar to Diesel.
 
 ### Vs SeaORM
 
-SeaORM focuses on runtime checks rather than compile time checks, so the focus is quite different.
+SeaORM focuses on runtime checks rather than compile time checks.
 
 ## A few words on the future
 
 Obviously writing an SQL VM isn't great. The ideal solution would be for popular databases to expose their type checking routines as libraries so they could be imported into external programs, like how Go publishes reusable ast-parsing and type-checking libraries.
-
-It would be great to provider more flexibility in migrations, but for downtime-less migrations with complex migrations the code also needs to be adjusted significantly. Common advice appears to be to make smaller, incremental, backward-compatible migrations and make larger changes over multiple versions and deploys, which seems a reasonable solution.
