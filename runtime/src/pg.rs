@@ -40,7 +40,7 @@ pub trait GoodOrmningCustomString<T> {
 }
 
 pub trait GoodOrmningCustomBytes<T> {
-    fn to_sql(value: &T) -> &u8;
+    fn to_sql(value: &T) -> &[u8];
     fn from_sql(value: Vec<u8>) -> Result<T, String>;
 }
 
