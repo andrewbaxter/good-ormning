@@ -75,14 +75,32 @@ Alpha:
 This `build.rs` file
 
 ```rust
+use std::{
+    path::PathBuf,
+    env,
+};
+use good_ormning::sqlite::{
+    Version,
+    schema::{
+        field::*,
+        constraint::*,
+    },
+    query::{
+        expr::*,
+        select::*,
+    },
+    *
+};
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    let root = PathBuf::from(&env::var("CARGO_MANIFEST_DIR").unwrap());
     let mut latest_version = Version::default();
     let users = latest_version.table("zQLEK3CT0", "users");
     let id = users.rowid_field(&mut latest_version, None);
     let name = users.field(&mut latest_version, "zLQI9HQUQ", "name", field_str().build());
     let points = users.field(&mut latest_version, "zLAPH3H29", "points", field_i64().build());
-    goodormning::sqlite::generate(&root.join("tests/sqlite_gen_hello_world.rs"), vec![
+    good_ormning::sqlite::generate(&root.join("tests/sqlite_gen_hello_world.rs"), vec![
         // Versions
         (0usize, latest_version)
     ], vec![
@@ -109,100 +127,13 @@ fn main() {
 
 Generates this code
 
-```rust
-#[derive(Debug)]
-pub struct GoodError(pub String);
-
-impl std::fmt::Display for GoodError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for GoodError { }
-
-impl From<rusqlite::Error> for GoodError {
-    fn from(value: rusqlite::Error) -> Self {
-        GoodError(value.to_string())
-    }
-}
-
+```rust,ignore
 pub fn migrate(db: &mut rusqlite::Connection) -> Result<(), GoodError> {
-    db.execute(
-        "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);",
-        (),
-    )?;
-    db.execute("insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;", ())?;
-    loop {
-        let txn = db.transaction()?;
-        match (|| {
-            let mut stmt =
-                txn.prepare("update __good_version set lock = 1 where rid = 0 and lock = 0 returning version")?;
-            let mut rows = stmt.query(())?;
-            let version = match rows.next()? {
-                Some(r) => {
-                    let ver: i64 = r.get(0usize)?;
-                    ver
-                },
-                None => return Ok(false),
-            };
-            drop(rows);
-            stmt.finalize()?;
-            if version > 0i64 {
-                return Err(
-                    GoodError(
-                        format!(
-                            "The latest known version is {}, but the schema is at unknown version {}",
-                            0i64,
-                            version
-                        ),
-                    ),
-                );
-            }
-            if version < 0i64 {
-                txn.execute("create table \"users\" ( \"name\" text not null , \"points\" integer not null )", ())?;
-            }
-            txn.execute("update __good_version set version = $1, lock = 0", rusqlite::params![0i64])?;
-            let out: Result<bool, GoodError> = Ok(true);
-            out
-        })() {
-            Err(e) => {
-                match txn.rollback() {
-                    Err(e1) => {
-                        return Err(
-                            GoodError(
-                                format!("{}\n\nRolling back the transaction due to the above also failed: {}", e, e1),
-                            ),
-                        );
-                    },
-                    Ok(_) => {
-                        return Err(e);
-                    },
-                };
-            },
-            Ok(migrated) => {
-                match txn.commit() {
-                    Err(e) => {
-                        return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                    },
-                    Ok(_) => {
-                        if migrated {
-                            return Ok(())
-                        } else {
-                            std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
-                        }
-                    },
-                };
-            },
-        }
-    }
+    // ...
 }
 
 pub fn create_user(db: &mut rusqlite::Connection, name: &str, points: i64) -> Result<(), GoodError> {
-    db
-        .execute("insert into \"users\" ( \"name\" , \"points\" ) values ( $1 , $2 )", rusqlite::params![name, points])
-        .map_err(|e| GoodError(e.to_string()))?;
-    Ok(())
+    // ...
 }
 
 pub struct DbRes1 {
@@ -211,42 +142,17 @@ pub struct DbRes1 {
 }
 
 pub fn get_user(db: &mut rusqlite::Connection, id: i64) -> Result<DbRes1, GoodError> {
-    let mut stmt =
-        db.prepare(
-            "select \"users\" . \"name\" , \"users\" . \"points\" from \"users\" where ( \"users\" . \"rowid\" = $1 )",
-        )?;
-    let mut rows = stmt.query(rusqlite::params![id]).map_err(|e| GoodError(e.to_string()))?;
-    let r = rows.next()?.ok_or_else(|| GoodError("Query expected to return one row but returned no rows".into()))?;
-    Ok(DbRes1 {
-        name: {
-            let x: String = r.get(0usize)?;
-            x
-        },
-        points: {
-            let x: i64 = r.get(1usize)?;
-            x
-        },
-    })
+    // ...
 }
 
 pub fn list_users(db: &mut rusqlite::Connection) -> Result<Vec<i64>, GoodError> {
-    let mut out = vec![];
-    let mut stmt = db.prepare("select \"users\" . \"rowid\" from \"users\"")?;
-    let mut rows = stmt.query(rusqlite::params![]).map_err(|e| GoodError(e.to_string()))?;
-    while let Some(r) = rows.next()? {
-        out.push({
-            let x: i64 = r.get(0usize)?;
-            x
-        });
-    }
-    Ok(out)
+    // ...
 }
-
 ```
 
 And can be used like
 
-```rust
+```rust,ignore
 fn main() {
     use sqlite_gen_hello_world as queries;
 
@@ -261,7 +167,7 @@ fn main() {
 }
 ```
 
-```
+```markdown
 User 1: rust human
 ```
 
@@ -301,7 +207,7 @@ The type must have methods to convert to/from the native SQL types. There are tr
 ```rust
 pub struct MyString(pub String);
 
-impl pg::GoodOrmningCustomString<MyString> for MyString {
+impl good_ormning_runtime::pg::GoodOrmningCustomString<MyString> for MyString {
     fn to_sql(value: &MyString) -> &str {
         &value.0
     }

@@ -15,19 +15,27 @@ pg = []
 sqlite = []
 
 [dependencies]
-chrono = { version = "0.4.23", optional = true }
-enum_dispatch = "0.3.9"
-genemichaels = "0.1.15"
+chrono = { version = "0.4.26", optional = true }
+enum_dispatch = "0.3.12"
+genemichaels = "0.1.21"
 hex = "0.4.3"
-proc-macro2 = "1.0.49"
-quote = "1.0.23"
+proc-macro2 = "1.0.66"
+quote = "1.0.31"
 rpds = "0.12.0"
 samevariant = "0.0.1"
 stable-hash = "0.4.3"
-syn = "1.0.107"
+syn = "1.0.109"
 
 [workspace]
 members = ["integration_tests", "runtime"]
+
+[dev-dependencies]
+good-ormning-runtime = { path = "runtime", features = [
+    "pg",
+    "sqlite",
+    "chrono",
+] }
+rusqlite = "0.28.0"
 
 [package.metadata.docs.rs]
 all-features = true
