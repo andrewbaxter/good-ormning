@@ -141,7 +141,7 @@ pub fn build(root: &Path) {
             // Queries
             new_insert(
                 &bananna,
-                custom_fields.iter().map(|f| set_field(f)).collect(),
+                custom_fields.iter().map(|f| set_field(&f.id, f)).collect(),
             ).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna)
                 .return_fields(&custom_fields.iter().map(|f| f).collect::<Vec<&Field>>())
