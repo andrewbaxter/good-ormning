@@ -1,47 +1,51 @@
 use std::path::Path;
-use good_ormning::sqlite::{
-    Version,
-    schema::{
-        field::{
-            field_str,
-            field_i64,
-            field_i32,
-            field_bool,
-            field_utctime_s,
-            field_utctime_ms,
-            Field,
-            field_u32,
-            field_f32,
-            field_f64,
-            field_bytes,
+use good_ormning::{
+    sqlite::{
+        Version,
+        schema::{
+            field::{
+                field_str,
+                field_i64,
+                field_i32,
+                field_bool,
+                field_utctime_s,
+                field_utctime_ms,
+                Field,
+                field_u32,
+                field_f32,
+                field_f64,
+                field_bytes,
+            },
+            constraint::{
+                PrimaryKeyDef,
+                ConstraintType,
+            },
         },
-        constraint::{
-            PrimaryKeyDef,
-            ConstraintType,
+        query::{
+            expr::{
+                Expr,
+                BinOp,
+                ComputeType,
+            },
+            select::{
+                Join,
+                NamedSelectSource,
+                JoinSource,
+                JoinType,
+                Order,
+            },
+            insert::InsertConflict,
+            helpers::set_field,
         },
+        generate,
+        new_insert,
+        QueryResCount,
+        new_select,
+        new_update,
+        new_delete,
+        types::type_i32,
     },
-    query::{
-        expr::{
-            Expr,
-            BinOp,
-        },
-        select::{
-            Join,
-            NamedSelectSource,
-            JoinSource,
-            JoinType,
-            Order,
-        },
-        insert::InsertConflict,
-        helpers::set_field,
-    },
-    generate,
-    new_insert,
-    QueryResCount,
-    new_select,
-    new_update,
-    new_delete,
-    types::type_i32,
+    break_shed,
 };
 
 pub fn build(root: &Path) {
@@ -513,8 +517,48 @@ pub fn build(root: &Path) {
             })]).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna).return_named("hizat2", Expr::Call {
                 func: "sum".into(),
-                type_: type_i32().build(),
                 args: vec![Expr::Field(hizat2.clone())],
+                compute_type: ComputeType::new(|ctx, path, args| {
+                    break_shed!{
+                        if args.len() != 1 {
+                            ctx.errs.err(path, format!("Sum needs exactly one arg, got {}", args.len()));
+                        }
+                        let Some(arg) = args.iter().next() else {
+                            break;
+                        };
+                        if arg.0.len() != 1 {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!(
+                                        "Sum argument must be a primitive, but got a record with {} elements",
+                                        arg.0.len()
+                                    ),
+                                );
+                        }
+                        let Some(type_) = arg.0.iter().next() else {
+                            break;
+                        };
+                        if !match type_.1.type_.type_ {
+                            good_ormning::sqlite::types::SimpleSimpleType::U32 |
+                            good_ormning::sqlite::types::SimpleSimpleType::I32 |
+                            good_ormning::sqlite::types::SimpleSimpleType::I64 |
+                            good_ormning::sqlite::types::SimpleSimpleType::F32 |
+                            good_ormning::sqlite::types::SimpleSimpleType::F64 => true,
+                            _ => false,
+                        } {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!("Sum argument must be a numeric type, but fot {:?}", type_.1.type_.type_),
+                                );
+                        }
+                    };
+
+                    return Some(type_i32().build());
+                }),
             }).group(vec![Expr::Field(hizat.clone())]).build_query("get_banan", QueryResCount::Many)
         ]).unwrap();
     }

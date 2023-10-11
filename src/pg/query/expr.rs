@@ -1,3 +1,4 @@
+use chrono::FixedOffset;
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
@@ -13,6 +14,7 @@ use syn::Path;
 use std::{
     collections::HashMap,
     fmt::Display,
+    rc::Rc,
 };
 use crate::{
     pg::{
@@ -41,6 +43,25 @@ use super::{
     select::Select,
 };
 
+/// This is used for function expressions, to check the argument types and compute
+/// a result type from them.  See readme for details.
+#[derive(Clone)]
+pub struct ComputeType(Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type>>);
+
+impl ComputeType {
+    pub fn new(
+        f: impl Fn(&mut PgQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type> + 'static,
+    ) -> ComputeType {
+        return ComputeType(Rc::new(f));
+    }
+}
+
+impl std::fmt::Debug for ComputeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return f.write_str("ComputeType");
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Expr {
     // A null value needs a type for type checking purposes. It will always be trated
@@ -56,6 +77,8 @@ pub enum Expr {
     LitBytes(Vec<u8>),
     #[cfg(feature = "chrono")]
     LitUtcTime(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTime(DateTime<FixedOffset>),
     /// A query parameter. This will become a parameter to the generated Rust function
     /// with the specified `name` and `type_`.
     Param {
@@ -82,13 +105,13 @@ pub enum Expr {
         op: PrefixOp,
         right: Box<Expr>,
     },
-    /// Represents a call to an SQL function, like `collate()`. You must provide the
-    /// type of the result since we don't have a table of functions and their return
-    /// types at present.
+    /// Represents a call to an SQL function, like `collate()`. You must provide a
+    /// helper to check and determine type of the result since we don't have a table of
+    /// functions and their return types at present.
     Call {
         func: String,
-        type_: Type,
         args: Vec<Expr>,
+        compute_type: ComputeType,
     },
     /// A sub SELECT query.
     Select(Box<Select>),
@@ -140,7 +163,7 @@ impl Display for ExprValName {
     }
 }
 
-pub struct ExprType(pub(crate) Vec<(ExprValName, Type)>);
+pub struct ExprType(pub Vec<(ExprValName, Type)>);
 
 impl ExprType {
     pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<(ExprValName, Type)> {
@@ -175,6 +198,8 @@ pub(crate) fn general_type(t: &Type) -> GeneralType {
         SimpleSimpleType::Bytes => GeneralType::Blob,
         #[cfg(feature = "chrono")]
         SimpleSimpleType::UtcTime => GeneralType::Numeric,
+        #[cfg(feature = "chrono")]
+        SimpleSimpleType::FixedOffsetTime => GeneralType::Numeric,
     }
 }
 
@@ -477,6 +502,13 @@ impl Expr {
                 out.s(&format!("'{}'", d));
                 return empty_type!(out, SimpleSimpleType::UtcTime);
             },
+            #[cfg(feature = "chrono")]
+            Expr::LitFixedOffsetTime(d) => {
+                let mut out = Tokens::new();
+                let d = d.to_rfc3339();
+                out.s(&format!("'{}'", d));
+                return empty_type!(out, SimpleSimpleType::FixedOffsetTime);
+            },
             Expr::Param { name: x, type_: t } => {
                 let path = path.push_back(format!("Param ({})", x));
                 let mut out = Tokens::new();
@@ -574,7 +606,8 @@ impl Expr {
                 out.s(op_text).s(&res.1.to_string());
                 return empty_type!(out, op_type);
             },
-            Expr::Call { func, type_, args } => {
+            Expr::Call { func, args, compute_type } => {
+                let mut types = vec![];
                 let mut out = Tokens::new();
                 out.s(func);
                 out.s("(");
@@ -582,11 +615,19 @@ impl Expr {
                     if i > 0 {
                         out.s(",");
                     }
-                    let (_, tokens) = arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    let (arg_type, tokens) =
+                        arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    types.push(arg_type);
                     out.s(&tokens.to_string());
                 }
                 out.s(")");
-                return (ExprType(vec![(ExprValName::empty(), type_.clone())]), out);
+                let type_ = match (compute_type.0)(ctx, path, types) {
+                    Some(t) => t,
+                    None => {
+                        return (ExprType(vec![]), Tokens::new());
+                    },
+                };
+                return (ExprType(vec![(ExprValName::empty(), type_)]), out);
             },
             Expr::Select(s) => {
                 let path = path.push_back(format!("Subselect"));

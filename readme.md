@@ -225,6 +225,16 @@ impl good_ormning_runtime::pg::GoodOrmningCustomString<MyString> for MyString {
 }
 ```
 
+### Methods
+
+The `Expr::Call` variant allows you to create method call expressions. You must provide in `compute_type` a helper method to type-check the arguments and determine the type of the evaluation of the call.
+
+The first parameter is the evaluation context, which contains `errs` for reporting errors. The second is a path from the evaluation tree root up to the call, for identifying where in a query expression errors occur. The third argument is a vec of arguments passed to the call. Each argument can be a single type or a record consisting of multiple types (like in `()` in `where (x, y, z) < (b.x, b.y, b.z)`). If there are no errors, this must return `Some(...)`.
+
+Error handling is lazy during expression checking - even if an error occurs, processing can continue (and identify more errors before aborting). All errors are fatal, they just don't cause an abort immediately.
+
+If there are errors, record the errors in `ctx.errs.err(path.add(format!("Argument 0")), format!("Error"))`. If evaluation within the call cannot continue, return `None`, otherwise continue.
+
 ### Parameters and return types
 
 Parameters with the same name are deduplicated - if you define a query with multiple parameters of the same name but different types you'll get an error.

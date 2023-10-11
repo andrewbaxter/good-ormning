@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use chrono::{
     DateTime,
     Utc,
+    FixedOffset,
 };
 
 pub trait GoodOrmningCustomAuto<T> {
@@ -49,4 +50,10 @@ pub trait GoodOrmningCustomBytes<T> {
 pub trait GoodOrmningCustomUtcTime<T> {
     fn to_sql(value: &T) -> DateTime<Utc>;
     fn from_sql(value: DateTime<Utc>) -> Result<T, String>;
+}
+
+#[cfg(feature = "chrono")]
+pub trait GoodOrmningCustomFixedOffsetTime<T> {
+    fn to_sql(value: &T) -> DateTime<FixedOffset>;
+    fn from_sql(value: DateTime<FixedOffset>) -> Result<T, String>;
 }

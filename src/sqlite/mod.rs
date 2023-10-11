@@ -1045,6 +1045,18 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                     );
                             }
                         },
+                        #[cfg(feature = "chrono")]
+                        types::SimpleSimpleType::FixedOffsetTimeMs => {
+                            quote!{
+                                let x: String = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
+                                let x =
+                                    chrono::DateTime::<chrono::FixedOffset>::from(
+                                        chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
+                                            &x,
+                                        ).to_good_error(|| format!("Getting result {}", #i))?,
+                                    );
+                            }
+                        },
                     };
                     if let Some(custom) = &v.type_.custom {
                         ident = match syn::parse_str::<syn::Path>(&custom) {

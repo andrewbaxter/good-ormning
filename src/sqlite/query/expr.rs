@@ -13,6 +13,7 @@ use syn::Path;
 use std::{
     collections::HashMap,
     fmt::Display,
+    rc::Rc,
 };
 use crate::{
     sqlite::{
@@ -40,6 +41,25 @@ use super::{
     utils::SqliteQueryCtx,
     select::Select,
 };
+
+/// This is used for function expressions, to check the argument types and compute
+/// a result type from them.  See readme for details.
+#[derive(Clone)]
+pub struct ComputeType(Rc<dyn Fn(&mut SqliteQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type>>);
+
+impl ComputeType {
+    pub fn new(
+        f: impl Fn(&mut SqliteQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type> + 'static,
+    ) -> ComputeType {
+        return ComputeType(Rc::new(f));
+    }
+}
+
+impl std::fmt::Debug for ComputeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return f.write_str("ComputeType");
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Expr {
@@ -89,8 +109,9 @@ pub enum Expr {
     /// types at present.
     Call {
         func: String,
-        type_: Type,
         args: Vec<Expr>,
+        /// Checks the input types and computes the resulting type
+        compute_type: ComputeType,
     },
     /// A sub SELECT query.
     Select(Box<Select>),
@@ -142,7 +163,7 @@ impl Display for ExprValName {
     }
 }
 
-pub struct ExprType(pub(crate) Vec<(ExprValName, Type)>);
+pub struct ExprType(pub Vec<(ExprValName, Type)>);
 
 impl ExprType {
     pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<(ExprValName, Type)> {
@@ -184,6 +205,8 @@ pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<Str
             SimpleSimpleType::UtcTimeS => GeneralType::Numeric,
             #[cfg(feature = "chrono")]
             SimpleSimpleType::UtcTimeMs => GeneralType::Blob,
+            #[cfg(feature = "chrono")]
+            SimpleSimpleType::FixedOffsetTimeMs => GeneralType::Blob,
         }
     }
 
@@ -287,6 +310,23 @@ pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, 
     }
 }
 
+pub(crate) fn check_utc_if_time(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+    for (i, el) in t.0.iter().enumerate() {
+        if matches!(el.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMs) {
+            ctx.errs.err(
+                &if t.0.len() == 1 {
+                    path.clone()
+                } else {
+                    path.push_back(format!("Record pair {}", i))
+                },
+                format!(
+                    "Datetimes with non-utc offsets may not be used in normal binary operators - use the `Tz` operators instead"
+                ),
+            );
+        }
+    }
+}
+
 pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, a: &Type, b: &ExprType) {
     check_same(errs, path, &ExprType(vec![(ExprValName::empty(), a.clone())]), b);
 }
@@ -370,10 +410,22 @@ impl Expr {
                 BinOp::NotEquals |
                 BinOp::Is |
                 BinOp::IsNot |
+                BinOp::TzEquals |
+                BinOp::TzNotEquals |
+                BinOp::TzIs |
+                BinOp::TzIsNot |
                 BinOp::LessThan |
                 BinOp::LessThanEqualTo |
                 BinOp::GreaterThan |
                 BinOp::GreaterThanEqualTo => {
+                    if match op {
+                        BinOp::TzEquals | BinOp::TzNotEquals | BinOp::TzIs | BinOp::TzIsNot => false,
+                        _ => true,
+                    } {
+                        for (i, el) in res.iter().enumerate() {
+                            check_utc_if_time(ctx, &path.push_back(format!("Operand {}", i)), &el.0);
+                        }
+                    }
                     let base = res.get(0).unwrap();
                     check_general_same(
                         ctx,
@@ -404,6 +456,10 @@ impl Expr {
                 BinOp::NotEquals => "!=",
                 BinOp::Is => "is",
                 BinOp::IsNot => "is not",
+                BinOp::TzEquals => "=",
+                BinOp::TzNotEquals => "!=",
+                BinOp::TzIs => "is",
+                BinOp::TzIsNot => "is not",
                 BinOp::LessThan => "<",
                 BinOp::LessThanEqualTo => "<=",
                 BinOp::GreaterThan => ">",
@@ -537,6 +593,8 @@ impl Expr {
                             SimpleSimpleType::UtcTimeS => quote!(#rust_forward.timestamp()),
                             #[cfg(feature = "chrono")]
                             SimpleSimpleType::UtcTimeMs => quote!(#rust_forward.to_rfc3339()),
+                            #[cfg(feature = "chrono")]
+                            SimpleSimpleType::FixedOffsetTimeMs => quote!(#rust_forward.to_rfc3339()),
                         };
                         if t.opt {
                             rust_type = quote!(Option < #rust_type >);
@@ -600,7 +658,8 @@ impl Expr {
                 out.s(op_text).s(&res.1.to_string());
                 return empty_type!(out, op_type);
             },
-            Expr::Call { func, type_, args } => {
+            Expr::Call { func, args, compute_type } => {
+                let mut types = vec![];
                 let mut out = Tokens::new();
                 out.s(func);
                 out.s("(");
@@ -608,11 +667,19 @@ impl Expr {
                     if i > 0 {
                         out.s(",");
                     }
-                    let (_, tokens) = arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    let (arg_type, tokens) =
+                        arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
+                    types.push(arg_type);
                     out.s(&tokens.to_string());
                 }
                 out.s(")");
-                return (ExprType(vec![(ExprValName::empty(), type_.clone())]), out);
+                let type_ = match (compute_type.0)(ctx, &path, types) {
+                    Some(t) => t,
+                    None => {
+                        return (ExprType(vec![]), Tokens::new());
+                    },
+                };
+                return (ExprType(vec![(ExprValName::empty(), type_)]), out);
             },
             Expr::Select(s) => {
                 let path = path.push_back(format!("Subselect"));
@@ -634,6 +701,12 @@ impl Expr {
     }
 }
 
+/// Datetimes with fixed offsets must be converted to utc before comparison.
+///
+/// The Tz operators are for working with datetimes with fied offsets where you
+/// _want_ to not consider datetimes referring to the same instant but with
+/// different timezones equal (that is, to be equal both the time and timezone must
+/// match). I think this is probably a rare use case.
 #[derive(Clone, Debug)]
 pub enum BinOp {
     Plus,
@@ -646,6 +719,10 @@ pub enum BinOp {
     NotEquals,
     Is,
     IsNot,
+    TzEquals,
+    TzNotEquals,
+    TzIs,
+    TzIsNot,
     LessThan,
     LessThanEqualTo,
     GreaterThan,

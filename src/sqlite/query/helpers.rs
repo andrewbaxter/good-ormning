@@ -1,7 +1,18 @@
-use crate::sqlite::schema::field::Field;
+use crate::{
+    sqlite::{
+        schema::field::Field,
+        types::{
+            SimpleSimpleType,
+            Type,
+            SimpleType,
+        },
+    },
+    break_shed,
+};
 use super::expr::{
     Expr,
     BinOp,
+    ComputeType,
 };
 
 /// Generates a field element for instert and update statements, to set a field
@@ -88,5 +99,55 @@ pub fn expr_and(exprs: Vec<Expr>) -> Expr {
     Expr::BinOpChain {
         op: BinOp::And,
         exprs: exprs,
+    }
+}
+
+pub fn as_utc(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "datetime".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType::new(|ctx, path, args| {
+            break_shed!{
+                if args.len() != 1 {
+                    ctx.errs.err(path, format!("Method needs exactly one arg, got {}", args.len()));
+                }
+                let Some(arg) = args.iter().next() else {
+                    break;
+                };
+                if arg.0.len() != 1 {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "Method argument must be a primitive, but got a record with {} elements",
+                                arg.0.len()
+                            ),
+                        );
+                }
+                let Some(type_) = arg.0.iter().next() else {
+                    break;
+                };
+                if !matches!(type_.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMs) {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "This method only operates on fixed-offset timestamps, but the argument is of type {:?}",
+                                type_.1.type_.type_
+                            ),
+                        );
+                }
+            };
+
+            return Some(Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::UtcTimeMs,
+                    custom: None,
+                },
+                opt: false,
+            });
+        }),
     }
 }

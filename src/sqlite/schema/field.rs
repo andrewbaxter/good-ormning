@@ -152,6 +152,11 @@ pub fn field_utctime_ms() -> FieldBuilder {
     FieldBuilder::new(SimpleSimpleType::UtcTimeMs)
 }
 
+#[cfg(feature = "chrono")]
+pub fn field_fixed_offset_time_ms() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::FixedOffsetTimeMs)
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SchemaFieldId(pub String);
 

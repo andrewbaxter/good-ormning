@@ -28,7 +28,7 @@ use super::{
 
 pub struct SqliteQueryCtx<'a> {
     pub(crate) tables: &'a HashMap<Table, HashMap<Field, Type>>,
-    pub(crate) errs: Errs,
+    pub errs: Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
     pub(crate) query_args: Vec<TokenStream>,

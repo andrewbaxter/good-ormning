@@ -15,6 +15,8 @@ pub enum SimpleSimpleType {
     Bytes,
     #[cfg(feature = "chrono")]
     UtcTime,
+    #[cfg(feature = "chrono")]
+    FixedOffsetTime,
 }
 
 pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
@@ -29,6 +31,8 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::Bytes => "bytea",
         #[cfg(feature = "chrono")]
         SimpleSimpleType::UtcTime => "timestamp with time zone",
+        #[cfg(feature = "chrono")]
+        SimpleSimpleType::FixedOffsetTime => "timestamp with time zone",
     }
 }
 
@@ -79,6 +83,12 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomUtcTime),
             ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
             arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
+        },
+        #[cfg(feature = "chrono")]
+        SimpleSimpleType::FixedOffsetTime => RustTypes {
+            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomFixedOffsetTime),
+            ret_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
+            arg_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
         },
     }
 }

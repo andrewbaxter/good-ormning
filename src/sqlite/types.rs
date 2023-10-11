@@ -19,6 +19,9 @@ pub enum SimpleSimpleType {
     /// Time with millisecond granularity, stored as string
     #[cfg(feature = "chrono")]
     UtcTimeMs,
+    /// Time with millisecond granularity, stored as string
+    #[cfg(feature = "chrono")]
+    FixedOffsetTimeMs,
 }
 
 #[doc(hidden)]
@@ -36,6 +39,8 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::UtcTimeS => "integer",
         #[cfg(feature = "chrono")]
         SimpleSimpleType::UtcTimeMs => "text",
+        #[cfg(feature = "chrono")]
+        SimpleSimpleType::FixedOffsetTimeMs => "text",
     }
 }
 
@@ -92,6 +97,12 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomUtcTime),
             ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
             arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
+        },
+        #[cfg(feature = "chrono")]
+        SimpleSimpleType::FixedOffsetTimeMs => RustTypes {
+            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomFixedOffsetTime),
+            ret_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
+            arg_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
         },
     }
 }
