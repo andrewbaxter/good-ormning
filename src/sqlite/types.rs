@@ -199,3 +199,8 @@ pub fn type_utctime_s() -> TypeBuilder {
 pub fn type_utctime_ms() -> TypeBuilder {
     TypeBuilder::new(SimpleSimpleType::UtcTimeMs)
 }
+
+#[cfg(feature = "chrono")]
+pub fn type_fixedoffsettime_ms() -> TypeBuilder {
+    TypeBuilder::new(SimpleSimpleType::FixedOffsetTimeMs)
+}

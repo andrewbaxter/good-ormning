@@ -104,27 +104,11 @@ pub fn expr_and(exprs: Vec<Expr>) -> Expr {
 
 pub fn as_utc(expr: Expr) -> Expr {
     return Expr::Call {
-        func: "datetime".to_string(),
-        args: vec![expr],
+        func: "strftime".to_string(),
+        args: vec![Expr::LitString("%Y-%m-%dT%H:%M:%f".to_string()), expr],
         compute_type: ComputeType::new(|ctx, path, args| {
             break_shed!{
-                if args.len() != 1 {
-                    ctx.errs.err(path, format!("Method needs exactly one arg, got {}", args.len()));
-                }
-                let Some(arg) = args.iter().next() else {
-                    break;
-                };
-                if arg.0.len() != 1 {
-                    ctx
-                        .errs
-                        .err(
-                            path,
-                            format!(
-                                "Method argument must be a primitive, but got a record with {} elements",
-                                arg.0.len()
-                            ),
-                        );
-                }
+                let arg = args.get(1).unwrap();
                 let Some(type_) = arg.0.iter().next() else {
                     break;
                 };
