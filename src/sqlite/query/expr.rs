@@ -310,6 +310,7 @@ pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, 
     }
 }
 
+#[cfg(feature = "chrono")]
 pub(crate) fn check_utc_if_time(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     for (i, el) in t.0.iter().enumerate() {
         if matches!(el.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMs) {
@@ -448,6 +449,7 @@ impl Expr {
                 BinOp::LessThanEqualTo |
                 BinOp::GreaterThan |
                 BinOp::GreaterThanEqualTo => {
+                    #[cfg(feature = "chrono")]
                     if match op {
                         BinOp::TzEquals | BinOp::TzNotEquals | BinOp::TzIs | BinOp::TzIsNot => false,
                         _ => true,
