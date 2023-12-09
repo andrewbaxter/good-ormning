@@ -408,7 +408,10 @@ pub fn build(root: &Path) {
                 name: "text".into(),
                 type_: hizat.type_.type_.clone(),
             })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).limit(2).build_query("get_banan", QueryResCount::Many)
+            new_select(&bananna)
+                .return_field(&hizat)
+                .limit(Expr::LitI32(2))
+                .build_query("get_banan", QueryResCount::Many)
         ]).unwrap();
     }
 

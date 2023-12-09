@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use crate::{
     utils::Tokens,
     pg::{
-        types::Type,
+        types::{
+            Type,
+            type_i64,
+        },
         QueryResCount,
         schema::{
             table::Table,
@@ -20,6 +23,7 @@ use super::{
         ExprType,
         check_bool,
         ExprValName,
+        check_general_same,
     },
 };
 
@@ -103,7 +107,7 @@ pub struct Select {
     pub where_: Option<Expr>,
     pub group: Vec<Expr>,
     pub order: Vec<(Expr, Order)>,
-    pub limit: Option<usize>,
+    pub(crate) limit: Option<Expr>,
 }
 
 impl QueryBody for Select {
@@ -198,9 +202,12 @@ impl QueryBody for Select {
                 });
             }
         }
-        if let Some(l) = self.limit {
+        if let Some(l) = &self.limit {
             out.s("limit");
-            out.s(&format!("{}", l));
+            let path = path.push_back("Limit".into());
+            let (limit_t, limit_tokens) = l.build(ctx, &path, &scope);
+            check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), type_i64().build())]));
+            out.s(&limit_tokens.to_string());
         }
         (out_type, out)
     }

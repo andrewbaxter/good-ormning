@@ -163,16 +163,16 @@ impl InsertBuilder {
         self
     }
 
-    // Produce a migration for use in version pre/post-migration.
+    /// Produce a migration for use in version pre/post-migration.
     pub fn build_migration(self) -> Insert {
         self.q
     }
 
-    // Produce a query object.
-    //
-    // # Arguments
-    //
-    // * `name` - This is used as the name of the rust function.
+    /// Produce a query object.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - This is used as the name of the rust function.
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
         Query {
             name: name.to_string(),
@@ -182,8 +182,8 @@ impl InsertBuilder {
         }
     }
 
-    // Same as `build_query`, but specify a name for the result structure. Only valid
-    // if result is a record (not a single value).
+    /// Same as `build_query`, but specify a name for the result structure. Only valid
+    /// if result is a record (not a single value).
     pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
         Query {
             name: name.to_string(),
@@ -265,21 +265,22 @@ impl SelectBuilder {
         self
     }
 
-    pub fn limit(mut self, v: usize) -> Self {
+    /// Sets `LIMIT`. `v` must evaluate to a number.
+    pub fn limit(mut self, v: Expr) -> Self {
         self.q.limit = Some(v);
         self
     }
 
-    // Produce a migration for use in version pre/post-migration.
+    /// Produce a migration for use in version pre/post-migration.
     pub fn build_migration(self) -> Select {
         self.q
     }
 
-    // Produce a query object.
-    //
-    // # Arguments
-    //
-    // * `name` - This is used as the name of the rust function.
+    /// Produce a query object.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - This is used as the name of the rust function.
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
         Query {
             name: name.to_string(),

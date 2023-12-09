@@ -357,8 +357,38 @@ impl Expr {
             op: &BinOp,
             exprs: &Vec<Expr>,
         ) -> (ExprType, Tokens) {
-            if exprs.len() < 2 {
-                ctx.errs.err(path, format!("Binary ops must have at least two operands, but got {}", exprs.len()));
+            let operand_lower_limit;
+            match op {
+                BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide | BinOp::And | BinOp::Or => {
+                    operand_lower_limit = 1;
+                },
+                BinOp::Equals |
+                BinOp::NotEquals |
+                BinOp::Is |
+                BinOp::IsNot |
+                BinOp::TzEquals |
+                BinOp::TzNotEquals |
+                BinOp::TzIs |
+                BinOp::TzIsNot |
+                BinOp::LessThan |
+                BinOp::LessThanEqualTo |
+                BinOp::GreaterThan |
+                BinOp::GreaterThanEqualTo => {
+                    operand_lower_limit = 2;
+                },
+            };
+            if exprs.len() < operand_lower_limit {
+                ctx
+                    .errs
+                    .err(
+                        path,
+                        format!(
+                            "{:?} must have at least {} operand(s), but got {}",
+                            op,
+                            operand_lower_limit,
+                            exprs.len()
+                        ),
+                    );
             }
             let mut res = vec![];
             for (i, e) in exprs.iter().enumerate() {
