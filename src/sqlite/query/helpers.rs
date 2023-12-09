@@ -102,6 +102,7 @@ pub fn expr_and(exprs: Vec<Expr>) -> Expr {
     }
 }
 
+#[cfg(feature = "chrono")]
 pub fn as_utc(expr: Expr) -> Expr {
     return Expr::Call {
         func: "strftime".to_string(),
