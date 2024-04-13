@@ -14,10 +14,6 @@ use crate::graphmigrate::graph::{
 
 pub mod graph;
 
-pub trait NodeId: Hash + PartialEq + Eq + Clone + Debug { }
-
-impl<T: Hash + PartialEq + Eq + Clone + Debug> NodeId for T { }
-
 // Clone is required for initial shuffling - once create/delete/coalesce starts no
 // more cloning
 pub trait NodeData: Clone {

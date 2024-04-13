@@ -374,7 +374,8 @@ impl Expr {
                 BinOp::LessThan |
                 BinOp::LessThanEqualTo |
                 BinOp::GreaterThan |
-                BinOp::GreaterThanEqualTo => {
+                BinOp::GreaterThanEqualTo |
+                BinOp::Like => {
                     operand_lower_limit = 2;
                 },
             };
@@ -448,7 +449,8 @@ impl Expr {
                 BinOp::LessThan |
                 BinOp::LessThanEqualTo |
                 BinOp::GreaterThan |
-                BinOp::GreaterThanEqualTo => {
+                BinOp::GreaterThanEqualTo |
+                BinOp::Like => {
                     #[cfg(feature = "chrono")]
                     if match op {
                         BinOp::TzEquals | BinOp::TzNotEquals | BinOp::TzIs | BinOp::TzIsNot => false,
@@ -496,6 +498,7 @@ impl Expr {
                 BinOp::LessThanEqualTo => "<=",
                 BinOp::GreaterThan => ">",
                 BinOp::GreaterThanEqualTo => ">=",
+                BinOp::Like => "like",
             };
             let mut out = Tokens::new();
             out.s("(");
@@ -759,6 +762,7 @@ pub enum BinOp {
     LessThanEqualTo,
     GreaterThan,
     GreaterThanEqualTo,
+    Like,
 }
 
 #[derive(Clone, Debug)]
