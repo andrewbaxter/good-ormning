@@ -1,6 +1,6 @@
 [package]
 name = "good-ormning"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2021"
 license = "ISC"
 description = "Maybe an ORM"
@@ -22,7 +22,7 @@ hex = "0.4"
 proc-macro2 = "1"
 quote = "1"
 rpds = "0.12"
-samevariant = "0.0.1"
+samevariant = "0.0.2"
 stable-hash = "0.4"
 syn = "1"
 
