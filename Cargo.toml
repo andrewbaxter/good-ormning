@@ -1,6 +1,6 @@
 [package]
 name = "good-ormning"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 license = "ISC"
 description = "Maybe an ORM"
@@ -15,16 +15,16 @@ pg = []
 sqlite = []
 
 [dependencies]
-chrono = { version = "0.4.26", optional = true }
-enum_dispatch = "0.3.12"
-genemichaels = "0.1.21"
-hex = "0.4.3"
-proc-macro2 = "1.0.66"
-quote = "1.0.31"
-rpds = "0.12.0"
+chrono = { version = "0.4", optional = true }
+enum_dispatch = "0.3"
+genemichaels = "0.2"
+hex = "0.4"
+proc-macro2 = "1"
+quote = "1"
+rpds = "0.12"
 samevariant = "0.0.1"
-stable-hash = "0.4.3"
-syn = "1.0.109"
+stable-hash = "0.4"
+syn = "1"
 
 [workspace]
 members = ["integration_tests", "runtime"]
@@ -35,7 +35,7 @@ good-ormning-runtime = { path = "runtime", features = [
     "sqlite",
     "chrono",
 ] }
-rusqlite = "0.28.0"
+rusqlite = "0.28"
 
 [package.metadata.docs.rs]
 all-features = true
