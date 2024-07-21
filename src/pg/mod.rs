@@ -1235,7 +1235,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             );
         }
     }
-    match genemichaels::format_str(&tokens.to_string(), &genemichaels::FormatConfig::default()) {
+    match genemichaels_lib::format_str(&tokens.to_string(), &genemichaels_lib::FormatConfig::default()) {
         Ok(src) => {
             match fs::write(output, src.rendered.as_bytes()) {
                 Ok(_) => { },

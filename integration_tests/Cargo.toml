@@ -4,19 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4.26"
-rusqlite = "0.28.0"
-testcontainers = { version = "0.14.0", features = ["tokio"] }
-tokio = { version = "1.29.1", features = ["macros", "rt"] }
+chrono = ">=0"
+rusqlite = ">=0"
+testcontainers = { version = ">=0" }
+testcontainers-modules = { version = ">=0", features = ["postgres"] }
+tokio = { version = ">=0", features = ["macros", "rt"] }
 "good-ormning-runtime" = { path = "../runtime", features = [
     "chrono",
     "pg",
     "sqlite",
 ] }
-tokio-postgres = { git = "https://github.com/sfackler/rust-postgres", rev = "d16a9cd8956b86c489aad9e5b40490856b466c7e", features = [
-    "with-chrono-0_4",
-] }
-anyhow = "1.0.72"
+tokio-postgres = { version = ">=0", features = ["with-chrono-0_4"] }
+loga = ">=0"
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "pg", "sqlite"] }

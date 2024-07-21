@@ -1150,7 +1150,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     (res_ident.to_token_stream(), res_def, unforward)
                 }
             };
-            let db_arg = quote!(db: &rusqlite::Connection);
+            let db_arg = quote!(db:& rusqlite:: Connection);
             match q.res_count {
                 QueryResCount::None => {
                     db_others.push(quote!{
@@ -1238,7 +1238,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
         use good_ormning_runtime::ToGoodError;
-        pub fn migrate(db: &mut rusqlite::Connection) -> Result <(),
+        pub fn migrate(db:& mut rusqlite:: Connection) -> Result <(),
         GoodError > {
             {
                 let query =
@@ -1327,7 +1327,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             );
         }
     }
-    match genemichaels::format_str(&tokens.to_string(), &genemichaels::FormatConfig::default()) {
+    match genemichaels_lib::format_str(&tokens.to_string(), &genemichaels_lib::FormatConfig::default()) {
         Ok(src) => {
             match fs::write(output, src.rendered.as_bytes()) {
                 Ok(_) => { },
