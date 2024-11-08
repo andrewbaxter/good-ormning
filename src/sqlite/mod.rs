@@ -1,94 +1,103 @@
-use proc_macro2::{
-    TokenStream,
-    Ident,
-};
-use quote::{
-    quote,
-    format_ident,
-    ToTokens,
-};
-use std::{
-    collections::{
-        HashMap,
-        HashSet,
-        BTreeMap,
-    },
-    path::Path,
-    fs,
-    rc::Rc,
-};
-use crate::{
-    sqlite::{
+use {
+    self::{
+        graph::{
+            constraint::NodeConstraint_,
+            field::NodeField_,
+            index::NodeIndex_,
+            table::NodeTable_,
+            utils::MigrateNode,
+            GraphId,
+            Node,
+        },
+        query::{
+            delete::Delete,
+            expr::Expr,
+            insert::{
+                Insert,
+                InsertConflict,
+            },
+            select::Select,
+            select_body::{
+                Join,
+                JoinSource,
+                NamedSelectSource,
+                Order,
+                Returning,
+            },
+            update::Update,
+            utils::{
+                QueryBody,
+                SqliteQueryCtx,
+            },
+        },
+        schema::{
+            constraint::{
+                Constraint,
+                ConstraintType,
+                Constraint_,
+                SchemaConstraintId,
+            },
+            field::{
+                Field,
+                FieldType,
+                Field_,
+                SchemaFieldId,
+            },
+            index::{
+                Index,
+                Index_,
+                SchemaIndexId,
+            },
+            table::{
+                SchemaTableId,
+                Table,
+                Table_,
+            },
+        },
         types::{
-            Type,
-            to_rust_types,
+            SimpleSimpleType,
+            SimpleType,
         },
-        query::expr::ExprValName,
-        graph::utils::SqliteMigrateCtx,
     },
-    utils::{
-        Errs,
-        sanitize_ident,
-    },
-};
-use self::{
-    query::{
+    crate::{
+        sqlite::{
+            graph::utils::SqliteMigrateCtx,
+            query::expr::Binding,
+            types::{
+                to_rust_types,
+                Type,
+            },
+        },
         utils::{
-            SqliteQueryCtx,
-            QueryBody,
-        },
-        insert::{
-            Insert,
-            InsertConflict,
-        },
-        expr::Expr,
-        select::{
-            Returning,
-            Select,
-            NamedSelectSource,
-            JoinSource,
-            Join,
-            Order,
-        },
-        update::Update,
-        delete::Delete,
-    },
-    types::{
-        SimpleType,
-        SimpleSimpleType,
-    },
-    schema::{
-        field::{
-            Field,
-            Field_,
-            SchemaFieldId,
-            FieldType,
-        },
-        table::{
-            Table,
-            Table_,
-            SchemaTableId,
-        },
-        constraint::{
-            ConstraintType,
-            Constraint_,
-            Constraint,
-            SchemaConstraintId,
-        },
-        index::{
-            Index_,
-            Index,
-            SchemaIndexId,
+            sanitize_ident,
+            Errs,
         },
     },
-    graph::{
-        table::NodeTable_,
-        GraphId,
-        utils::MigrateNode,
-        Node,
-        field::NodeField_,
-        constraint::NodeConstraint_,
-        index::NodeIndex_,
+    proc_macro2::{
+        Ident,
+        TokenStream,
+    },
+    query::{
+        select_body::{
+            SelectBody,
+            SelectJunction,
+        },
+        utils::With,
+    },
+    quote::{
+        format_ident,
+        quote,
+        ToTokens,
+    },
+    std::{
+        collections::{
+            BTreeMap,
+            HashMap,
+            HashSet,
+        },
+        fs,
+        path::Path,
+        rc::Rc,
     },
 };
 
@@ -115,6 +124,12 @@ pub struct InsertBuilder {
 }
 
 impl InsertBuilder {
+    // Add a `WITH`/CTE to the query.
+    pub fn with(mut self, w: With) -> Self {
+        self.q.with = Some(w);
+        return self;
+    }
+
     pub fn on_conflict(mut self, v: InsertConflict) -> Self {
         self.q.on_conflict = Some(v);
         self
@@ -138,7 +153,7 @@ impl InsertBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.clone()),
+            e: Expr::Binding(Binding::field(f)),
             rename: None,
         });
         self
@@ -147,7 +162,7 @@ impl InsertBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field((*f).clone()),
+                e: Expr::Binding(Binding::field(f)),
                 rename: None,
             });
         }
@@ -197,6 +212,136 @@ pub struct SelectBuilder {
 }
 
 impl SelectBuilder {
+    pub fn distinct(mut self) -> Self {
+        self.q.body.distinct = true;
+        return self;
+    }
+
+    // Add a `WITH`/CTE to the query.
+    pub fn with(mut self, w: With) -> Self {
+        self.q.with = Some(w);
+        return self;
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.body.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.body.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &Field) -> Self {
+        self.q.body.returning.push(Returning {
+            e: Expr::Binding(Binding::field(f)),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&Field]) -> Self {
+        for f in f {
+            self.q.body.returning.push(Returning {
+                e: Expr::Binding(Binding::field(f)),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.body.returning.extend(f);
+        self
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.body.join.push(join);
+        self
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.body.where_ = Some(predicate);
+        self
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.body.group = clauses;
+        self
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.body.order.push((expr, order));
+        self
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.body.order.extend(clauses);
+        self
+    }
+
+    /// Sets `LIMIT`. `v` must evaluate to a number.
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.body.limit = Some(v);
+        self
+    }
+
+    /// Add a UNION/INTERSECT/EXCEPT junction to the query.
+    pub fn junction(mut self, j: SelectJunction) -> Self {
+        self.q.body_junctions.push(j);
+        return self;
+    }
+
+    /// Produce a migration for use in version pre/post-migration.
+    pub fn build_migration(self) -> Select {
+        self.q
+    }
+
+    /// Produce a query object.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - This is used as the name of the rust function.
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    // Same as `build_query`, but specify a name for the result structure. Only valid
+    // if result is a record (not a single value).
+    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+}
+
+/// See SelectBody for field descriptions. Call `build()` to get a finished query
+/// object.
+pub struct SelectBodyBuilder {
+    pub q: SelectBody,
+}
+
+impl SelectBodyBuilder {
+    pub fn distinct(mut self) -> Self {
+        self.q.distinct = true;
+        return self;
+    }
+
     pub fn return_(mut self, v: Expr) -> Self {
         self.q.returning.push(Returning {
             e: v,
@@ -215,7 +360,7 @@ impl SelectBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.clone()),
+            e: Expr::Binding(Binding::field(f)),
             rename: None,
         });
         self
@@ -224,7 +369,7 @@ impl SelectBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field((*f).clone()),
+                e: Expr::Binding(Binding::field(f)),
                 rename: None,
             });
         }
@@ -267,34 +412,9 @@ impl SelectBuilder {
         self
     }
 
-    /// Produce a migration for use in version pre/post-migration.
-    pub fn build_migration(self) -> Select {
-        self.q
-    }
-
-    /// Produce a query object.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - This is used as the name of the rust function.
-    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: None,
-        }
-    }
-
-    // Same as `build_query`, but specify a name for the result structure. Only valid
-    // if result is a record (not a single value).
-    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: Some(res_name.to_string()),
-        }
+    /// Produce a select body object.
+    pub fn build(self) -> SelectBody {
+        return self.q;
     }
 }
 
@@ -305,6 +425,12 @@ pub struct UpdateBuilder {
 }
 
 impl UpdateBuilder {
+    // Add a `WITH`/CTE to the query.
+    pub fn with(mut self, w: With) -> Self {
+        self.q.with = Some(w);
+        return self;
+    }
+
     pub fn where_(mut self, v: Expr) -> Self {
         self.q.where_ = Some(v);
         self
@@ -328,7 +454,7 @@ impl UpdateBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.clone()),
+            e: Expr::Binding(Binding::field(f)),
             rename: None,
         });
         self
@@ -337,7 +463,7 @@ impl UpdateBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field((*f).clone()),
+                e: Expr::Binding(Binding::field(f)),
                 rename: None,
             });
         }
@@ -387,6 +513,12 @@ pub struct DeleteBuilder {
 }
 
 impl DeleteBuilder {
+    // Add a `WITH`/CTE to the query.
+    pub fn with(mut self, w: With) -> Self {
+        self.q.with = Some(w);
+        return self;
+    }
+
     pub fn where_(mut self, v: Expr) -> Self {
         self.q.where_ = Some(v);
         self
@@ -410,7 +542,7 @@ impl DeleteBuilder {
 
     pub fn return_field(mut self, f: &Field) -> Self {
         self.q.returning.push(Returning {
-            e: Expr::Field(f.clone()),
+            e: Expr::Binding(Binding::field(f)),
             rename: None,
         });
         self
@@ -419,7 +551,7 @@ impl DeleteBuilder {
     pub fn return_fields(mut self, f: &[&Field]) -> Self {
         for f in f {
             self.q.returning.push(Returning {
-                e: Expr::Field((*f).clone()),
+                e: Expr::Binding(Binding::field(f)),
                 rename: None,
             });
         }
@@ -485,6 +617,7 @@ pub fn new_insert(table: &Table, values: Vec<(Field, Expr)>) -> InsertBuilder {
         }
     }
     InsertBuilder { q: Insert {
+        with: None,
         table: table.clone(),
         values: values,
         on_conflict: None,
@@ -495,16 +628,21 @@ pub fn new_insert(table: &Table, values: Vec<(Field, Expr)>) -> InsertBuilder {
 /// Get a builder for a SELECT query.
 pub fn new_select(table: &Table) -> SelectBuilder {
     SelectBuilder { q: Select {
-        table: NamedSelectSource {
-            source: JoinSource::Table(table.clone()),
-            alias: None,
+        with: None,
+        body: SelectBody {
+            distinct: false,
+            table: NamedSelectSource {
+                source: JoinSource::Table(table.clone()),
+                alias: None,
+            },
+            returning: vec![],
+            join: vec![],
+            where_: None,
+            group: vec![],
+            order: vec![],
+            limit: None,
         },
-        returning: vec![],
-        join: vec![],
-        where_: None,
-        group: vec![],
-        order: vec![],
-        limit: None,
+        body_junctions: vec![],
     } }
 }
 
@@ -512,7 +650,29 @@ pub fn new_select(table: &Table) -> SelectBuilder {
 /// from a synthetic table).
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
     SelectBuilder { q: Select {
-        table: source,
+        with: None,
+        body: SelectBody {
+            distinct: false,
+            table: source,
+            returning: vec![],
+            join: vec![],
+            where_: None,
+            group: vec![],
+            order: vec![],
+            limit: None,
+        },
+        body_junctions: vec![],
+    } }
+}
+
+/// Get a builder for an inner SELECT, such as in a CTE, subquery, JOIN, etc.
+pub fn new_select_body(table: &Table) -> SelectBodyBuilder {
+    SelectBodyBuilder { q: SelectBody {
+        distinct: false,
+        table: NamedSelectSource {
+            source: JoinSource::Table(table.clone()),
+            alias: None,
+        },
         returning: vec![],
         join: vec![],
         where_: None,
@@ -535,6 +695,7 @@ pub fn new_update(table: &Table, values: Vec<(Field, Expr)>) -> UpdateBuilder {
         }
     }
     UpdateBuilder { q: Update {
+        with: None,
         table: table.clone(),
         values: values,
         where_: None,
@@ -549,6 +710,7 @@ pub fn new_update(table: &Table, values: Vec<(Field, Expr)>) -> UpdateBuilder {
 /// * `name` - This becomes the name of the generated rust function.
 pub fn new_delete(table: &Table) -> DeleteBuilder {
     DeleteBuilder { q: Delete {
+        with: None,
         table: table.clone(),
         returning: vec![],
         where_: None,
@@ -881,10 +1043,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             errs: &mut Errs,
             path: &rpds::Vector<String>,
             migration: &mut Vec<TokenStream>,
-            field_lookup: &HashMap<Table, HashMap<Field, Type>>,
+            field_lookup: &HashMap<Table, HashSet<Field>>,
             q: &dyn QueryBody,
         ) {
-            let mut qctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
+            let mut qctx = SqliteQueryCtx::new(errs.clone(), field_lookup.clone());
             let e_res = q.build(&mut qctx, path, QueryResCount::None);
             if !qctx.rust_args.is_empty() {
                 qctx.errs.err(path, format!("Migration statements can't receive arguments"));
@@ -933,11 +1095,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     match field_lookup.entry(f.def.table.clone()) {
                         std::collections::hash_map::Entry::Occupied(_) => { },
                         std::collections::hash_map::Entry::Vacant(e) => {
-                            e.insert(HashMap::new());
+                            e.insert(HashSet::new());
                         },
                     };
                     let table = field_lookup.get_mut(&f.def.table).unwrap();
-                    table.insert(f.def.clone(), f.def.type_.type_.clone());
+                    table.insert(f.def.clone());
                 },
                 _ => { },
             };
@@ -986,7 +1148,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
         for q in queries {
             let path = rpds::vector![format!("Query {}", q.name)];
-            let mut ctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
+            let mut ctx = SqliteQueryCtx::new(errs.clone(), field_lookup.clone());
             let res = QueryBody::build(q.body.as_ref(), &mut ctx, &path, q.res_count.clone());
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
@@ -998,7 +1160,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     errs: &mut Errs,
                     path: &rpds::Vector<String>,
                     i: usize,
-                    k: &ExprValName,
+                    k: &Binding,
                     v: &Type,
                 ) -> Option<(Ident, TokenStream, TokenStream)> {
                     if k.id.is_empty() {

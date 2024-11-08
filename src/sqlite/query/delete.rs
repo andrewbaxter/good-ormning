@@ -8,22 +8,25 @@ use crate::{
 };
 use super::{
     expr::{
+        check_bool,
         Expr,
         ExprType,
-        check_bool,
-        ExprValName,
+        Binding,
     },
+    select_body::Returning,
     utils::{
-        QueryBody,
         build_returning,
+        build_with,
+        QueryBody,
+        With,
     },
-    select::Returning,
 };
 
 pub struct Delete {
-    pub(crate) table: Table,
-    pub(crate) where_: Option<Expr>,
-    pub(crate) returning: Vec<Returning>,
+    pub with: Option<With>,
+    pub table: Table,
+    pub where_: Option<Expr>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Delete {
@@ -33,20 +36,24 @@ impl QueryBody for Delete {
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
+        let mut out = Tokens::new();
+
         // Prep
+        if let Some(w) = &self.with {
+            out.s(&build_with(ctx, path, w).to_string());
+        }
         let mut scope = HashMap::new();
-        for (k, v) in match ctx.tables.get(&self.table) {
+        for field in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
                 ctx.errs.err(path, format!("Unknown table {} for delete", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(ExprValName::field(k), v.clone());
+            scope.insert(Binding::field(field), field.type_.type_.clone());
         }
 
         // Build query
-        let mut out = Tokens::new();
         out.s("delete from").id(&self.table.id);
         if let Some(where_) = &self.where_ {
             out.s("where");

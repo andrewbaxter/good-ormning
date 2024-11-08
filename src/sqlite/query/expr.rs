@@ -1,45 +1,49 @@
-#[cfg(feature = "chrono")]
-use chrono::{
-    DateTime,
-    Utc,
-};
-use quote::{
-    quote,
-    format_ident,
-    ToTokens,
-};
-use samevariant::samevariant;
-use syn::Path;
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    rc::Rc,
-};
-use crate::{
-    sqlite::{
-        types::{
-            Type,
-            SimpleSimpleType,
-            SimpleType,
-            to_rust_types,
+use {
+    super::{
+        select_body::{
+            Order,
+            SelectBody,
+            SelectJunction,
         },
-        query::utils::QueryBody,
-        schema::{
-            field::{
-                Field,
+        utils::SqliteQueryCtx,
+    },
+    crate::{
+        sqlite::{
+            query::select_body::build_select_junction,
+            schema::field::Field,
+            types::{
+                to_rust_types,
+                SimpleSimpleType,
+                SimpleType,
+                Type,
             },
+            QueryResCount,
         },
-        QueryResCount,
+        utils::{
+            sanitize_ident,
+            Errs,
+            Tokens,
+        },
     },
-    utils::{
-        Tokens,
-        Errs,
-        sanitize_ident,
+    quote::{
+        format_ident,
+        quote,
+        ToTokens,
     },
+    samevariant::samevariant,
+    std::{
+        collections::HashMap,
+        fmt::Display,
+        rc::Rc,
+    },
+    syn::Path,
 };
-use super::{
-    utils::SqliteQueryCtx,
-    select::Select,
+#[cfg(feature = "chrono")]
+use {
+    chrono::{
+        DateTime,
+        Utc,
+    },
 };
 
 /// This is used for function expressions, to check the argument types and compute
@@ -88,7 +92,7 @@ pub enum Expr {
     /// you've aliased tables or field names, you'll have to instantiate `FieldId`
     /// yourself with the appropriate values. For synthetic values like function
     /// results you may need a `FieldId` with an empty `TableId` (`""`).
-    Field(Field),
+    Binding(Binding),
     BinOp {
         left: Box<Expr>,
         op: BinOp,
@@ -113,65 +117,87 @@ pub enum Expr {
         /// Checks the input types and computes the resulting type
         compute_type: ComputeType,
     },
+    // This is an `OVER` windowing function. If neither `partition_by` nor `order_by`
+    // have elements it'll be rendered as `OVER()` (all rows).
+    Window {
+        expr: Box<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<(Expr, Order)>,
+    },
     /// A sub SELECT query.
-    Select(Box<Select>),
+    Select {
+        body: Box<SelectBody>,
+        body_junctions: Vec<SelectJunction>,
+    },
+    Exists {
+        not: bool,
+        body: Box<SelectBody>,
+        body_junctions: Vec<SelectJunction>,
+    },
     /// This is a synthetic expression, saying to treat the result of the expression as
     /// having the specified type. Use this for casting between primitive types and
     /// Rust new-types for instance.
     Cast(Box<Expr>, Type),
 }
 
+impl Expr {
+    pub fn field(f: &Field) -> Expr {
+        return Expr::Binding(Binding::field(f));
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct ExprValName {
+pub struct Binding {
     pub table_id: String,
     pub id: String,
 }
 
-impl ExprValName {
-    pub(crate) fn local(name: String) -> Self {
-        ExprValName {
+impl Binding {
+    /// Create an expression field/value name for a select-local (tableless) field, for
+    /// instance `WINDOW` fields.
+    pub fn local(name: impl AsRef<str>) -> Self {
+        Binding {
             table_id: "".into(),
-            id: name,
+            id: name.as_ref().to_string(),
         }
     }
 
     pub(crate) fn empty() -> Self {
-        ExprValName {
+        Binding {
             table_id: "".into(),
             id: "".into(),
         }
     }
 
-    pub(crate) fn field(f: &Field) -> Self {
-        ExprValName {
+    /// Create an expression field/value name from a table field.
+    pub fn field(f: &Field) -> Self {
+        Binding {
             table_id: f.table.id.clone(),
             id: f.id.clone(),
         }
     }
 
-    pub(crate) fn with_alias(&self, s: &str) -> ExprValName {
-        ExprValName {
+    /// Derive an expression field/value name from a different name, with a new alias.
+    pub fn with_alias(&self, s: &str) -> Binding {
+        Binding {
             table_id: s.into(),
             id: self.id.clone(),
         }
     }
 }
 
-impl Display for ExprValName {
+impl Display for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&format!("{}.{}", self.table_id, self.id), f)
     }
 }
 
-pub struct ExprType(pub Vec<(ExprValName, Type)>);
+pub struct ExprType(pub Vec<(Binding, Type)>);
 
 impl ExprType {
-    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<(ExprValName, Type)> {
+    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<(Binding, Type)> {
         if self.0.len() != 1 {
-            errs.err(
-                path,
-                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
-            );
+            errs.err(path, format!("Select outputs must be scalars, but got result with {} fields", self.0.len()));
             return None;
         }
         Some(self.0[0].clone())
@@ -329,7 +355,7 @@ pub(crate) fn check_utc_if_time(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<St
 }
 
 pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, a: &Type, b: &ExprType) {
-    check_same(errs, path, &ExprType(vec![(ExprValName::empty(), a.clone())]), b);
+    check_same(errs, path, &ExprType(vec![(Binding::empty(), a.clone())]), b);
 }
 
 impl Expr {
@@ -337,11 +363,11 @@ impl Expr {
         &self,
         ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
-        scope: &HashMap<ExprValName, Type>,
+        scope: &HashMap<Binding, Type>,
     ) -> (ExprType, Tokens) {
         macro_rules! empty_type{
             ($o: expr, $t: expr) => {
-                (ExprType(vec![(ExprValName::empty(), Type {
+                (ExprType(vec![(Binding::empty(), Type {
                     type_: SimpleType {
                         type_: $t,
                         custom: None,
@@ -354,7 +380,7 @@ impl Expr {
         fn do_bin_op(
             ctx: &mut SqliteQueryCtx,
             path: &rpds::Vector<String>,
-            scope: &HashMap<ExprValName, Type>,
+            scope: &HashMap<Binding, Type>,
             op: &BinOp,
             exprs: &Vec<Expr>,
         ) -> (ExprType, Tokens) {
@@ -509,14 +535,14 @@ impl Expr {
                 out.s(&res.1.to_string());
             }
             out.s(")");
-            (ExprType(vec![(ExprValName::empty(), t)]), out)
+            (ExprType(vec![(Binding::empty(), t)]), out)
         }
 
         match self {
             Expr::LitNull(t) => {
                 let mut out = Tokens::new();
                 out.s("null");
-                return (ExprType(vec![(ExprValName::empty(), Type {
+                return (ExprType(vec![(Binding::empty(), Type {
                     type_: t.clone(),
                     opt: true,
                 })]), out);
@@ -644,10 +670,9 @@ impl Expr {
                     ctx.errs.err(&path, e);
                 }
                 out.s(&format!("${}", i + 1));
-                return (ExprType(vec![(ExprValName::local(x.clone()), t.clone())]), out);
+                return (ExprType(vec![(Binding::local(x.clone()), t.clone())]), out);
             },
-            Expr::Field(x) => {
-                let name = ExprValName::field(x);
+            Expr::Binding(name) => {
                 let t = match scope.get(&name) {
                     Some(t) => t.clone(),
                     None => {
@@ -657,7 +682,7 @@ impl Expr {
                                 path,
                                 format!(
                                     "Expression references {} but this field isn't available here (available fields: {:?})",
-                                    x,
+                                    name,
                                     scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
                                 ),
                             );
@@ -665,8 +690,11 @@ impl Expr {
                     },
                 };
                 let mut out = Tokens::new();
-                out.id(&x.table.id).s(".").id(&x.id);
-                return (ExprType(vec![(name, t.clone())]), out);
+                if name.table_id != "" {
+                    out.id(&name.table_id).s(".");
+                }
+                out.id(&name.id);
+                return (ExprType(vec![(name.clone(), t.clone())]), out);
             },
             Expr::BinOp { left, op, right } => {
                 return do_bin_op(
@@ -714,11 +742,70 @@ impl Expr {
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
-                return (ExprType(vec![(ExprValName::empty(), type_)]), out);
+                return (ExprType(vec![(Binding::empty(), type_)]), out);
             },
-            Expr::Select(s) => {
+            Expr::Window { expr, partition_by, order_by } => {
+                let mut out = Tokens::new();
+                let expr = expr.build(ctx, &path, &scope);
+                out.s(&expr.1.to_string());
+                out.s("over");
+                out.s("(");
+                if !partition_by.is_empty() {
+                    out.s("partition by");
+                    for (i, e) in partition_by.iter().enumerate() {
+                        let path = path.push_back(format!("Partition by {}", i));
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, p) = e.build(ctx, &path, &scope);
+                        out.s(&p.to_string());
+                    }
+                }
+                if !order_by.is_empty() {
+                    out.s("order by");
+                    for (i, o) in order_by.iter().enumerate() {
+                        let path = path.push_back(format!("Order by clause {}", i));
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, o_tokens) = o.0.build(ctx, &path, &scope);
+                        out.s(&o_tokens.to_string());
+                        out.s(match o.1 {
+                            Order::Asc => "asc",
+                            Order::Desc => "desc",
+                        });
+                    }
+                }
+                out.s(")");
+                return (expr.0, out);
+            },
+            Expr::Select { body, body_junctions } => {
                 let path = path.push_back(format!("Subselect"));
-                return s.build(ctx, &path, QueryResCount::Many);
+                let mut out = Tokens::new();
+                let base = body.build(ctx, scope, &path, QueryResCount::Many);
+                out.s(&base.1.to_string());
+                out.s(&build_select_junction(ctx, &path, &base.0, &body_junctions).to_string());
+                return (base.0, out);
+            },
+            Expr::Exists { not, body, body_junctions } => {
+                let path = path.push_back(format!("(Not)Exists"));
+                let mut out = Tokens::new();
+                if *not {
+                    out.s("not");
+                }
+                out.s("exists");
+                out.s("(");
+                let base = body.build(ctx, scope, &path, QueryResCount::Many);
+                out.s(&base.1.to_string());
+                out.s(&build_select_junction(ctx, &path, &base.0, &body_junctions).to_string());
+                out.s(")");
+                return (ExprType(vec![(Binding::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                })]), out);
             },
             Expr::Cast(e, t) => {
                 let path = path.push_back(format!("Cast"));

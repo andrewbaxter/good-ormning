@@ -141,13 +141,3 @@ pub struct RustTypes {
     pub ret_type: TokenStream,
     pub arg_type: TokenStream,
 }
-
-/// Provides a shed for breaking.
-#[macro_export]
-macro_rules! break_shed{
-    ($($t: tt) *) => {
-        loop {
-            $($t) * break;
-        }
-    };
-}

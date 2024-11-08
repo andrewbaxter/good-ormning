@@ -1,18 +1,19 @@
-use crate::{
-    sqlite::{
+use {
+    super::expr::{
+        BinOp,
+        ComputeType,
+        Expr,
+        Binding,
+    },
+    crate::sqlite::{
         schema::field::Field,
         types::{
             SimpleSimpleType,
-            Type,
             SimpleType,
+            Type,
         },
     },
-    break_shed,
-};
-use super::expr::{
-    Expr,
-    BinOp,
-    ComputeType,
+    flowcontrol::shed,
 };
 
 /// Generates a field element for instert and update statements, to set a field
@@ -31,9 +32,9 @@ pub fn field_param(param_name: impl Into<String>, f: &Field) -> Expr {
 
 /// Generates an expression checking for equality of a field and a parameter and
 /// the same type.
-pub fn eq_field(param_name: impl Into<String>, f: &Field) -> Expr {
+pub fn expr_field_eq(param_name: impl Into<String>, f: &Field) -> Expr {
     Expr::BinOp {
-        left: Box::new(Expr::Field(f.clone())),
+        left: Box::new(Expr::Binding(Binding::field(f))),
         op: BinOp::Equals,
         right: Box::new(Expr::Param {
             name: param_name.into(),
@@ -44,9 +45,9 @@ pub fn eq_field(param_name: impl Into<String>, f: &Field) -> Expr {
 
 /// Generates an expression selecting field values greater than a corresponding
 /// parameter
-pub fn gt_field(param_name: impl Into<String>, f: &Field) -> Expr {
+pub fn expr_field_gt(param_name: impl Into<String>, f: &Field) -> Expr {
     Expr::BinOp {
-        left: Box::new(Expr::Field(f.clone())),
+        left: Box::new(Expr::Binding(Binding::field(f))),
         op: BinOp::GreaterThan,
         right: Box::new(Expr::Param {
             name: param_name.into(),
@@ -57,9 +58,9 @@ pub fn gt_field(param_name: impl Into<String>, f: &Field) -> Expr {
 
 /// Generates an expression selecting field values greater than or equal to a
 /// corresponding parameter
-pub fn gte_field(param_name: impl Into<String>, f: &Field) -> Expr {
+pub fn expr_field_gte(param_name: impl Into<String>, f: &Field) -> Expr {
     Expr::BinOp {
-        left: Box::new(Expr::Field(f.clone())),
+        left: Box::new(Expr::Binding(Binding::field(f))),
         op: BinOp::GreaterThanEqualTo,
         right: Box::new(Expr::Param {
             name: param_name.into(),
@@ -70,9 +71,9 @@ pub fn gte_field(param_name: impl Into<String>, f: &Field) -> Expr {
 
 /// Generates an expression selecting field values greater than a corresponding
 /// parameter
-pub fn lt_field(param_name: impl Into<String>, f: &Field) -> Expr {
+pub fn expr_field_lt(param_name: impl Into<String>, f: &Field) -> Expr {
     Expr::BinOp {
-        left: Box::new(Expr::Field(f.clone())),
+        left: Box::new(Expr::Binding(Binding::field(f))),
         op: BinOp::LessThan,
         right: Box::new(Expr::Param {
             name: param_name.into(),
@@ -83,9 +84,9 @@ pub fn lt_field(param_name: impl Into<String>, f: &Field) -> Expr {
 
 /// Generates an expression selecting field values greater than or equal to a
 /// corresponding parameter
-pub fn lte_field(param_name: impl Into<String>, f: &Field) -> Expr {
+pub fn expr_field_lte(param_name: impl Into<String>, f: &Field) -> Expr {
     Expr::BinOp {
-        left: Box::new(Expr::Field(f.clone())),
+        left: Box::new(Expr::Binding(Binding::field(f))),
         op: BinOp::LessThanEqualTo,
         right: Box::new(Expr::Param {
             name: param_name.into(),
@@ -108,7 +109,7 @@ pub fn as_utc(expr: Expr) -> Expr {
         func: "strftime".to_string(),
         args: vec![Expr::LitString("%Y-%m-%dT%H:%M:%f".to_string()), expr],
         compute_type: ComputeType::new(|ctx, path, args| {
-            break_shed!{
+            shed!{
                 let arg = args.get(1).unwrap();
                 let Some(type_) = arg.0.iter().next() else {
                     break;
@@ -125,10 +126,64 @@ pub fn as_utc(expr: Expr) -> Expr {
                         );
                 }
             };
-
             return Some(Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::UtcTimeMs,
+                    custom: None,
+                },
+                opt: false,
+            });
+        }),
+    }
+}
+
+pub fn fn_min(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "min".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return None;
+            };
+            return Some(t.1);
+        }),
+    }
+}
+
+pub fn fn_max(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "max".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return None;
+            };
+            return Some(t.1);
+        }),
+    }
+}
+
+pub fn fn_avg(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "avg".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return None;
+            };
+            return Some(t.1);
+        }),
+    }
+}
+
+pub fn fn_count(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "count".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType::new(|_ctx, _path, _args| {
+            return Some(Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
                     custom: None,
                 },
                 opt: false,

@@ -1,46 +1,48 @@
-use std::path::Path;
-use good_ormning::{
-    pg::{
-        Version,
-        schema::field::{
-            field_str,
-            field_i32,
-            field_bool,
-            field_utctime,
-            field_auto,
-            field_i64,
-            field_f32,
-            field_f64,
-            field_bytes,
-            Field,
-        },
-        query::{
-            expr::{
-                Expr,
-                BinOp,
-                ComputeType,
+use {
+    std::path::Path,
+    good_ormning::{
+        pg::{
+            Version,
+            schema::field::{
+                field_str,
+                field_i32,
+                field_bool,
+                field_utctime,
+                field_auto,
+                field_i64,
+                field_f32,
+                field_f64,
+                field_bytes,
+                Field,
             },
-            select::{
-                Join,
-                NamedSelectSource,
-                JoinSource,
-                JoinType,
-                Order,
+            query::{
+                expr::{
+                    Expr,
+                    BinOp,
+                    ComputeType,
+                },
+                select::{
+                    Join,
+                    NamedSelectSource,
+                    JoinSource,
+                    JoinType,
+                    Order,
+                },
+                helpers::set_field,
             },
-            helpers::set_field,
-        },
-        generate,
-        new_insert,
-        QueryResCount,
-        new_select,
-        new_update,
-        new_delete,
-        types::{
-            type_i64,
-            SimpleSimpleType,
+            generate,
+            new_insert,
+            QueryResCount,
+            new_select,
+            new_update,
+            new_delete,
+            types::{
+                type_i64,
+                SimpleSimpleType,
+            },
         },
     },
-    break_shed,
+    flowcontrol::shed,
 };
 
 pub fn build(root: &Path) {
@@ -452,7 +454,7 @@ pub fn build(root: &Path) {
                 func: "sum".into(),
                 args: vec![Expr::Field(hizat2.clone())],
                 compute_type: ComputeType::new(|ctx, path, args| {
-                    break_shed!{
+                    shed!{
                         if args.len() != 1 {
                             ctx.errs.err(path, format!("Sum needs exactly one arg, got {}", args.len()));
                         }
@@ -489,7 +491,6 @@ pub fn build(root: &Path) {
                                 );
                         }
                     };
-
                     return Some(type_i64().build());
                 }),
             }).group(vec![Expr::Field(hizat.clone())]).build_query("get_banan", QueryResCount::Many)

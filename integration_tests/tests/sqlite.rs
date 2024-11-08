@@ -31,6 +31,9 @@ pub mod sqlite_gen_migrate_remove_field;
 pub mod sqlite_gen_migrate_add_table;
 pub mod sqlite_gen_migrate_rename_table;
 pub mod sqlite_gen_migrate_remove_table;
+pub mod sqlite_gen_select_cte;
+pub mod sqlite_gen_select_window;
+pub mod sqlite_gen_select_junction;
 pub mod sqlite_gen_hello_world;
 
 #[test]
@@ -330,5 +333,47 @@ fn test_migrate_rename_table() -> Result<(), loga::Error> {
 fn test_migrate_remove_table() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_remove_table::migrate(&mut db)?;
+    Ok(())
+}
+
+#[test]
+fn test_select_cte() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_select_cte::migrate(&mut db)?;
+    sqlite_gen_select_cte::insert_banan(&mut db, 1, 7)?;
+    sqlite_gen_select_cte::insert_banan(&mut db, 1, 99)?;
+    let mut res = sqlite_gen_select_cte::get_banan(&mut db)?;
+    res.sort();
+    assert_eq!(res, vec![7, 99]);
+    Ok(())
+}
+
+#[test]
+fn test_select_window() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_select_window::migrate(&mut db)?;
+    sqlite_gen_select_window::insert_banan(&mut db, 1, 7)?;
+    sqlite_gen_select_window::insert_banan(&mut db, 1, 99)?;
+    sqlite_gen_select_window::insert_banan(&mut db, 2, 3)?;
+    sqlite_gen_select_window::insert_banan(&mut db, 2, 10)?;
+    let mut res =
+        sqlite_gen_select_window::get_banan(&mut db)?
+            .into_iter()
+            .map(|x| (x.hizat, x.hizat2, x.zombo))
+            .collect::<Vec<_>>();
+    res.sort();
+    assert_eq!(res, vec![(1, 7, 99), (1, 99, 99), (2, 3, 99), (2, 10, 99)]);
+    Ok(())
+}
+
+#[test]
+fn test_select_junction() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_select_junction::migrate(&mut db)?;
+    sqlite_gen_select_junction::insert_banan(&mut db, 1, 7)?;
+    sqlite_gen_select_junction::insert_banan(&mut db, 2, 3)?;
+    let mut res = sqlite_gen_select_junction::get_banan(&mut db)?;
+    res.sort();
+    assert_eq!(res, vec![1, 2, 3, 7]);
     Ok(())
 }

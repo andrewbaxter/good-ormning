@@ -6,27 +6,29 @@ use std::{
 };
 use crate::{
     sqlite::{
-        QueryResCount,
         schema::{
             field::Field,
             table::Table,
         },
+        QueryResCount,
     },
     utils::Tokens,
 };
 use super::{
     expr::{
+        check_assignable,
         Expr,
         ExprType,
-        check_assignable,
-        ExprValName,
+        Binding,
     },
+    select_body::Returning,
     utils::{
-        QueryBody,
         build_returning,
         build_set,
+        build_with,
+        QueryBody,
+        With,
     },
-    select::Returning,
 };
 
 pub enum InsertConflict {
@@ -35,10 +37,11 @@ pub enum InsertConflict {
 }
 
 pub struct Insert {
-    pub(crate) table: Table,
-    pub(crate) values: Vec<(Field, Expr)>,
-    pub(crate) on_conflict: Option<InsertConflict>,
-    pub(crate) returning: Vec<Returning>,
+    pub with: Option<With>,
+    pub table: Table,
+    pub values: Vec<(Field, Expr)>,
+    pub on_conflict: Option<InsertConflict>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Insert {
@@ -48,7 +51,12 @@ impl QueryBody for Insert {
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
+        let mut out = Tokens::new();
+
         // Prep
+        if let Some(w) = &self.with {
+            out.s(&build_with(ctx, path, w).to_string());
+        }
         let mut check_inserting_fields = HashSet::new();
         for p in &self.values {
             if p.0.type_.type_.opt {
@@ -59,14 +67,14 @@ impl QueryBody for Insert {
             }
         }
         let mut scope = HashMap::new();
-        for (field, v) in match ctx.tables.get(&self.table) {
+        for field in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
                 ctx.errs.err(path, format!("Unknown table {} for insert", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(ExprValName::field(field), v.clone());
+            scope.insert(Binding::field(field), field.type_.type_.clone());
             if !field.type_.type_.opt && field.schema_id.0 != "rowid" && !check_inserting_fields.remove(field) {
                 ctx.errs.err(path, format!("{} is a non-optional field but is missing in insert", field));
             }
@@ -74,7 +82,6 @@ impl QueryBody for Insert {
         drop(check_inserting_fields);
 
         // Build query
-        let mut out = Tokens::new();
         out.s("insert into").id(&self.table.id).s("(");
         for (i, (field, _)) in self.values.iter().enumerate() {
             if i > 0 {
@@ -87,16 +94,16 @@ impl QueryBody for Insert {
             if i > 0 {
                 out.s(",");
             }
-            let field_type = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
+            let field = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
                 Some(t) => t,
                 None => {
                     ctx.errs.err(path, format!("Insert destination value field {} is not known", field));
                     continue;
                 },
-            };
+            }.clone();
             let path = path.push_back(format!("Insert value {} ({})", i, field));
             let res = val.build(ctx, &path, &scope);
-            check_assignable(&mut ctx.errs, &path, &field_type, &res.0);
+            check_assignable(&mut ctx.errs, &path, &field.type_.type_, &res.0);
             out.s(&res.1.to_string());
         }
         out.s(")");

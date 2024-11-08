@@ -13,7 +13,7 @@ use crate::{
             utils::SqliteQueryCtx,
             expr::{
                 ExprType,
-                ExprValName,
+                Binding,
                 check_same,
             },
         },
@@ -95,10 +95,9 @@ impl SqliteNodeDataDispatch for NodeField_ {
         if !self.def.type_.type_.opt {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
-                let qctx_fields = HashMap::new();
-                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), &qctx_fields);
+                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), HashMap::new());
                 let e_res = d.build(&mut qctx, &path, &HashMap::new());
-                check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
+                check_same(&mut qctx.errs, &path, &ExprType(vec![(Binding::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                 })]), &e_res.0);

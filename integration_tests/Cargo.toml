@@ -16,6 +16,8 @@ tokio = { version = ">=0", features = ["macros", "rt"] }
 ] }
 tokio-postgres = { version = ">=0", features = ["with-chrono-0_4"] }
 loga = ">=0"
+flowcontrol = ">=0"
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "pg", "sqlite"] }
+flowcontrol = ">=0"

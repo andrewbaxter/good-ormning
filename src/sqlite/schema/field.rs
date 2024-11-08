@@ -1,27 +1,29 @@
-use std::{
-    fmt::{
-        Debug,
-        Display,
-    },
-    rc::Rc,
-    ops::Deref,
-};
-use crate::{
-    sqlite::{
-        types::{
-            SimpleSimpleType,
-            SimpleType,
-            Type,
+use {
+    std::{
+        fmt::{
+            Debug,
+            Display,
         },
-        query::{
-            expr::{
-                Expr,
+        rc::Rc,
+        ops::Deref,
+    },
+    crate::{
+        sqlite::{
+            types::{
+                SimpleSimpleType,
+                SimpleType,
+                Type,
+            },
+            query::{
+                expr::{
+                    Expr,
+                },
             },
         },
     },
-};
-use super::table::{
-    Table,
+    super::table::{
+        Table,
+    },
 };
 
 #[derive(Clone, Debug)]

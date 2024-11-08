@@ -1,30 +1,35 @@
-use std::collections::HashMap;
-use crate::{
-    sqlite::{
-        QueryResCount,
-        schema::{
-            table::Table,
-            field::Field,
+use {
+    std::collections::HashMap,
+    crate::{
+        sqlite::{
+            QueryResCount,
+            schema::{
+                table::Table,
+                field::Field,
+            },
+        },
+        utils::Tokens,
+    },
+    super::{
+        expr::{
+            check_bool,
+            Expr,
+            ExprType,
+            Binding,
+        },
+        select_body::Returning,
+        utils::{
+            build_returning,
+            build_set,
+            build_with,
+            QueryBody,
+            With,
         },
     },
-    utils::Tokens,
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        ExprValName,
-    },
-    utils::{
-        QueryBody,
-        build_returning,
-        build_set,
-    },
-    select::Returning,
 };
 
 pub struct Update {
+    pub with: Option<With>,
     pub table: Table,
     pub values: Vec<(Field, Expr)>,
     pub where_: Option<Expr>,
@@ -38,20 +43,24 @@ impl QueryBody for Update {
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
+        let mut out = Tokens::new();
+
         // Prep
+        if let Some(w) = &self.with {
+            out.s(&build_with(ctx, path, w).to_string());
+        }
         let mut scope = HashMap::new();
-        for (k, v) in match ctx.tables.get(&self.table) {
+        for field in match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
                 ctx.errs.err(path, format!("Unknown table {} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
         } {
-            scope.insert(ExprValName::field(k), v.clone());
+            scope.insert(Binding::field(field), field.type_.type_.clone());
         }
 
         // Build query
-        let mut out = Tokens::new();
         out.s("update").id(&self.table.id);
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {

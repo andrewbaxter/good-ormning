@@ -1,51 +1,63 @@
-use std::path::Path;
-use good_ormning::{
-    sqlite::{
-        Version,
-        schema::{
-            field::{
-                field_str,
-                field_i64,
-                field_i32,
-                field_bool,
-                field_utctime_s,
-                field_utctime_ms,
-                Field,
-                field_u32,
-                field_f32,
-                field_f64,
-                field_bytes,
+use {
+    std::path::Path,
+    good_ormning::{
+        sqlite::{
+            generate,
+            new_delete,
+            new_insert,
+            new_select,
+            new_select_body,
+            new_update,
+            query::{
+                expr::{
+                    BinOp,
+                    Binding,
+                    ComputeType,
+                    Expr,
+                },
+                helpers::{
+                    fn_max,
+                    set_field,
+                },
+                insert::InsertConflict,
+                select_body::{
+                    Join,
+                    JoinSource,
+                    JoinType,
+                    NamedSelectSource,
+                    Order,
+                    SelectJunction,
+                },
+                utils::{
+                    CteBuilder,
+                    With,
+                },
             },
-            constraint::{
-                PrimaryKeyDef,
-                ConstraintType,
+            schema::{
+                constraint::{
+                    ConstraintType,
+                    PrimaryKeyDef,
+                },
+                field::{
+                    field_bool,
+                    field_bytes,
+                    field_f32,
+                    field_f64,
+                    field_i32,
+                    field_i64,
+                    field_str,
+                    field_u32,
+                    field_utctime_ms,
+                    field_utctime_s,
+                    Field,
+                },
             },
+            types::type_i32,
+            QueryResCount,
+            Version,
         },
-        query::{
-            expr::{
-                Expr,
-                BinOp,
-                ComputeType,
-            },
-            select::{
-                Join,
-                NamedSelectSource,
-                JoinSource,
-                JoinType,
-                Order,
-            },
-            insert::InsertConflict,
-            helpers::set_field,
-        },
-        generate,
-        new_insert,
-        QueryResCount,
-        new_select,
-        new_update,
-        new_delete,
-        types::type_i32,
     },
-    break_shed,
+    flowcontrol::shed,
 };
 
 pub fn build(root: &Path) {
@@ -69,7 +81,7 @@ pub fn build(root: &Path) {
                 type_: points.type_.type_.clone(),
             })]).build_query("create_user", QueryResCount::None),
             new_select(&users).where_(Expr::BinOp {
-                left: Box::new(Expr::Field(id.clone())),
+                left: Box::new(Expr::Binding(Binding::field(&id))),
                 op: BinOp::Equals,
                 right: Box::new(Expr::Param {
                     name: "id".into(),
@@ -279,7 +291,7 @@ pub fn build(root: &Path) {
                 name: "two".into(),
                 type_: two.type_.type_.clone(),
             })]).return_field(&two).on_conflict(InsertConflict::DoUpdate(vec![(two.clone(), Expr::BinOp {
-                left: Box::new(Expr::Field(two.clone())),
+                left: Box::new(Expr::Binding(Binding::field(&two))),
                 op: BinOp::Plus,
                 right: Box::new(Expr::LitI32(1)),
             })])).build_query("insert_banan", QueryResCount::One)],
@@ -333,7 +345,7 @@ pub fn build(root: &Path) {
                 name: "val".into(),
                 type_: hizat.type_.type_.clone(),
             })]).where_(Expr::BinOp {
-                left: Box::new(Expr::Field(hizat.clone())),
+                left: Box::new(Expr::Binding(Binding::field(&hizat))),
                 op: BinOp::Equals,
                 right: Box::new(Expr::Param {
                     name: "cond".into(),
@@ -389,7 +401,7 @@ pub fn build(root: &Path) {
             ).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::MaybeOne),
             new_delete(&bananna).where_(Expr::BinOp {
-                left: Box::new(Expr::Field(hizat.clone())),
+                left: Box::new(Expr::Binding(Binding::field(&hizat))),
                 op: BinOp::Equals,
                 right: Box::new(Expr::Param {
                     name: "hiz".into(),
@@ -459,9 +471,9 @@ pub fn build(root: &Path) {
                 }),
                 type_: JoinType::Left,
                 on: Expr::BinOp {
-                    left: Box::new(Expr::Field(hizat.clone())),
+                    left: Box::new(Expr::Binding(Binding::field(&hizat))),
                     op: BinOp::Equals,
-                    right: Box::new(Expr::Field(hizat1.clone())),
+                    right: Box::new(Expr::Binding(Binding::field(&hizat1))),
                 },
             }).return_field(&three).return_field(&two).build_query("get_it", QueryResCount::One)],
         ).unwrap();
@@ -498,7 +510,7 @@ pub fn build(root: &Path) {
             })]).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna)
                 .return_field(&hizat)
-                .order(Expr::Field(hizat.clone()), Order::Asc)
+                .order(Expr::Binding(Binding::field(&hizat)), Order::Asc)
                 .build_query("get_banan", QueryResCount::Many)
         ]).unwrap();
     }
@@ -520,9 +532,9 @@ pub fn build(root: &Path) {
             })]).build_query("insert_banan", QueryResCount::None),
             new_select(&bananna).return_named("hizat2", Expr::Call {
                 func: "sum".into(),
-                args: vec![Expr::Field(hizat2.clone())],
+                args: vec![Expr::Binding(Binding::field(&hizat2))],
                 compute_type: ComputeType::new(|ctx, path, args| {
-                    break_shed!{
+                    shed!{
                         if args.len() != 1 {
                             ctx.errs.err(path, format!("Sum needs exactly one arg, got {}", args.len()));
                         }
@@ -559,10 +571,9 @@ pub fn build(root: &Path) {
                                 );
                         }
                     };
-
                     return Some(type_i32().build());
                 }),
-            }).group(vec![Expr::Field(hizat.clone())]).build_query("get_banan", QueryResCount::Many)
+            }).group(vec![Expr::Binding(Binding::field(&hizat))]).build_query("get_banan", QueryResCount::Many)
         ]).unwrap();
     }
 
@@ -729,5 +740,66 @@ pub fn build(root: &Path) {
             (0usize, v0),
             (1usize, v1)
         ], vec![]).unwrap();
+    }
+
+    // # CTE
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zEOIWAACJ", "bannanana");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_i32().build());
+        let hizat2 = bananna.field(&mut v, "z3CRAVV3M", "hizat2", field_i32().build());
+        let mut hibbo = CteBuilder::new("hibbo", new_select_body(&bananna).return_field(&hizat2).build());
+        let zathi = hibbo.field("zathi", hizat2.0.type_.type_.clone());
+        let (hibbo, hibbo_cte) = hibbo.build();
+        generate(&root.join("tests/sqlite_gen_select_cte.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(
+                &bananna,
+                vec![set_field("v", &hizat), set_field("v2", &hizat2)],
+            ).build_query("insert_banan", QueryResCount::None),
+            new_select(&hibbo).with(With {
+                recursive: false,
+                ctes: vec![hibbo_cte],
+            }).return_(Expr::Binding(Binding::field(&zathi))).build_query("get_banan", QueryResCount::Many)
+        ]).unwrap();
+    }
+
+    // # Window function
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zEOIWAACJ", "bannanana");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_i32().build());
+        let hizat2 = bananna.field(&mut v, "z3CRAVV3M", "hizat2", field_i32().build());
+        generate(&root.join("tests/sqlite_gen_select_window.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(
+                &bananna,
+                vec![set_field("v", &hizat), set_field("v2", &hizat2)],
+            ).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).return_field(&hizat2).return_named("zombo", Expr::Window {
+                expr: Box::new(fn_max(Expr::Binding(Binding::field(&hizat2)))),
+                partition_by: vec![],
+                order_by: vec![],
+            }).build_query("get_banan", QueryResCount::Many)
+        ]).unwrap();
+    }
+
+    // # Junction
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zEOIWAACJ", "bannanana");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_i32().build());
+        let hizat2 = bananna.field(&mut v, "z3CRAVV3M", "hizat2", field_i32().build());
+        generate(&root.join("tests/sqlite_gen_select_junction.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(
+                &bananna,
+                vec![set_field("v", &hizat), set_field("v2", &hizat2)],
+            ).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).junction(SelectJunction {
+                op: good_ormning::sqlite::query::select_body::SelectJunctionOperator::Union,
+                body: new_select_body(&bananna).return_field(&hizat2).build(),
+            }).build_query("get_banan", QueryResCount::Many)
+        ]).unwrap();
     }
 }
