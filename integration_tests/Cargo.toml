@@ -2,6 +2,8 @@
 name = "integration_tests"
 version = "0.1.0"
 edition = "2021"
+publish = false
+release = false
 
 [dependencies]
 chrono = ">=0"
