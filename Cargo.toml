@@ -1,6 +1,6 @@
 [package]
 name = "good-ormning"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 license = "ISC"
 description = "Maybe an ORM"
