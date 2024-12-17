@@ -1,11 +1,13 @@
-use std::borrow::Cow;
-use chrono::{
-    DateTime,
-    Utc,
-};
-use good_ormning_runtime::{
-    pg,
-    sqlite,
+use {
+    chrono::{
+        DateTime,
+        Utc,
+    },
+    good_ormning_runtime::{
+        pg,
+        sqlite,
+    },
+    std::borrow::Cow,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -163,8 +165,8 @@ impl pg::GoodOrmningCustomString<MyString> for MyString {
 }
 
 impl sqlite::GoodOrmningCustomString<MyString> for MyString {
-    fn to_sql<'a>(value: &'a MyString) -> Cow<'a, str> {
-        Cow::Borrowed(&value.0)
+    fn to_sql<'a>(value: &'a MyString) -> String {
+        value.0.clone()
     }
 
     fn from_sql(s: String) -> Result<MyString, String> {
@@ -186,8 +188,8 @@ impl pg::GoodOrmningCustomBytes<MyBytes> for MyBytes {
 }
 
 impl sqlite::GoodOrmningCustomBytes<MyBytes> for MyBytes {
-    fn to_sql<'a>(value: &'a MyBytes) -> Cow<'a, [u8]> {
-        Cow::Borrowed(&value.0)
+    fn to_sql<'a>(value: &'a MyBytes) -> Vec<u8> {
+        value.0.clone()
     }
 
     fn from_sql(s: Vec<u8>) -> Result<MyBytes, String> {

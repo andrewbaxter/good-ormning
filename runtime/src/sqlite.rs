@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
@@ -37,12 +36,12 @@ pub trait GoodOrmningCustomF64<T> {
 }
 
 pub trait GoodOrmningCustomString<T> {
-    fn to_sql<'a>(value: &'a T) -> Cow<'a, str>;
+    fn to_sql<'a>(value: &'a T) -> String;
     fn from_sql(value: String) -> Result<T, String>;
 }
 
 pub trait GoodOrmningCustomBytes<T> {
-    fn to_sql<'a>(value: &'a T) -> Cow<'a, [u8]>;
+    fn to_sql<'a>(value: &'a T) -> Vec<u8>;
     fn from_sql(value: Vec<u8>) -> Result<T, String>;
 }
 
