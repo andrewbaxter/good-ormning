@@ -106,6 +106,7 @@ impl FieldBuilder {
                     type_: self.t,
                 },
                 opt: self.opt,
+                array: false,
             },
             migration_default: self.default_,
         }

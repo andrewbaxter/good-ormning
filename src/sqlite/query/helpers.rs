@@ -132,6 +132,7 @@ pub fn as_utc(expr: Expr) -> Expr {
                     custom: None,
                 },
                 opt: false,
+                array: false,
             });
         }),
     }
@@ -187,6 +188,7 @@ pub fn fn_count(expr: Expr) -> Expr {
                     custom: None,
                 },
                 opt: false,
+                array: false,
             });
         }),
     }

@@ -1,12 +1,18 @@
 use {
-    std::{
-        collections::{
-            HashMap,
-            HashSet,
+    super::{
+        expr::{
+            check_assignable,
+            Binding,
+            Expr,
+            ExprType,
         },
-        rc::Rc,
+        select_body::{
+            Returning,
+            SelectBody,
+            SelectJunction,
+            SelectJunctionOperator,
+        },
     },
-    proc_macro2::TokenStream,
     crate::{
         sqlite::{
             schema::{
@@ -22,9 +28,7 @@ use {
                     Table_,
                 },
             },
-            types::{
-                Type,
-            },
+            types::Type,
             QueryResCount,
         },
         utils::{
@@ -32,19 +36,13 @@ use {
             Tokens,
         },
     },
-    super::{
-        expr::{
-            check_assignable,
-            Expr,
-            ExprType,
-            Binding,
+    proc_macro2::TokenStream,
+    std::{
+        collections::{
+            HashMap,
+            HashSet,
         },
-        select_body::{
-            Returning,
-            SelectBody,
-            SelectJunction,
-            SelectJunctionOperator,
-        },
+        rc::Rc,
     },
 };
 

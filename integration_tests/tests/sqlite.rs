@@ -11,6 +11,7 @@ pub mod sqlite_gen_param_utctime_s;
 pub mod sqlite_gen_param_utctime_ms;
 pub mod sqlite_gen_param_opt_i32;
 pub mod sqlite_gen_param_opt_i32_null;
+pub mod sqlite_gen_param_arr_i32;
 pub mod sqlite_gen_param_custom;
 pub mod sqlite_gen_param_opt_custom;
 pub mod sqlite_gen_insert_on_conflict_do_nothing;
@@ -110,6 +111,15 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     sqlite_gen_param_opt_i32_null::migrate(&mut db)?;
     sqlite_gen_param_opt_i32_null::insert_banan(&mut db)?;
     assert_eq!(sqlite_gen_param_opt_i32_null::get_banan(&mut db)?, None);
+    Ok(())
+}
+
+#[test]
+fn test_param_arr_i32() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_param_arr_i32::migrate(&mut db)?;
+    sqlite_gen_param_arr_i32::insert_banan(&mut db, 7)?;
+    assert_eq!(sqlite_gen_param_arr_i32::get_banan(&mut db, vec![7])?, Some(7));
     Ok(())
 }
 

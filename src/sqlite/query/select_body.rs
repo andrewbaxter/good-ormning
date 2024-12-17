@@ -142,6 +142,7 @@ impl SelectBody {
                             v = Type {
                                 opt: true,
                                 type_: v.type_,
+                                array: false,
                             };
                         }
                         scope.insert(k, v);

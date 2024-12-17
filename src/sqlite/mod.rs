@@ -797,6 +797,7 @@ impl Table {
                         custom: custom_type,
                     },
                     opt: false,
+                    array: false,
                 },
                 migration_default: None,
             },
@@ -1402,6 +1403,9 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         use good_ormning_runtime::ToGoodError;
         pub fn migrate(db:& mut rusqlite:: Connection) -> Result <(),
         GoodError > {
+            rusqlite::vtab::array::load_module(
+                &db,
+            ).to_good_error(|| "Error loading array extension for array values".to_string())?;
             {
                 let query =
                     "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);";

@@ -100,6 +100,7 @@ impl SqliteNodeDataDispatch for NodeField_ {
                 check_same(&mut qctx.errs, &path, &ExprType(vec![(Binding::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
+                    array: false,
                 })]), &e_res.0);
                 if !qctx.rust_args.is_empty() {
                     qctx

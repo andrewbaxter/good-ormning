@@ -196,6 +196,25 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
+    // # (select) Param: Array `<i32>`
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zT7F4746C", "bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_i32().build());
+        generate(&root.join("tests/sqlite_gen_param_arr_i32.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(&bananna, vec![set_field("hizat", &hizat)]).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).where_(Expr::BinOp {
+                left: Box::new(Expr::field(&hizat)),
+                op: BinOp::In,
+                right: Box::new(Expr::Param {
+                    name: "hizats".to_string(),
+                    type_: type_i32().array().build(),
+                }),
+            }).return_field(&hizat).build_query("get_banan", QueryResCount::MaybeOne)
+        ]).unwrap();
+    }
+
     // # (insert) Param: All custom types
     {
         let mut v = Version::default();

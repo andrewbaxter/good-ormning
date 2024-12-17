@@ -117,11 +117,13 @@ pub struct SimpleType {
 pub struct Type {
     pub type_: SimpleType,
     pub opt: bool,
+    pub array: bool,
 }
 
 pub struct TypeBuilder {
     t: SimpleSimpleType,
     opt: bool,
+    array: bool,
     custom: Option<String>,
 }
 
@@ -130,8 +132,15 @@ impl TypeBuilder {
         TypeBuilder {
             t: t,
             opt: false,
+            array: false,
             custom: None,
         }
+    }
+
+    /// Make this value an array.
+    pub fn array(mut self) -> TypeBuilder {
+        self.array = true;
+        self
     }
 
     /// Make this value optional.
@@ -154,6 +163,7 @@ impl TypeBuilder {
                 type_: self.t,
             },
             opt: self.opt,
+            array: self.array,
         }
     }
 }

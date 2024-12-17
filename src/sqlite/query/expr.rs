@@ -208,6 +208,9 @@ pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<Str
     if left.opt != right.opt {
         ctx.errs.err(path, format!("Operator arms have differing optionality"));
     }
+    if left.array != right.array {
+        ctx.errs.err(path, format!("Operator arms are either not both arrays or not both scalars"));
+    }
 
     #[derive(Debug)]
     #[samevariant(GeneralTypePairs)]
@@ -373,6 +376,7 @@ impl Expr {
                         custom: None,
                     },
                     opt: false,
+                    array: false,
                 })]), $o)
             };
         }
@@ -401,7 +405,9 @@ impl Expr {
                 BinOp::LessThanEqualTo |
                 BinOp::GreaterThan |
                 BinOp::GreaterThanEqualTo |
-                BinOp::Like => {
+                BinOp::Like |
+                BinOp::In |
+                BinOp::NotIn => {
                     operand_lower_limit = 2;
                 },
             };
@@ -461,6 +467,7 @@ impl Expr {
                             type_: SimpleSimpleType::Bool,
                             custom: None,
                         },
+                        array: false,
                         opt: false,
                     }
                 },
@@ -502,6 +509,36 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        array: false,
+                    }
+                },
+                BinOp::In | BinOp::NotIn => {
+                    #[cfg(feature = "chrono")]
+                    if match op {
+                        BinOp::TzEquals | BinOp::TzNotEquals | BinOp::TzIs | BinOp::TzIsNot => false,
+                        _ => true,
+                    } {
+                        for (i, el) in res.iter().enumerate() {
+                            check_utc_if_time(ctx, &path.push_back(format!("Operand {}", i)), &el.0);
+                        }
+                    }
+                    let base = res.get(0).unwrap();
+                    check_general_same(
+                        ctx,
+                        &path.push_back(format!("Operands 0, 1")),
+                        &base.0,
+                        &res.get(1).unwrap().0,
+                    );
+                    for (i, res) in res.iter().enumerate().skip(2) {
+                        check_general_same(ctx, &path.push_back(format!("Operands 0, {}", i)), &base.0, &res.0);
+                    }
+                    Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::Bool,
+                            custom: None,
+                        },
+                        opt: false,
+                        array: false,
                     }
                 },
             };
@@ -525,6 +562,8 @@ impl Expr {
                 BinOp::GreaterThan => ">",
                 BinOp::GreaterThanEqualTo => ">=",
                 BinOp::Like => "like",
+                BinOp::In => "in",
+                BinOp::NotIn => "not in",
             };
             let mut out = Tokens::new();
             out.s("(");
@@ -545,6 +584,7 @@ impl Expr {
                 return (ExprType(vec![(Binding::empty(), Type {
                     type_: t.clone(),
                     opt: true,
+                    array: false,
                 })]), out);
             },
             Expr::LitBool(x) => {
@@ -657,6 +697,18 @@ impl Expr {
                             #[cfg(feature = "chrono")]
                             SimpleSimpleType::FixedOffsetTimeMs => quote!(#rust_forward.to_rfc3339()),
                         };
+                        if t.array {
+                            rust_type = quote!(Vec < #rust_type >);
+                            rust_forward =
+                                quote!(
+                                    std:: rc:: Rc:: new(
+                                        #ident.into_iter(
+                                        ).map(
+                                            | #ident | rusqlite:: types:: Value:: from(#rust_forward)
+                                        ).collect::< Vec < _ >>()
+                                    )
+                                );
+                        }
                         if t.opt {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
@@ -669,7 +721,11 @@ impl Expr {
                 for e in errs {
                     ctx.errs.err(&path, e);
                 }
-                out.s(&format!("${}", i + 1));
+                if t.array {
+                    out.s(&format!("rarray(${})", i + 1));
+                } else {
+                    out.s(&format!("${}", i + 1));
+                }
                 return (ExprType(vec![(Binding::local(x.clone()), t.clone())]), out);
             },
             Expr::Binding(name) => {
@@ -805,6 +861,7 @@ impl Expr {
                         custom: None,
                     },
                     opt: false,
+                    array: false,
                 })]), out);
             },
             Expr::Cast(e, t) => {
@@ -850,6 +907,8 @@ pub enum BinOp {
     GreaterThan,
     GreaterThanEqualTo,
     Like,
+    In,
+    NotIn,
 }
 
 #[derive(Clone, Debug)]
