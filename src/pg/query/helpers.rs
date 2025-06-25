@@ -83,10 +83,18 @@ pub fn lte_field(param_name: impl Into<String>, f: &Field) -> Expr {
     }
 }
 
-/// Shortcut for AND expressions.
+/// Shortcut for chain AND expressions.
 pub fn expr_and(exprs: Vec<Expr>) -> Expr {
     Expr::BinOpChain {
         op: BinOp::And,
+        exprs: exprs,
+    }
+}
+
+/// Shortcut for chain OR expressions.
+pub fn expr_or(exprs: Vec<Expr>) -> Expr {
+    Expr::BinOpChain {
+        op: BinOp::Or,
         exprs: exprs,
     }
 }

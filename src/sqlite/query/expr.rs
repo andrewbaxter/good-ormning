@@ -67,6 +67,7 @@ impl std::fmt::Debug for ComputeType {
 
 #[derive(Clone, Debug)]
 pub enum Expr {
+    LitArray(Vec<Expr>),
     // A null value needs a type for type checking purposes. It will always be trated
     // as an optional value.
     LitNull(SimpleType),
@@ -578,6 +579,21 @@ impl Expr {
         }
 
         match self {
+            Expr::LitArray(t) => {
+                let mut out = Tokens::new();
+                let mut child_types = vec![];
+                out.s("(");
+                for (i, child) in t.iter().enumerate() {
+                    if i > 0 {
+                        out.s(", ");
+                    }
+                    let (child_type, child_tokens) = child.build(ctx, path, scope);
+                    out.s(&child_tokens.to_string());
+                    child_types.extend(child_type.0);
+                }
+                out.s(")");
+                return (ExprType(child_types), out);
+            },
             Expr::LitNull(t) => {
                 let mut out = Tokens::new();
                 out.s("null");
