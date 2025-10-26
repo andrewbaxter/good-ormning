@@ -16,7 +16,8 @@ use {
 
 pub mod pg_gen_base_insert;
 pub mod pg_gen_param_i32;
-pub mod pg_gen_param_utctime;
+pub mod pg_gen_param_utctime_chrono;
+pub mod pg_gen_param_utctime_jiff;
 pub mod pg_gen_param_opt_i32;
 pub mod pg_gen_param_opt_i32_null;
 pub mod pg_gen_param_custom;
@@ -77,12 +78,27 @@ async fn test_param_i32() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
-async fn test_param_utctime() -> Result<(), loga::Error> {
+async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    pg_gen_param_utctime::migrate(&mut db).await?;
-    pg_gen_param_utctime::insert_banan(&mut db, ref_date).await?;
-    assert_eq!(pg_gen_param_utctime::get_banan(&mut db).await?, ref_date);
+    pg_gen_param_utctime_chrono::migrate(&mut db).await?;
+    pg_gen_param_utctime_chrono::insert_banan(&mut db, ref_date).await?;
+    assert_eq!(pg_gen_param_utctime_chrono::get_banan(&mut db).await?, ref_date);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_param_utctime_jiff() -> Result<(), loga::Error> {
+    let (mut db, _cont) = db().await?;
+    let ref_date =
+        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp();
+    pg_gen_param_utctime_jiff::migrate(&mut db).await?;
+    pg_gen_param_utctime_jiff::insert_banan(&mut db, ref_date).await?;
+    assert_eq!(pg_gen_param_utctime_jiff::get_banan(&mut db).await?, ref_date);
     Ok(())
 }
 
@@ -116,8 +132,16 @@ async fn test_param_custom() -> Result<(), loga::Error> {
     let x_5 = integration_tests::MyF64(99.);
     let x_6 = integration_tests::MyBytes("hi".as_bytes().to_vec());
     let x_7 = integration_tests::MyString("hogo".to_string());
-    let x_8 = integration_tests::MyUtctime(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
-    pg_gen_param_custom::insert_banan(&mut db, &x_0, &x_1, &x_2, &x_3, &x_4, &x_5, &x_6, &x_7, &x_8).await?;
+    let x_8 = integration_tests::MyUtctimeChrono(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
+    let x_9 =
+        integration_tests::MyUtctimeJiff(
+            jiff::civil::DateTime::new(1999, 11, 14, 1, 2, 13, 0)
+                .unwrap()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .unwrap()
+                .timestamp(),
+        );
+    pg_gen_param_custom::insert_banan(&mut db, &x_0, &x_1, &x_2, &x_3, &x_4, &x_5, &x_6, &x_7, &x_8, &x_9).await?;
     let res = pg_gen_param_custom::get_banan(&mut db).await?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);

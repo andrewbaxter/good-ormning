@@ -11,11 +11,13 @@ readme = "readme.md"
 [features]
 default = []
 chrono = ["dep:chrono"]
+jiff = ["dep:jiff"]
 pg = []
 sqlite = []
 
 [dependencies]
 chrono = { version = "0.4", optional = true }
+jiff = { version = "0.2", optional = true }
 enum_dispatch = "0.3"
 flowcontrol = "0.2.2"
 genemichaels-lib = "0.5.0-pre3"
@@ -35,8 +37,9 @@ good-ormning-runtime = { path = "runtime", features = [
     "pg",
     "sqlite",
     "chrono",
+    "jiff",
 ] }
-rusqlite = "0.32"
+rusqlite = "0.37"
 
 [package.metadata.docs.rs]
 all-features = true

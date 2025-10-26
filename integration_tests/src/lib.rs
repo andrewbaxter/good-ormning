@@ -7,6 +7,7 @@ use {
         pg,
         sqlite,
     },
+    jiff::Timestamp,
     std::borrow::Cow,
 };
 
@@ -198,24 +199,47 @@ impl sqlite::GoodOrmningCustomBytes<MyBytes> for MyBytes {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct MyUtctime(pub DateTime<Utc>);
+pub struct MyUtctimeChrono(pub DateTime<Utc>);
 
-impl pg::GoodOrmningCustomUtcTime<MyUtctime> for MyUtctime {
-    fn to_sql(value: &MyUtctime) -> DateTime<Utc> {
+impl pg::GoodOrmningCustomUtcTimeChrono<MyUtctimeChrono> for MyUtctimeChrono {
+    fn to_sql(value: &MyUtctimeChrono) -> DateTime<Utc> {
         value.0
     }
 
-    fn from_sql(s: DateTime<Utc>) -> Result<MyUtctime, String> {
+    fn from_sql(s: DateTime<Utc>) -> Result<MyUtctimeChrono, String> {
         Ok(Self(s))
     }
 }
 
-impl sqlite::GoodOrmningCustomUtcTime<MyUtctime> for MyUtctime {
-    fn to_sql<'a>(value: &'a MyUtctime) -> DateTime<Utc> {
+impl sqlite::GoodOrmningCustomUtcTimeChrono<MyUtctimeChrono> for MyUtctimeChrono {
+    fn to_sql<'a>(value: &'a MyUtctimeChrono) -> DateTime<Utc> {
         value.0
     }
 
-    fn from_sql(s: DateTime<Utc>) -> Result<MyUtctime, String> {
+    fn from_sql(s: DateTime<Utc>) -> Result<MyUtctimeChrono, String> {
+        Ok(Self(s))
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct MyUtctimeJiff(pub Timestamp);
+
+impl pg::GoodOrmningCustomUtcTimeJiff<MyUtctimeJiff> for MyUtctimeJiff {
+    fn to_sql(value: &MyUtctimeJiff) -> Timestamp {
+        value.0
+    }
+
+    fn from_sql(s: Timestamp) -> Result<MyUtctimeJiff, String> {
+        Ok(Self(s))
+    }
+}
+
+impl sqlite::GoodOrmningCustomUtcTimeJiff<MyUtctimeJiff> for MyUtctimeJiff {
+    fn to_sql<'a>(value: &'a MyUtctimeJiff) -> Timestamp {
+        value.0
+    }
+
+    fn from_sql(s: Timestamp) -> Result<MyUtctimeJiff, String> {
         Ok(Self(s))
     }
 }

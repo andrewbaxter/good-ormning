@@ -1,46 +1,52 @@
-use chrono::FixedOffset;
+use {
+    chrono::FixedOffset,
+    quote::{
+        quote,
+        format_ident,
+        ToTokens,
+    },
+    samevariant::samevariant,
+    syn::Path,
+    std::{
+        collections::HashMap,
+        fmt::Display,
+        rc::Rc,
+    },
+    crate::{
+        pg::{
+            types::{
+                Type,
+                SimpleSimpleType,
+                SimpleType,
+                to_rust_types,
+            },
+            query::utils::QueryBody,
+            schema::{
+                field::{
+                    Field,
+                },
+            },
+            QueryResCount,
+        },
+        utils::{
+            Tokens,
+            Errs,
+            sanitize_ident,
+        },
+    },
+    super::{
+        utils::PgQueryCtx,
+        select::Select,
+    },
+};
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
     Utc,
 };
-use quote::{
-    quote,
-    format_ident,
-    ToTokens,
-};
-use samevariant::samevariant;
-use syn::Path;
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    rc::Rc,
-};
-use crate::{
-    pg::{
-        types::{
-            Type,
-            SimpleSimpleType,
-            SimpleType,
-            to_rust_types,
-        },
-        query::utils::QueryBody,
-        schema::{
-            field::{
-                Field,
-            },
-        },
-        QueryResCount,
-    },
-    utils::{
-        Tokens,
-        Errs,
-        sanitize_ident,
-    },
-};
-use super::{
-    utils::PgQueryCtx,
-    select::Select,
+#[cfg(feature = "jiff")]
+use jiff::{
+    Timestamp,
 };
 
 /// This is used for function expressions, to check the argument types and compute
@@ -77,9 +83,11 @@ pub enum Expr {
     LitString(String),
     LitBytes(Vec<u8>),
     #[cfg(feature = "chrono")]
-    LitUtcTime(DateTime<Utc>),
+    LitUtcTimeChrono(DateTime<Utc>),
     #[cfg(feature = "chrono")]
-    LitFixedOffsetTime(DateTime<FixedOffset>),
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeJiff(Timestamp),
     /// A query parameter. This will become a parameter to the generated Rust function
     /// with the specified `name` and `type_`.
     Param {
@@ -198,9 +206,11 @@ pub(crate) fn general_type(t: &Type) -> GeneralType {
         SimpleSimpleType::String => GeneralType::Blob,
         SimpleSimpleType::Bytes => GeneralType::Blob,
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::UtcTime => GeneralType::Numeric,
+        SimpleSimpleType::UtcTimeChrono => GeneralType::Numeric,
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::FixedOffsetTime => GeneralType::Numeric,
+        SimpleSimpleType::FixedOffsetTimeChrono => GeneralType::Numeric,
+        #[cfg(feature = "jiff")]
+        SimpleSimpleType::UtcTimeJiff => GeneralType::Numeric,
     }
 }
 
@@ -512,18 +522,25 @@ impl Expr {
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
             #[cfg(feature = "chrono")]
-            Expr::LitUtcTime(d) => {
+            Expr::LitUtcTimeChrono(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_rfc3339();
                 out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTime);
+                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
             },
             #[cfg(feature = "chrono")]
-            Expr::LitFixedOffsetTime(d) => {
+            Expr::LitFixedOffsetTimeChrono(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_rfc3339();
                 out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::FixedOffsetTime);
+                return empty_type!(out, SimpleSimpleType::FixedOffsetTimeChrono);
+            },
+            #[cfg(feature = "jiff")]
+            Expr::LitUtcTimeJiff(d) => {
+                let mut out = Tokens::new();
+                let d = d.to_string();
+                out.s(&format!("'{}'", d));
+                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
             },
             Expr::Param { name: x, type_: t } => {
                 let path = path.push_back(format!("Param ({})", x));

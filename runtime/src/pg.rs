@@ -1,9 +1,16 @@
-use std::borrow::Cow;
+use {
+    std::borrow::Cow,
+};
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
     Utc,
     FixedOffset,
+};
+#[cfg(feature = "jiff")]
+use jiff::{
+    Timestamp,
+    Zoned,
 };
 
 pub trait GoodOrmningCustomAuto<T> {
@@ -47,13 +54,25 @@ pub trait GoodOrmningCustomBytes<T> {
 }
 
 #[cfg(feature = "chrono")]
-pub trait GoodOrmningCustomUtcTime<T> {
+pub trait GoodOrmningCustomUtcTimeChrono<T> {
     fn to_sql(value: &T) -> DateTime<Utc>;
     fn from_sql(value: DateTime<Utc>) -> Result<T, String>;
 }
 
 #[cfg(feature = "chrono")]
-pub trait GoodOrmningCustomFixedOffsetTime<T> {
+pub trait GoodOrmningCustomFixedOffsetTimeChrono<T> {
     fn to_sql(value: &T) -> DateTime<FixedOffset>;
     fn from_sql(value: DateTime<FixedOffset>) -> Result<T, String>;
+}
+
+#[cfg(feature = "jiff")]
+pub trait GoodOrmningCustomUtcTimeJiff<T> {
+    fn to_sql(value: &T) -> Timestamp;
+    fn from_sql(value: Timestamp) -> Result<T, String>;
+}
+
+#[cfg(feature = "jiff")]
+pub trait GoodOrmningCustomFixedOffsetTimeJiff<T> {
+    fn to_sql(value: &T) -> Zoned;
+    fn from_sql(value: Zoned) -> Result<T, String>;
 }

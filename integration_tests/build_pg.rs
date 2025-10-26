@@ -7,7 +7,8 @@ use {
                 field_str,
                 field_i32,
                 field_bool,
-                field_utctime,
+                field_utctime_chrono,
+                field_utctime_jiff,
                 field_auto,
                 field_i64,
                 field_f32,
@@ -76,12 +77,27 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
-    // # (insert) Param: utctime
+    // # (insert) Param: utctime (chrono)
     {
         let mut v = Version::default();
         let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime().build());
-        generate(&root.join("tests/pg_gen_param_utctime.rs"), vec![(0usize, v)], vec![
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_chrono().build());
+        generate(&root.join("tests/pg_gen_param_utctime_chrono.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
+                name: "val".into(),
+                type_: hizat.type_.type_.clone(),
+            })]).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+        ]).unwrap();
+    }
+
+    // # (insert) Param: utctime (jiff)
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zJCPRHK37", "bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_jiff().build());
+        generate(&root.join("tests/pg_gen_param_utctime_jiff.rs"), vec![(0usize, v)], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
                 name: "val".into(),
@@ -138,7 +154,8 @@ pub fn build(root: &Path) {
             ("zRVNTXIXT", field_f64().custom("integration_tests::MyF64").build()),
             ("z7QZV8UAK", field_bytes().custom("integration_tests::MyBytes").build()),
             ("zRERTXTL8", field_str().custom("integration_tests::MyString").build()),
-            ("z014O0O9R", field_utctime().custom("integration_tests::MyUtctime").build()),
+            ("z014O0O9R", field_utctime_chrono().custom("integration_tests::MyUtctimeChrono").build()),
+            ("z262DZ86M", field_utctime_jiff().custom("integration_tests::MyUtctimeJiff").build()),
         ]
             .into_iter()
             .enumerate() {

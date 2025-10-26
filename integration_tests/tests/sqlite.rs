@@ -1,14 +1,18 @@
-use chrono::{
-    Utc,
-    TimeZone,
+use {
+    chrono::{
+        Utc,
+        TimeZone,
+    },
+    integration_tests::MyString,
 };
-use integration_tests::MyString;
 
 pub mod sqlite_gen_base_insert;
 pub mod sqlite_gen_constraint;
 pub mod sqlite_gen_param_i32;
-pub mod sqlite_gen_param_utctime_s;
-pub mod sqlite_gen_param_utctime_ms;
+pub mod sqlite_gen_param_utctime_s_chrono;
+pub mod sqlite_gen_param_utctime_ms_chrono;
+pub mod sqlite_gen_param_utctime_s_jiff;
+pub mod sqlite_gen_param_utctime_ms_jiff;
 pub mod sqlite_gen_param_opt_i32;
 pub mod sqlite_gen_param_opt_i32_null;
 pub mod sqlite_gen_param_arr_i32;
@@ -77,22 +81,52 @@ fn test_param_i32() -> Result<(), loga::Error> {
 }
 
 #[test]
-fn test_param_utctime_s() -> Result<(), loga::Error> {
+fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
-    sqlite_gen_param_utctime_s::migrate(&mut db)?;
+    sqlite_gen_param_utctime_s_chrono::migrate(&mut db)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    sqlite_gen_param_utctime_s::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_s::get_banan(&mut db)?, ref_date);
+    sqlite_gen_param_utctime_s_chrono::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_s_chrono::get_banan(&mut db)?, ref_date);
     Ok(())
 }
 
 #[test]
-fn test_param_utctime_ms() -> Result<(), loga::Error> {
+fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
-    sqlite_gen_param_utctime_ms::migrate(&mut db)?;
+    sqlite_gen_param_utctime_ms_chrono::migrate(&mut db)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    sqlite_gen_param_utctime_ms::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_ms::get_banan(&mut db)?, ref_date);
+    sqlite_gen_param_utctime_ms_chrono::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_ms_chrono::get_banan(&mut db)?, ref_date);
+    Ok(())
+}
+
+#[test]
+fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_param_utctime_s_jiff::migrate(&mut db)?;
+    let ref_date =
+        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp();
+    sqlite_gen_param_utctime_s_jiff::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_s_jiff::get_banan(&mut db)?, ref_date);
+    Ok(())
+}
+
+#[test]
+fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_param_utctime_ms_jiff::migrate(&mut db)?;
+    let ref_date =
+        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp();
+    sqlite_gen_param_utctime_ms_jiff::insert_banan(&mut db, ref_date)?;
+    assert_eq!(sqlite_gen_param_utctime_ms_jiff::get_banan(&mut db)?, ref_date);
     Ok(())
 }
 
@@ -135,9 +169,39 @@ fn test_param_custom() -> Result<(), loga::Error> {
     let x_5 = integration_tests::MyF64(99.);
     let x_6 = integration_tests::MyBytes("hi".as_bytes().to_vec());
     let x_7 = integration_tests::MyString("hogo".to_string());
-    let x_8 = integration_tests::MyUtctime(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
-    let x_9 = integration_tests::MyUtctime(Utc.with_ymd_and_hms(1999, 6, 14, 10, 13, 57).unwrap());
-    sqlite_gen_param_custom::insert_banan(&mut db, &x_0, &x_1, &x_2, &x_3, &x_4, &x_5, &x_6, &x_7, &x_8, &x_9)?;
+    let x_8 = integration_tests::MyUtctimeChrono(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
+    let x_9 = integration_tests::MyUtctimeChrono(Utc.with_ymd_and_hms(1999, 6, 14, 10, 13, 57).unwrap());
+    let x_10 =
+        integration_tests::MyUtctimeJiff(
+            jiff::civil::DateTime::new(1999, 11, 14, 1, 2, 13, 0)
+                .unwrap()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .unwrap()
+                .timestamp(),
+        );
+    let x_11 =
+        integration_tests::MyUtctimeJiff(
+            jiff::civil::DateTime::new(1999, 6, 14, 10, 13, 57, 0)
+                .unwrap()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .unwrap()
+                .timestamp(),
+        );
+    sqlite_gen_param_custom::insert_banan(
+        &mut db,
+        &x_0,
+        &x_1,
+        &x_2,
+        &x_3,
+        &x_4,
+        &x_5,
+        &x_6,
+        &x_7,
+        &x_8,
+        &x_9,
+        &x_10,
+        &x_11,
+    )?;
     let res = sqlite_gen_param_custom::get_banan(&mut db)?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);

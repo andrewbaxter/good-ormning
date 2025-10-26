@@ -47,8 +47,10 @@ use {
                     field_i64,
                     field_str,
                     field_u32,
-                    field_utctime_ms,
-                    field_utctime_s,
+                    field_utctime_ms_chrono,
+                    field_utctime_s_chrono,
+                    field_utctime_ms_jiff,
+                    field_utctime_s_jiff,
                     Field,
                 },
             },
@@ -136,12 +138,12 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
-    // # (insert) Param: datetime (seconds)
+    // # (insert) Param: datetime (seconds) (chrono)
     {
         let mut v = Version::default();
         let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_s().build());
-        generate(&root.join("tests/sqlite_gen_param_utctime_s.rs"), vec![(0usize, v)], vec![
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_s_chrono().build());
+        generate(&root.join("tests/sqlite_gen_param_utctime_s_chrono.rs"), vec![(0usize, v)], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
                 name: "val".into(),
@@ -151,12 +153,42 @@ pub fn build(root: &Path) {
         ]).unwrap();
     }
 
-    // # (insert) Param: datetime (seconds)
+    // # (insert) Param: datetime (ms) (chrono)
     {
         let mut v = Version::default();
         let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_ms().build());
-        generate(&root.join("tests/sqlite_gen_param_utctime_ms.rs"), vec![(0usize, v)], vec![
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_ms_chrono().build());
+        generate(&root.join("tests/sqlite_gen_param_utctime_ms_chrono.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
+                name: "val".into(),
+                type_: hizat.type_.type_.clone(),
+            })]).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+        ]).unwrap();
+    }
+
+    // # (insert) Param: datetime (seconds) (jiff)
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zJCPRHK37", "bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_s_jiff().build());
+        generate(&root.join("tests/sqlite_gen_param_utctime_s_jiff.rs"), vec![(0usize, v)], vec![
+            // Queries
+            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
+                name: "val".into(),
+                type_: hizat.type_.type_.clone(),
+            })]).build_query("insert_banan", QueryResCount::None),
+            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
+        ]).unwrap();
+    }
+
+    // # (insert) Param: datetime (ms) (jiff)
+    {
+        let mut v = Version::default();
+        let bananna = v.table("zJCPRHK37", "bananna");
+        let hizat = bananna.field(&mut v, "z437INV6D", "hizat", field_utctime_ms_jiff().build());
+        generate(&root.join("tests/sqlite_gen_param_utctime_ms_jiff.rs"), vec![(0usize, v)], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
                 name: "val".into(),
@@ -232,8 +264,10 @@ pub fn build(root: &Path) {
             ("zQ23DTVF3", field_f64().custom("integration_tests::MyF64").build()),
             ("zV3TUIVTU", field_bytes().custom("integration_tests::MyBytes").build()),
             ("z7AJMBYHP", field_str().custom("integration_tests::MyString").build()),
-            ("zCKQAR1KC", field_utctime_s().custom("integration_tests::MyUtctime").build()),
-            ("z6BUG6P8R", field_utctime_ms().custom("integration_tests::MyUtctime").build()),
+            ("zCKQAR1KC", field_utctime_s_chrono().custom("integration_tests::MyUtctimeChrono").build()),
+            ("z6BUG6P8R", field_utctime_ms_chrono().custom("integration_tests::MyUtctimeChrono").build()),
+            ("zNDD21YUS", field_utctime_s_jiff().custom("integration_tests::MyUtctimeJiff").build()),
+            ("zHUWPXDYU", field_utctime_ms_jiff().custom("integration_tests::MyUtctimeJiff").build()),
         ]
             .into_iter()
             .enumerate() {

@@ -42,7 +42,14 @@ use {
 use {
     chrono::{
         DateTime,
+        FixedOffset,
         Utc,
+    },
+};
+#[cfg(feature = "jiff")]
+use {
+    jiff::{
+        Timestamp,
     },
 };
 
@@ -80,9 +87,15 @@ pub enum Expr {
     LitString(String),
     LitBytes(Vec<u8>),
     #[cfg(feature = "chrono")]
-    LitUtcTimeS(DateTime<Utc>),
+    LitUtcTimeSChrono(DateTime<Utc>),
     #[cfg(feature = "chrono")]
-    LitUtcTimeMs(DateTime<Utc>),
+    LitUtcTimeMsChrono(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeMsChrono(DateTime<FixedOffset>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeSJiff(Timestamp),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeMsJiff(Timestamp),
     /// A query parameter. This will become a parameter to the generated Rust function
     /// with the specified `name` and `type_`.
     Param {
@@ -232,11 +245,15 @@ pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<Str
             SimpleSimpleType::String => GeneralType::Blob,
             SimpleSimpleType::Bytes => GeneralType::Blob,
             #[cfg(feature = "chrono")]
-            SimpleSimpleType::UtcTimeS => GeneralType::Numeric,
+            SimpleSimpleType::UtcTimeSChrono => GeneralType::Numeric,
             #[cfg(feature = "chrono")]
-            SimpleSimpleType::UtcTimeMs => GeneralType::Blob,
+            SimpleSimpleType::UtcTimeMsChrono => GeneralType::Blob,
             #[cfg(feature = "chrono")]
-            SimpleSimpleType::FixedOffsetTimeMs => GeneralType::Blob,
+            SimpleSimpleType::FixedOffsetTimeMsChrono => GeneralType::Blob,
+            #[cfg(feature = "jiff")]
+            SimpleSimpleType::UtcTimeSJiff => GeneralType::Numeric,
+            #[cfg(feature = "jiff")]
+            SimpleSimpleType::UtcTimeMsJiff => GeneralType::Blob,
         }
     }
 
@@ -343,7 +360,7 @@ pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, 
 #[cfg(feature = "chrono")]
 pub(crate) fn check_utc_if_time(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     for (i, el) in t.0.iter().enumerate() {
-        if matches!(el.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMs) {
+        if matches!(el.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMsChrono) {
             ctx.errs.err(
                 &if t.0.len() == 1 {
                     path.clone()
@@ -649,18 +666,37 @@ impl Expr {
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
             #[cfg(feature = "chrono")]
-            Expr::LitUtcTimeS(d) => {
+            Expr::LitUtcTimeSChrono(d) => {
                 let mut out = Tokens::new();
                 let d = d.timestamp();
                 out.s(&format!("{}", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeS);
+                return empty_type!(out, SimpleSimpleType::UtcTimeSChrono);
             },
             #[cfg(feature = "chrono")]
-            Expr::LitUtcTimeMs(d) => {
+            Expr::LitUtcTimeMsChrono(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_rfc3339();
                 out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeMs);
+                return empty_type!(out, SimpleSimpleType::UtcTimeMsChrono);
+            },
+            #[cfg(feature = "chrono")]
+            Expr::LitFixedOffsetTimeMsChrono(d) => {
+                let mut out = Tokens::new();
+                let d = d.to_rfc3339();
+                out.s(&format!("'{}'", d));
+                return empty_type!(out, SimpleSimpleType::FixedOffsetTimeMsChrono);
+            },
+            #[cfg(feature = "jiff")]
+            Expr::LitUtcTimeSJiff(d) => {
+                let mut out = Tokens::new();
+                out.s(&format!("{}", d.as_second()));
+                return empty_type!(out, SimpleSimpleType::UtcTimeSJiff);
+            },
+            #[cfg(feature = "jiff")]
+            Expr::LitUtcTimeMsJiff(d) => {
+                let mut out = Tokens::new();
+                out.s(&format!("'{}'", d.to_string()));
+                return empty_type!(out, SimpleSimpleType::UtcTimeMsJiff);
             },
             Expr::Param { name: x, type_: t } => {
                 let path = path.push_back(format!("Param ({})", x));
@@ -707,11 +743,15 @@ impl Expr {
                             SimpleSimpleType::String => rust_forward,
                             SimpleSimpleType::Bytes => rust_forward,
                             #[cfg(feature = "chrono")]
-                            SimpleSimpleType::UtcTimeS => quote!(#rust_forward.timestamp()),
+                            SimpleSimpleType::UtcTimeSChrono => quote!(#rust_forward.timestamp()),
                             #[cfg(feature = "chrono")]
-                            SimpleSimpleType::UtcTimeMs => quote!(#rust_forward.to_rfc3339()),
+                            SimpleSimpleType::UtcTimeMsChrono => quote!(#rust_forward.to_rfc3339()),
                             #[cfg(feature = "chrono")]
-                            SimpleSimpleType::FixedOffsetTimeMs => quote!(#rust_forward.to_rfc3339()),
+                            SimpleSimpleType::FixedOffsetTimeMsChrono => quote!(#rust_forward.to_rfc3339()),
+                            #[cfg(feature = "jiff")]
+                            SimpleSimpleType::UtcTimeSJiff => quote!(#rust_forward.as_second()),
+                            #[cfg(feature = "jiff")]
+                            SimpleSimpleType::UtcTimeMsJiff => quote!(#rust_forward.to_string()),
                         };
                         if t.array {
                             rust_type = quote!(Vec < #rust_type >);

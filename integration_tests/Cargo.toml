@@ -3,10 +3,10 @@ name = "integration_tests"
 version = "0.1.2"
 edition = "2021"
 publish = false
-release = false
 
 [dependencies]
 chrono = ">=0"
+jiff = ">=0"
 rusqlite = ">=0"
 testcontainers = { version = ">=0" }
 testcontainers-modules = { version = ">=0", features = ["postgres"] }
@@ -15,11 +15,15 @@ tokio = { version = ">=0", features = ["macros", "rt"] }
     "chrono",
     "pg",
     "sqlite",
+    "jiff",
 ] }
-tokio-postgres = { version = ">=0", features = ["with-chrono-0_4"] }
+tokio-postgres = { version = ">=0", features = [
+    "with-chrono-0_4",
+    "with-jiff-0_2",
+] }
 loga = ">=0"
 flowcontrol = ">=0"
 
 [build-dependencies]
-"good-ormning" = { path = "..", features = ["chrono", "pg", "sqlite"] }
+"good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }
 flowcontrol = ">=0"

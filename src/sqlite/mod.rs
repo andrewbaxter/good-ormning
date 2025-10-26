@@ -1191,14 +1191,14 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             }
                         },
                         #[cfg(feature = "chrono")]
-                        types::SimpleSimpleType::UtcTimeS => {
+                        types::SimpleSimpleType::UtcTimeSChrono => {
                             quote!{
                                 let x: i64 = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                                 let x = chrono::TimeZone::timestamp_opt(&chrono::Utc, x, 0).unwrap();
                             }
                         },
                         #[cfg(feature = "chrono")]
-                        types::SimpleSimpleType::UtcTimeMs => {
+                        types::SimpleSimpleType::UtcTimeMsChrono => {
                             quote!{
                                 let x: String = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                                 let x =
@@ -1210,7 +1210,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             }
                         },
                         #[cfg(feature = "chrono")]
-                        types::SimpleSimpleType::FixedOffsetTimeMs => {
+                        types::SimpleSimpleType::FixedOffsetTimeMsChrono => {
                             quote!{
                                 let x: String = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
                                 let x =
@@ -1219,6 +1219,23 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                             &x,
                                         ).to_good_error(|| format!("Getting result {}", #i))?,
                                     );
+                            }
+                        },
+                        #[cfg(feature = "jiff")]
+                        types::SimpleSimpleType::UtcTimeSJiff => {
+                            quote!{
+                                let x: i64 = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
+                                let x = jiff::Timestamp::from_second(x).unwrap();
+                            }
+                        },
+                        #[cfg(feature = "jiff")]
+                        types::SimpleSimpleType::UtcTimeMsJiff => {
+                            quote!{
+                                let x: String = r.get(#i).to_good_error(|| format!("Getting result {}", #i)) ?;
+                                let x =
+                                    <jiff::Timestamp as std::str::FromStr>::from_str(
+                                        &x,
+                                    ).to_good_error(|| format!("Getting result {}", #i))?;
                             }
                         },
                     };

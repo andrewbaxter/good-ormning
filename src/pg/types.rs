@@ -14,9 +14,11 @@ pub enum SimpleSimpleType {
     String,
     Bytes,
     #[cfg(feature = "chrono")]
-    UtcTime,
+    UtcTimeChrono,
     #[cfg(feature = "chrono")]
-    FixedOffsetTime,
+    FixedOffsetTimeChrono,
+    #[cfg(feature = "jiff")]
+    UtcTimeJiff,
 }
 
 pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
@@ -30,9 +32,11 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::String => "text",
         SimpleSimpleType::Bytes => "bytea",
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::UtcTime => "timestamp with time zone",
+        SimpleSimpleType::UtcTimeChrono => "timestamp with time zone",
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::FixedOffsetTime => "timestamp with time zone",
+        SimpleSimpleType::FixedOffsetTimeChrono => "timestamp with time zone",
+        #[cfg(feature = "jiff")]
+        SimpleSimpleType::UtcTimeJiff => "timestamp with time zone",
     }
 }
 
@@ -79,16 +83,22 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             arg_type: quote!(&[u8]),
         },
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::UtcTime => RustTypes {
-            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomUtcTime),
+        SimpleSimpleType::UtcTimeChrono => RustTypes {
+            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomUtcTimeChrono),
             ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
             arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
         },
         #[cfg(feature = "chrono")]
-        SimpleSimpleType::FixedOffsetTime => RustTypes {
-            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomFixedOffsetTime),
+        SimpleSimpleType::FixedOffsetTimeChrono => RustTypes {
+            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomFixedOffsetTimeChrono),
             ret_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
             arg_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
+        },
+        #[cfg(feature = "jiff")]
+        SimpleSimpleType::UtcTimeJiff => RustTypes {
+            custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomUtcTimeJiff),
+            ret_type: quote!(jiff::Timestamp),
+            arg_type: quote!(jiff::Timestamp),
         },
     }
 }
@@ -177,6 +187,11 @@ pub fn type_bytes() -> TypeBuilder {
 }
 
 #[cfg(feature = "chrono")]
-pub fn type_utctime() -> TypeBuilder {
-    TypeBuilder::new(SimpleSimpleType::UtcTime)
+pub fn type_utctime_chrono() -> TypeBuilder {
+    TypeBuilder::new(SimpleSimpleType::UtcTimeChrono)
+}
+
+#[cfg(feature = "jiff")]
+pub fn type_utctime_jiff() -> TypeBuilder {
+    TypeBuilder::new(SimpleSimpleType::UtcTimeJiff)
 }

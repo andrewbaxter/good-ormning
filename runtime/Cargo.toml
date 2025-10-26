@@ -11,13 +11,18 @@ readme = "../readme.md"
 [features]
 default = []
 chrono = ["dep:chrono"]
+jiff = ["dep:jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
 
 [dependencies]
-chrono = { version = "0", optional = true }
-rusqlite = { version = "0", optional = true, features = ["array", "bundled"] }
-tokio-postgres = { version = "0", optional = true }
+chrono = { version = "0.4", optional = true }
+jiff = { version = "0.2", optional = true }
+rusqlite = { version = "0.37", optional = true, features = [
+    "array",
+    "bundled",
+] }
+tokio-postgres = { version = "0.7", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -112,7 +112,7 @@ pub fn expr_or(exprs: Vec<Expr>) -> Expr {
 }
 
 #[cfg(feature = "chrono")]
-pub fn as_utc(expr: Expr) -> Expr {
+pub fn as_utc_chrono(expr: Expr) -> Expr {
     return Expr::Call {
         func: "strftime".to_string(),
         args: vec![Expr::LitString("%Y-%m-%dT%H:%M:%f".to_string()), expr],
@@ -122,7 +122,7 @@ pub fn as_utc(expr: Expr) -> Expr {
                 let Some(type_) = arg.0.iter().next() else {
                     break;
                 };
-                if !matches!(type_.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMs) {
+                if !matches!(type_.1.type_.type_, SimpleSimpleType::FixedOffsetTimeMsChrono) {
                     ctx
                         .errs
                         .err(
@@ -136,7 +136,7 @@ pub fn as_utc(expr: Expr) -> Expr {
             };
             return Some(Type {
                 type_: SimpleType {
-                    type_: SimpleSimpleType::UtcTimeMs,
+                    type_: SimpleSimpleType::UtcTimeMsChrono,
                     custom: None,
                 },
                 opt: false,

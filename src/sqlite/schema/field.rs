@@ -146,18 +146,28 @@ pub fn field_bytes() -> FieldBuilder {
 }
 
 #[cfg(feature = "chrono")]
-pub fn field_utctime_s() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::UtcTimeS)
+pub fn field_utctime_s_chrono() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::UtcTimeSChrono)
 }
 
 #[cfg(feature = "chrono")]
-pub fn field_utctime_ms() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::UtcTimeMs)
+pub fn field_utctime_ms_chrono() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::UtcTimeMsChrono)
 }
 
 #[cfg(feature = "chrono")]
-pub fn field_fixed_offset_time_ms() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::FixedOffsetTimeMs)
+pub fn field_fixed_offset_time_ms_chrono() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::FixedOffsetTimeMsChrono)
+}
+
+#[cfg(feature = "jiff")]
+pub fn field_utctime_s_jiff() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::UtcTimeSJiff)
+}
+
+#[cfg(feature = "jiff")]
+pub fn field_utctime_ms_jiff() -> FieldBuilder {
+    FieldBuilder::new(SimpleSimpleType::UtcTimeMsJiff)
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
