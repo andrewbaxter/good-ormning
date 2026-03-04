@@ -27,3 +27,6 @@ flowcontrol = ">=0"
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }
 flowcontrol = ">=0"
+
+[lints.clippy]
+all = "allow"

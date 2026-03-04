@@ -1418,7 +1418,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
         use good_ormning_runtime::ToGoodError;
-        pub fn migrate(db:& mut rusqlite:: Connection) -> Result <(),
+        fn init_db(db: & mut rusqlite:: Connection) -> Result <(),
         GoodError > {
             rusqlite::vtab::array::load_module(
                 &db,
@@ -1433,6 +1433,29 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;";
                 db.execute(query, ()).to_good_error_query(query)?;
             }
+            return Ok(());
+        }
+        pub fn get_schema_version(db: & mut rusqlite:: Connection) -> Result < Option < i64 >,
+        GoodError > {
+            init_db(db)?;
+            let query = "select version from __good_version";
+            let mut stmt = db.prepare(query).to_good_error_query(query)?;
+            let mut rows = stmt.query(()).to_good_error_query(query)?;
+            let r =
+                rows
+                    .next()
+                    .to_good_error_query(query)?
+                    .ok_or_else(|| GoodError(format!("Database corrupt, version table has no rows.")))?;
+            let ver: i64 = r.get(0usize).to_good_error_query(query)?;
+            if ver == -1 {
+                return Ok(None);
+            } else {
+                return Ok(Some(ver));
+            }
+        }
+        pub fn migrate(db:& mut rusqlite:: Connection) -> Result <(),
+        GoodError > {
+            init_db(db)?;
             loop {
                 let txn = db.transaction().to_good_error(|| "Starting transaction".to_string())?;
                 match(|| {

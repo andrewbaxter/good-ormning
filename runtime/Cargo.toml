@@ -26,3 +26,6 @@ tokio-postgres = { version = "0.7", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints.clippy]
+all = "allow"

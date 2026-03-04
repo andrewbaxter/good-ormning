@@ -43,3 +43,6 @@ rusqlite = "0.37"
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints.clippy]
+all = "allow"

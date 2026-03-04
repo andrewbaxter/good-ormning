@@ -65,6 +65,21 @@ fn test_base_insert() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_get_version_premigrate() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    assert_eq!(sqlite_gen_base_insert::get_schema_version(&mut db)?, None);
+    Ok(())
+}
+
+#[test]
+fn test_get_version_postmigrate() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_base_insert::migrate(&mut db)?;
+    assert_eq!(sqlite_gen_base_insert::get_schema_version(&mut db)?, Some(0));
+    Ok(())
+}
+
+#[test]
 fn test_constraint() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_base_insert::migrate(&mut db)?;
