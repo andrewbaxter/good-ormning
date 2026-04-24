@@ -3,8 +3,8 @@ use crate::{
     pg::{
         QueryResCount,
         schema::{
-            table::Table,
-            field::Field,
+            table::TableRef,
+            field::FieldRef,
         },
     },
     utils::Tokens,
@@ -20,13 +20,13 @@ use super::{
         QueryBody,
         build_returning,
         build_set,
+        Returning,
     },
-    select::Returning,
 };
 
 pub struct Update {
-    pub table: Table,
-    pub values: Vec<(Field, Expr)>,
+    pub table: TableRef,
+    pub values: Vec<(FieldRef, Expr)>,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
 }
@@ -39,20 +39,21 @@ impl QueryBody for Update {
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
-        let mut scope = HashMap::new();
-        for (k, v) in match ctx.tables.get(&self.table) {
+        let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for update", self.table));
+                ctx.errs.err(path, format!("Unknown table {:?} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
-        } {
-            scope.insert(ExprValName::field(k), v.clone());
+        };
+        let mut scope = HashMap::new();
+        for (k, info) in &table_info.fields {
+            scope.insert(ExprValName::field(k), info.type_.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("update").id(&self.table.id);
+        out.s("update").id(&table_info.sql_name);
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");

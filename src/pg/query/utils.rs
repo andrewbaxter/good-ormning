@@ -7,8 +7,14 @@ use crate::{
         types::Type,
         QueryResCount,
         schema::{
-            field::Field,
-            table::Table,
+            field::{
+                Field,
+                FieldRef,
+            },
+            table::{
+                Table,
+                TableRef,
+            },
         },
     },
     utils::{
@@ -23,11 +29,26 @@ use super::{
         Expr,
         check_assignable,
     },
-    select::Returning,
 };
 
+pub struct PgFieldInfo {
+    pub sql_name: String,
+    pub type_: Type,
+}
+
+pub struct PgTableInfo {
+    pub sql_name: String,
+    pub fields: HashMap<FieldRef, PgFieldInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Returning {
+    pub e: Expr,
+    pub rename: Option<String>,
+}
+
 pub struct PgQueryCtx<'a> {
-    pub(crate) tables: &'a HashMap<Table, HashMap<Field, Type>>,
+    pub(crate) tables: &'a HashMap<TableRef, PgTableInfo>,
     pub errs: Errs,
     pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub(crate) rust_args: Vec<TokenStream>,
@@ -35,7 +56,7 @@ pub struct PgQueryCtx<'a> {
 }
 
 impl<'a> PgQueryCtx<'a> {
-    pub(crate) fn new(errs: Errs, tables: &'a HashMap<Table, HashMap<Field, Type>>) -> Self {
+    pub(crate) fn new(errs: Errs, tables: &'a HashMap<TableRef, PgTableInfo>) -> Self {
         Self {
             tables: tables,
             errs: errs,
@@ -60,7 +81,7 @@ pub fn build_set(
     path: &rpds::Vector<String>,
     scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
-    values: &Vec<(Field, Expr)>,
+    values: &Vec<(FieldRef, Expr)>,
 ) {
     out.s("set");
     for (i, (field, val)) in values.iter().enumerate() {
@@ -68,57 +89,18 @@ pub fn build_set(
         if i > 0 {
             out.s(",");
         }
-        out.id(&field.id).s("=");
-        let res = val.build(ctx, &path, &scope);
-        let field_type = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
+        let field_info = match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(&field)) {
             Some(t) => t,
             None => {
-                ctx.errs.err(&path, format!("Update destination value field {} is not known", field));
+                ctx.errs.err(&path, format!("Update destination value field {:?} is not known", field));
                 continue;
             },
         };
-        check_assignable(&mut ctx.errs, &path, field_type, &res.0);
+        out.id(&field_info.sql_name).s("=");
+        let res = val.build(ctx, &path, &scope);
+        check_assignable(&mut ctx.errs, &path, &field_info.type_, &res.0);
         out.s(&res.1.to_string());
     }
-}
-
-pub fn build_returning_values(
-    ctx: &mut PgQueryCtx,
-    path: &rpds::Vector<String>,
-    scope: &HashMap<ExprValName, Type>,
-    out: &mut Tokens,
-    outputs: &Vec<Returning>,
-    res_count: QueryResCount,
-) -> ExprType {
-    if outputs.is_empty() {
-        if !matches!(res_count, QueryResCount::None) {
-            ctx.errs.err(path, format!("Query has no outputs but res_count is, {:?}, not None", res_count));
-        }
-    } else {
-        if matches!(res_count, QueryResCount::None) {
-            ctx.errs.err(&path, format!("Query has outputs so res_count must be not None, but is {:?}", res_count));
-        }
-    }
-    let mut out_rec: Vec<(ExprValName, Type)> = vec![];
-    for (i, o) in outputs.iter().enumerate() {
-        let path = path.push_back(format!("Result {}", i));
-        if i > 0 {
-            out.s(",");
-        }
-        let res = o.e.build(ctx, &path, scope);
-        out.s(&res.1.to_string());
-        let (res_name, res_type) = match res.0.assert_scalar(&mut ctx.errs, &path) {
-            Some(x) => x,
-            None => continue,
-        };
-        if let Some(rename) = &o.rename {
-            out.s("as").id(rename);
-            out_rec.push((ExprValName::local(rename.clone()), res_type));
-        } else {
-            out_rec.push((res_name, res_type));
-        }
-    }
-    ExprType(out_rec)
 }
 
 pub fn build_returning(
@@ -133,4 +115,56 @@ pub fn build_returning(
         out.s("returning");
     }
     build_returning_values(ctx, path, scope, out, outputs, res_count)
+}
+
+pub fn build_returning_values(
+    ctx: &mut PgQueryCtx,
+    path: &rpds::Vector<String>,
+    scope: &HashMap<ExprValName, Type>,
+    out: &mut Tokens,
+    outputs: &Vec<Returning>,
+    res_count: QueryResCount,
+) -> ExprType {
+    let mut fields = vec![];
+    for (i, r) in outputs.iter().enumerate() {
+        if i > 0 {
+            out.s(",");
+        }
+        let (t, tokens) = r.e.build(ctx, &path.push_back(format!("Returning {}", i)), scope);
+        let t = match t.assert_scalar(&mut ctx.errs, &path.push_back(format!("Returning {}", i))) {
+            Some(t) => t,
+            None => {
+                continue;
+            },
+        };
+        let mut name = ExprValName::empty();
+        out.s(&tokens.to_string());
+        if let Some(s) = &r.rename {
+            out.s("as").id(s);
+            name.id = s.clone();
+        } else {
+            match &r.e {
+                Expr::Field(f) => {
+                    name = ExprValName::field(f);
+                },
+                _ => { },
+            }
+        }
+        fields.push((name, t));
+    }
+
+    match res_count {
+        QueryResCount::None => {
+            if !fields.is_empty() {
+                ctx.errs.err(path, format!("Query has returning values but result count is None"));
+            }
+        },
+        QueryResCount::MaybeOne | QueryResCount::One | QueryResCount::Many => {
+            if fields.is_empty() {
+                ctx.errs.err(path, format!("Query has no returning values but result count is {:?}", res_count));
+            }
+        },
+    }
+
+    return ExprType(fields);
 }

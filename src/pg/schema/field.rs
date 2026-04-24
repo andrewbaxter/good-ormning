@@ -3,161 +3,35 @@ use std::{
         Debug,
         Display,
     },
-    rc::Rc,
-    ops::Deref,
+};
+use serde::{
+    Serialize,
+    Deserialize,
 };
 use crate::{
     pg::{
         types::{
-            SimpleSimpleType,
-            SimpleType,
             Type,
         },
         query::{
             expr::{
-                Expr,
+                SerialExpr,
             },
         },
     },
 };
-use super::table::{
-    Table,
+
+use super::{
+    table::SchemaTableId,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FieldType {
     pub type_: Type,
-    pub migration_default: Option<Expr>,
+    pub migration_default: Option<SerialExpr>,
 }
 
-impl FieldType {
-    /// Create a field type from the specified value type.
-    pub fn with(t: &Type) -> Self {
-        Self {
-            type_: t.clone(),
-            migration_default: None,
-        }
-    }
-
-    /// Create a field type from the specified value type, and provide a migration fill
-    /// value.
-    pub fn with_migration(t: &Type, def: Option<Expr>) -> Self {
-        if t.opt {
-            panic!("Optional fields can't have defaults.");
-        }
-        Self {
-            type_: t.clone(),
-            migration_default: def,
-        }
-    }
-}
-
-pub struct FieldBuilder {
-    t: SimpleSimpleType,
-    default_: Option<Expr>,
-    opt: bool,
-    custom: Option<String>,
-}
-
-impl FieldBuilder {
-    fn new(t: SimpleSimpleType) -> FieldBuilder {
-        FieldBuilder {
-            t: t,
-            opt: false,
-            default_: None,
-            custom: None,
-        }
-    }
-
-    /// Make the field optional.
-    pub fn opt(mut self) -> FieldBuilder {
-        if self.default_.is_some() {
-            panic!("Optional fields can't have migration fill expressions.");
-        }
-        self.opt = true;
-        self
-    }
-
-    /// Specify an expression to use to populate the new column in existing rows. This
-    /// is must be specified (only) for non-opt fields in a new version of an existing
-    /// table.
-    pub fn migrate_fill(mut self, expr: Expr) -> FieldBuilder {
-        if self.opt {
-            panic!("Optional fields can't have migration fill expressions.");
-        }
-        self.default_ = Some(expr);
-        self
-    }
-
-    /// Use a custom Rust type for this field. This must be the full path to the type,
-    /// like `crate::abcdef::MyType`.
-    pub fn custom(mut self, type_: impl ToString) -> FieldBuilder {
-        self.custom = Some(type_.to_string());
-        self
-    }
-
-    pub fn build(self) -> FieldType {
-        FieldType {
-            type_: Type {
-                type_: SimpleType {
-                    custom: self.custom,
-                    type_: self.t,
-                },
-                opt: self.opt,
-            },
-            migration_default: self.default_,
-        }
-    }
-}
-
-pub fn field_auto() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::Auto)
-}
-
-pub fn field_bool() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::Bool)
-}
-
-pub fn field_i32() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::I32)
-}
-
-pub fn field_i64() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::I64)
-}
-
-pub fn field_f32() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::F32)
-}
-
-pub fn field_f64() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::F64)
-}
-
-pub fn field_str() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::String)
-}
-
-pub fn field_bytes() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::Bytes)
-}
-
-#[cfg(feature = "chrono")]
-pub fn field_utctime_chrono() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::UtcTimeChrono)
-}
-
-#[cfg(feature = "chrono")]
-pub fn field_fixed_offset_time_chrono() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::FixedOffsetTimeChrono)
-}
-
-#[cfg(feature = "jiff")]
-pub fn field_utctime_jiff() -> FieldBuilder {
-    FieldBuilder::new(SimpleSimpleType::UtcTimeJiff)
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SchemaFieldId(pub String);
 
 impl Display for SchemaFieldId {
@@ -166,41 +40,34 @@ impl Display for SchemaFieldId {
     }
 }
 
-#[derive(Debug)]
-pub struct Field_ {
-    pub table: Table,
-    pub schema_id: SchemaFieldId,
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct FieldRef {
+    pub table_id: SchemaTableId,
+    pub field_id: SchemaFieldId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Field {
     pub id: String,
     pub type_: FieldType,
 }
-
-#[derive(Clone, Debug)]
-pub struct Field(pub Rc<Field_>);
-
-impl std::hash::Hash for Field {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.schema_id.hash(state)
-    }
+pub struct FieldTypeBuilder(pub FieldType);
+impl FieldTypeBuilder {
+    pub fn new(t: Type) -> Self { Self(FieldType { type_: t, migration_default: None }) }
+    pub fn migrate_fill(mut self, e: SerialExpr) -> Self { self.0.migration_default = Some(e); self }
+    pub fn build(self) -> FieldType { self.0 }
 }
-
-impl PartialEq for Field {
-    fn eq(&self, other: &Self) -> bool {
-        self.table == other.table && self.schema_id == other.schema_id
-    }
-}
-
-impl Eq for Field { }
-
-impl Deref for Field {
-    type Target = Field_;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-impl Display for Field {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&format!("{}.{} ({}.{})", self.table.id, self.id, self.table.schema_id.0, self.schema_id.0), f)
-    }
+pub fn field_str() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_str().build()) }
+pub fn field_i32() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_i32().build()) }
+pub fn field_i64() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_i64().build()) }
+pub fn field_f32() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_f32().build()) }
+pub fn field_f64() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_f64().build()) }
+pub fn field_bool() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_bool().build()) }
+pub fn field_bytes() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_bytes().build()) }
+pub fn field_auto() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_auto().build()) }
+pub fn field_utctime_chrono() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_utctime_chrono().build()) }
+pub fn field_utctime_jiff() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::pg::types::type_utctime_jiff().build()) }
+impl FieldTypeBuilder {
+    pub fn opt(mut self) -> Self { self.0.type_.opt = true; self }
+    pub fn custom(mut self, s: impl ToString) -> Self { self.0.type_.type_.custom = Some(s.to_string()); self }
 }

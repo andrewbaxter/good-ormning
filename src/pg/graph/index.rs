@@ -1,27 +1,39 @@
-use std::collections::HashSet;
+use std::collections::{
+    HashSet,
+    HashMap,
+};
 use crate::{
     graphmigrate::Comparison,
     utils::Tokens,
-    pg::schema::index::Index,
+    pg::schema::{
+        index::{
+            Index,
+            SchemaIndexId,
+        },
+        table::SchemaTableId,
+        field::SchemaFieldId,
+    },
 };
 use super::{
-    utils::{
-        NodeDataDispatch,
-        PgMigrateCtx,
-        NodeData,
-    },
     GraphId,
+    NodeDataDispatch,
+    NodeData,
     Node,
+    utils::PgMigrateCtx,
 };
 
 #[derive(Clone)]
 pub(crate) struct NodeIndex_ {
+    pub table_schema_id: SchemaTableId,
+    pub table_id: String, // SQL name
+    pub schema_id: SchemaIndexId,
     pub def: Index,
+    pub field_sql_names: HashMap<SchemaFieldId, String>,
 }
 
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.def.table.schema_id.clone())) || self.def.fields != old.def.fields {
+        if created.contains(&GraphId::Table(self.table_schema_id.clone())) || self.def.fields != old.def.fields {
             Comparison::Recreate
         } else if self.def.id != old.def.id {
             Comparison::Update
@@ -41,12 +53,12 @@ impl NodeDataDispatch for NodeIndex_ {
             if self.def.unique {
                 t.s("unique");
             }
-        }).s("index").id(&self.def.id).s("on").id(&self.def.table.id).s("(").f(|t| {
-            for (i, field) in self.def.fields.iter().enumerate() {
+        }).s("index").id(&self.def.id).s("on").id(&self.table_id).s("(").f(|t| {
+            for (i, field_schema_id) in self.def.fields.iter().enumerate() {
                 if i > 0 {
                     t.s(",");
                 }
-                t.id(&field.id);
+                t.id(self.field_sql_names.get(field_schema_id).unwrap());
             }
         }).s(")").to_string());
     }

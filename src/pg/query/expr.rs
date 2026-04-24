@@ -1,70 +1,155 @@
 use {
+    serde::{
+        Serialize,
+        Deserialize,
+    },
     chrono::FixedOffset,
     quote::{
         quote,
         format_ident,
         ToTokens,
     },
-    samevariant::samevariant,
+    proc_macro2::TokenStream,
     syn::Path,
     std::{
         collections::HashMap,
-        fmt::Display,
         rc::Rc,
+        fmt::Display,
+    },
+    chrono::{
+        DateTime,
+        Utc,
     },
     crate::{
         pg::{
             types::{
                 Type,
+                to_rust_types,
                 SimpleSimpleType,
                 SimpleType,
-                to_rust_types,
             },
-            query::utils::QueryBody,
+            query::utils::{
+                PgQueryCtx,
+                PgTableInfo,
+                PgFieldInfo,
+                QueryBody,
+            },
             schema::{
-                field::{
-                    Field,
-                },
+                field::FieldRef,
+                table::TableRef,
             },
-            QueryResCount,
         },
         utils::{
             Tokens,
-            Errs,
             sanitize_ident,
+            Errs,
         },
     },
-    super::{
-        utils::PgQueryCtx,
-        select::Select,
-    },
 };
-#[cfg(feature = "chrono")]
-use chrono::{
-    DateTime,
-    Utc,
-};
+
 #[cfg(feature = "jiff")]
-use jiff::{
-    Timestamp,
-};
+use jiff::Timestamp;
 
-/// This is used for function expressions, to check the argument types and compute
-/// a result type from them.  See readme for details.
+use super::select::Select;
+
 #[derive(Clone)]
-pub struct ComputeType(Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type>>);
+pub struct ExprType(pub Vec<(ExprValName, Type)>);
 
-impl ComputeType {
-    pub fn new(
-        f: impl Fn(&mut PgQueryCtx, &rpds::Vector<String>, Vec<ExprType>) -> Option<Type> + 'static,
-    ) -> ComputeType {
-        return ComputeType(Rc::new(f));
+impl ExprType {
+    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
+        if self.0.len() != 1 {
+            errs.err(
+                path,
+                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
+            );
+            return None;
+        }
+        Some(self.0[0].1.clone())
+    }
+}
+
+pub struct ComputeType(pub Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
+
+impl Clone for ComputeType {
+    fn clone(&self) -> Self {
+        return ComputeType(self.0.clone());
     }
 }
 
 impl std::fmt::Debug for ComputeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return f.write_str("ComputeType");
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialExpr {
+    LitArray(Vec<SerialExpr>),
+    LitNull(SimpleType),
+    LitBool(bool),
+    LitAuto(i64),
+    LitI32(i32),
+    LitI64(i64),
+    LitF32(f32),
+    LitF64(f64),
+    LitString(String),
+    LitBytes(Vec<u8>),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeChrono(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeJiff(Timestamp),
+    BinOp {
+        left: Box<SerialExpr>,
+        op: BinOp,
+        right: Box<SerialExpr>,
+    },
+    BinOpChain {
+        op: BinOp,
+        exprs: Vec<SerialExpr>,
+    },
+    PrefixOp {
+        op: PrefixOp,
+        right: Box<SerialExpr>,
+    },
+    Cast(Box<SerialExpr>, Type),
+}
+
+impl From<SerialExpr> for Expr {
+    fn from(s: SerialExpr) -> Self {
+        match s {
+            SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
+            SerialExpr::LitNull(t) => Expr::LitNull(t),
+            SerialExpr::LitBool(b) => Expr::LitBool(b),
+            SerialExpr::LitAuto(v) => Expr::LitAuto(v),
+            SerialExpr::LitI32(v) => Expr::LitI32(v),
+            SerialExpr::LitI64(v) => Expr::LitI64(v),
+            SerialExpr::LitF32(v) => Expr::LitF32(v),
+            SerialExpr::LitF64(v) => Expr::LitF64(v),
+            SerialExpr::LitString(v) => Expr::LitString(v),
+            SerialExpr::LitBytes(v) => Expr::LitBytes(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitUtcTimeChrono(v) => Expr::LitUtcTimeChrono(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
+            #[cfg(feature = "jiff")]
+            SerialExpr::LitUtcTimeJiff(v) => Expr::LitUtcTimeJiff(v),
+            SerialExpr::BinOp { left, op, right } => Expr::BinOp {
+                left: Box::new(Expr::from(*left)),
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::BinOpChain { op, exprs } => Expr::BinOpChain {
+                op: op,
+                exprs: exprs.into_iter().map(Expr::from).collect(),
+            },
+            SerialExpr::PrefixOp { op, right } => Expr::PrefixOp {
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
+        }
     }
 }
 
@@ -98,14 +183,12 @@ pub enum Expr {
     /// you've aliased tables or field names, you'll have to instantiate `FieldId`
     /// yourself with the appropriate values. For synthetic values like function
     /// results you may need a `FieldId` with an empty `TableId` (`""`).
-    Field(Field),
+    Field(FieldRef),
     BinOp {
         left: Box<Expr>,
         op: BinOp,
         right: Box<Expr>,
     },
-    /// This is the same as `BinOp` but allows chaining multiple expressions with the
-    /// same operator. This can be useful if you have many successive `AND`s or similar.
     BinOpChain {
         op: BinOp,
         exprs: Vec<Expr>,
@@ -114,9 +197,6 @@ pub enum Expr {
         op: PrefixOp,
         right: Box<Expr>,
     },
-    /// Represents a call to an SQL function, like `collate()`. You must provide a
-    /// helper to check and determine type of the result since we don't have a table of
-    /// functions and their return types at present.
     Call {
         func: String,
         args: Vec<Expr>,
@@ -130,7 +210,7 @@ pub enum Expr {
     Cast(Box<Expr>, Type),
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ExprValName {
     pub table_id: String,
     pub id: String,
@@ -144,17 +224,17 @@ impl ExprValName {
         }
     }
 
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         ExprValName {
             table_id: "".into(),
             id: "".into(),
         }
     }
 
-    pub(crate) fn field(f: &Field) -> Self {
+    pub fn field(f: &FieldRef) -> Self {
         ExprValName {
-            table_id: f.table.id.clone(),
-            id: f.id.clone(),
+            table_id: f.table_id.0.clone(),
+            id: f.field_id.0.clone(),
         }
     }
 
@@ -168,61 +248,111 @@ impl ExprValName {
 
 impl Display for ExprValName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&format!("{}.{}", self.table_id, self.id), f)
-    }
-}
-
-pub struct ExprType(pub Vec<(ExprValName, Type)>);
-
-impl ExprType {
-    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<(ExprValName, Type)> {
-        if self.0.len() != 1 {
-            errs.err(
-                path,
-                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
-            );
-            return None;
+        if self.table_id.is_empty() {
+            return Display::fmt(&self.id, f);
+        } else {
+            return Display::fmt(&format!("{}.{}", self.table_id, self.id), f);
         }
-        Some(self.0[0].clone())
     }
 }
 
-#[derive(Debug)]
-#[samevariant(GeneralTypePairs)]
-pub(crate) enum GeneralType {
-    Bool,
-    Numeric,
-    Blob,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BinOp {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    And,
+    Or,
+    Equals,
+    NotEquals,
+    Is,
+    IsNot,
+    LessThan,
+    LessThanEqualTo,
+    GreaterThan,
+    GreaterThanEqualTo,
 }
 
-pub(crate) fn general_type(t: &Type) -> GeneralType {
-    match t.type_.type_ {
-        SimpleSimpleType::Auto => GeneralType::Numeric,
-        SimpleSimpleType::I32 => GeneralType::Numeric,
-        SimpleSimpleType::I64 => GeneralType::Numeric,
-        SimpleSimpleType::F32 => GeneralType::Numeric,
-        SimpleSimpleType::F64 => GeneralType::Numeric,
-        SimpleSimpleType::Bool => GeneralType::Bool,
-        SimpleSimpleType::String => GeneralType::Blob,
-        SimpleSimpleType::Bytes => GeneralType::Blob,
-        #[cfg(feature = "chrono")]
-        SimpleSimpleType::UtcTimeChrono => GeneralType::Numeric,
-        #[cfg(feature = "chrono")]
-        SimpleSimpleType::FixedOffsetTimeChrono => GeneralType::Numeric,
-        #[cfg(feature = "jiff")]
-        SimpleSimpleType::UtcTimeJiff => GeneralType::Numeric,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PrefixOp {
+    Not,
 }
 
-pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
+pub(crate) fn check_same(
+    errs: &mut Errs,
+    path: &rpds::Vector<String>,
+    left: &ExprType,
+    right: &ExprType,
+) -> Option<Type> {
+    let left = left.assert_scalar(errs, &path.push_back("Left".into())) ?;
+    let right = right.assert_scalar(errs, &path.push_back("Right".into())) ?;
     if left.opt != right.opt {
-        ctx.errs.err(path, format!("Operator arms have differing optionality"));
+        errs.err(
+            path,
+            format!("Operator arms optionality don't match: left has {} and right has {}", left.opt, right.opt),
+        );
     }
-    match GeneralTypePairs::pairs(&general_type(left), &general_type(right)) {
-        GeneralTypePairs::Nonmatching(left, right) => {
-            ctx.errs.err(path, format!("Operator arms have incompatible types: {:?} and {:?}", left, right));
-        },
-        _ => { },
+    if left.type_.custom != right.type_.custom {
+        errs.err(
+            path,
+            format!(
+                "Operator arms custom types don't match: left has type {:?} and right has {:?}",
+                left.type_.custom,
+                right.type_.custom
+            ),
+        );
+    }
+    if left.type_.type_ != right.type_.type_ {
+        errs.err(
+            path,
+            format!(
+                "Operator arms types don't match: left has type {:?} and right has {:?}",
+                left.type_.type_,
+                right.type_.type_
+            ),
+        );
+    }
+    Some(left.clone())
+}
+
+pub(crate) fn check_bool(
+    ctx: &mut PgQueryCtx,
+    path: &rpds::Vector<String>,
+    t: &ExprType,
+) {
+    let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
+        return;
+    };
+    if t.opt {
+        ctx.errs.err(path, format!("Expected non-optional bool but got optional bool"));
+    }
+    if !matches!(t.type_.type_, SimpleSimpleType::Bool) {
+        ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.type_.type_));
+    }
+}
+
+pub(crate) fn check_assignable(
+    errs: &mut Errs,
+    path: &rpds::Vector<String>,
+    left: &Type,
+    right: &ExprType,
+) {
+    let Some(right) = right.assert_scalar(errs, path) else {
+        return;
+    };
+    if left.type_.type_ != right.type_.type_ {
+        errs.err(
+            path,
+            format!(
+                "Expression has type {:?} which is not assignable to {:?}",
+                right.type_.type_,
+                left.type_.type_
+            ),
+        );
+    }
+    if !left.opt && right.opt {
+        errs.err(path, format!("Expression is optional but destination is not"));
     }
 }
 
@@ -244,7 +374,7 @@ pub(crate) fn check_general_same(
                 ),
             );
     } else if left.0.len() == 1 && right.0.len() == 1 {
-        check_general_same_type(ctx, path, &left.0[0].1, &left.0[0].1);
+        check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1);
     } else {
         for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
             check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1);
@@ -252,319 +382,250 @@ pub(crate) fn check_general_same(
     }
 }
 
-pub(crate) fn check_same(
-    errs: &mut Errs,
+pub(crate) fn check_general_same_type(
+    ctx: &mut PgQueryCtx,
     path: &rpds::Vector<String>,
-    left: &ExprType,
-    right: &ExprType,
-) -> Option<Type> {
-    let left = match left.assert_scalar(errs, &path.push_back("Left".into())) {
-        Some(t) => t,
-        None => {
-            return None;
-        },
-    };
-    let right = match right.assert_scalar(errs, &path.push_back("Right".into())) {
-        Some(t) => t,
-        None => {
-            return None;
-        },
-    };
-    if left.1.opt != right.1.opt {
-        errs.err(
-            path,
-            format!(
-                "Expected same types, but left nullability is {} but right nullability is {}",
-                left.1.opt,
-                right.1.opt
-            ),
-        );
+    left: &Type,
+    right: &Type,
+) {
+    if left.type_.type_ != right.type_.type_ {
+        ctx
+            .errs
+            .err(
+                path,
+                format!(
+                    "Operator arms types don't match: left has type {:?} and right has {:?}",
+                    left.type_.type_,
+                    right.type_.type_
+                ),
+            );
     }
-    if left.1.type_.custom != right.1.type_.custom {
-        errs.err(
-            path,
-            format!(
-                "Expected same types, but left rust type is {:?} while right rust type is {:?}",
-                left.1.type_.custom,
-                right.1.type_.custom
-            ),
-        );
-    }
-    if left.1.type_.type_ != right.1.type_.type_ {
-        errs.err(
-            path,
-            format!(
-                "Expected same types, but left base type is {:?} while right base type is {:?}",
-                left.1.type_.type_,
-                right.1.type_.type_
-            ),
-        );
-    }
-    Some(left.1.clone())
-}
-
-pub(crate) fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, a: &ExprType) {
-    let t = match a.assert_scalar(&mut ctx.errs, path) {
-        Some(t) => t,
-        None => {
-            return;
-        },
-    };
-    if t.1.opt {
-        ctx.errs.err(path, format!("Expected bool type but is nullable: got {:?}", t));
-    }
-    if !matches!(t.1.type_.type_, SimpleSimpleType::Bool) {
-        ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.1.type_.type_));
-    }
-}
-
-pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, a: &Type, b: &ExprType) {
-    check_same(errs, path, &ExprType(vec![(ExprValName::empty(), a.clone())]), b);
 }
 
 impl Expr {
-    pub(crate) fn build(
+    pub fn build(
         &self,
         ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         scope: &HashMap<ExprValName, Type>,
     ) -> (ExprType, Tokens) {
-        macro_rules! empty_type{
-            ($o: expr, $t: expr) => {
-                (ExprType(vec![(ExprValName::empty(), Type {
-                    type_: SimpleType {
-                        type_: $t,
-                        custom: None,
-                    },
-                    opt: false,
-                })]), $o)
-            };
-        }
-
-        fn do_bin_op(
-            ctx: &mut PgQueryCtx,
-            path: &rpds::Vector<String>,
-            scope: &HashMap<ExprValName, Type>,
-            op: &BinOp,
-            exprs: &Vec<Expr>,
-        ) -> (ExprType, Tokens) {
-            if exprs.len() < 2 {
-                ctx.errs.err(path, format!("Binary ops must have at least two operands, but got {}", exprs.len()));
-            }
-            let mut res = vec![];
-            for (i, e) in exprs.iter().enumerate() {
-                res.push(e.build(ctx, &path.push_back(format!("Operand {}", i)), scope));
-            }
-            let t = match op {
-                BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide => {
-                    let base = res.get(0).unwrap();
-                    let t =
-                        match check_same(
-                            &mut ctx.errs,
-                            &path.push_back(format!("Operands 0, 1")),
-                            &base.0,
-                            &res.get(0).unwrap().0,
-                        ) {
-                            Some(t) => t,
-                            None => {
-                                return (ExprType(vec![]), Tokens::new());
-                            },
-                        };
-                    for (i, res) in res.iter().enumerate().skip(2) {
-                        match check_same(
-                            &mut ctx.errs,
-                            &path.push_back(format!("Operands 0, {}", i)),
-                            &base.0,
-                            &res.0,
-                        ) {
-                            Some(_) => { },
-                            None => {
-                                return (ExprType(vec![]), Tokens::new());
-                            },
-                        };
-                    }
-                    t
-                },
-                BinOp::And | BinOp::Or => {
-                    for (i, res) in res.iter().enumerate() {
-                        check_bool(ctx, &path.push_back(format!("Operand {}", i)), &res.0);
-                    }
-                    Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::Bool,
-                            custom: None,
-                        },
-                        opt: false,
-                    }
-                },
-                BinOp::Equals |
-                BinOp::NotEquals |
-                BinOp::Is |
-                BinOp::IsNot |
-                BinOp::LessThan |
-                BinOp::LessThanEqualTo |
-                BinOp::GreaterThan |
-                BinOp::GreaterThanEqualTo => {
-                    let base = res.get(0).unwrap();
-                    check_general_same(
-                        ctx,
-                        &path.push_back(format!("Operands 0, 1")),
-                        &base.0,
-                        &res.get(1).unwrap().0,
-                    );
-                    for (i, res) in res.iter().enumerate().skip(2) {
-                        check_general_same(ctx, &path.push_back(format!("Operands 0, {}", i)), &base.0, &res.0);
-                    }
-                    Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::Bool,
-                            custom: None,
-                        },
-                        opt: false,
-                    }
-                },
-            };
-            let token = match op {
-                BinOp::Plus => "+",
-                BinOp::Minus => "-",
-                BinOp::Multiply => "*",
-                BinOp::Divide => "/",
-                BinOp::And => "and",
-                BinOp::Or => "or",
-                BinOp::Equals => "=",
-                BinOp::NotEquals => "!=",
-                BinOp::Is => "is",
-                BinOp::IsNot => "is not",
-                BinOp::LessThan => "<",
-                BinOp::LessThanEqualTo => "<=",
-                BinOp::GreaterThan => ">",
-                BinOp::GreaterThanEqualTo => ">=",
-            };
-            let mut out = Tokens::new();
-            out.s("(");
-            for (i, res) in res.iter().enumerate() {
-                if i > 0 {
-                    out.s(token);
-                }
-                out.s(&res.1.to_string());
-            }
-            out.s(")");
-            (ExprType(vec![(ExprValName::empty(), t)]), out)
-        }
-
         match self {
-            Expr::LitArray(t) => {
+            Expr::LitArray(v) => {
                 let mut out = Tokens::new();
-                let mut child_types = vec![];
-                out.s("(");
-                for (i, child) in t.iter().enumerate() {
+                out.s("array [");
+                let mut res_types = vec![];
+                for (i, e) in v.iter().enumerate() {
                     if i > 0 {
-                        out.s(", ");
+                        out.s(",");
                     }
-                    let (child_type, child_tokens) = child.build(ctx, path, scope);
-                    out.s(&child_tokens.to_string());
-                    child_types.extend(child_type.0);
+                    let res = e.build(ctx, path, scope);
+                    out.s(&res.1.to_string());
+                    res_types.push(res.0);
                 }
-                out.s(")");
-                return (ExprType(child_types), out);
+                out.s("]");
+                let mut out_type = None;
+                for (i, t) in res_types.iter().enumerate() {
+                    if let Some(prev) = &out_type {
+                        check_general_same(ctx, &path.push_back(format!("Array element {}", i)), prev, t);
+                    } else {
+                        out_type = Some(t.clone());
+                    }
+                }
+                return (out_type.unwrap_or(ExprType(vec![])), out);
             },
             Expr::LitNull(t) => {
                 let mut out = Tokens::new();
                 out.s("null");
-                return (ExprType(vec![(ExprValName::empty(), Type {
-                    type_: t.clone(),
-                    opt: true,
-                })]), out);
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: t.clone(),
+                        opt: true,
+                    })]),
+                    out
+                );
             },
-            Expr::LitBool(x) => {
+            Expr::LitBool(b) => {
                 let mut out = Tokens::new();
-                out.s(if *x {
-                    "true"
-                } else {
-                    "false"
-                });
-                return empty_type!(out, SimpleSimpleType::Bool);
+                out.s(if *b { "true" } else { "false" });
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::Bool,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitAuto(x) => {
+            Expr::LitAuto(v) => {
                 let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::Auto);
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::Auto,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitI32(x) => {
+            Expr::LitI32(v) => {
                 let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::I32);
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::I32,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitI64(x) => {
+            Expr::LitI64(v) => {
                 let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::I64);
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::I64,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitF32(x) => {
+            Expr::LitF32(v) => {
                 let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::F32);
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::F32,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitF64(x) => {
+            Expr::LitF64(v) => {
                 let mut out = Tokens::new();
-                out.s(&x.to_string());
-                return empty_type!(out, SimpleSimpleType::F64);
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::F64,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitString(x) => {
+            Expr::LitString(v) => {
                 let mut out = Tokens::new();
-                out.s(&format!("'{}'", x.replace("'", "''")));
-                return empty_type!(out, SimpleSimpleType::String);
+                out.s(&format!("'{}'", v.replace("'", "''")));
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::String,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::LitBytes(x) => {
+            Expr::LitBytes(v) => {
                 let mut out = Tokens::new();
-                let h = hex::encode(&x);
-                out.s(&format!("x'{}'", h));
-                return empty_type!(out, SimpleSimpleType::Bytes);
+                out.s(&format!("'\\x{}'", hex::encode(v)));
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::Bytes,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
             #[cfg(feature = "chrono")]
-            Expr::LitUtcTimeChrono(d) => {
+            Expr::LitUtcTimeChrono(v) => {
                 let mut out = Tokens::new();
-                let d = d.to_rfc3339();
-                out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
+                out.s(&format!("'{}'", v.to_rfc3339()));
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::UtcTimeChrono,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
             #[cfg(feature = "chrono")]
-            Expr::LitFixedOffsetTimeChrono(d) => {
+            Expr::LitFixedOffsetTimeChrono(v) => {
                 let mut out = Tokens::new();
-                let d = d.to_rfc3339();
-                out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::FixedOffsetTimeChrono);
+                out.s(&format!("'{}'", v.to_rfc3339()));
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::FixedOffsetTimeChrono,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
             #[cfg(feature = "jiff")]
-            Expr::LitUtcTimeJiff(d) => {
+            Expr::LitUtcTimeJiff(v) => {
                 let mut out = Tokens::new();
-                let d = d.to_string();
-                out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
+                out.s(&format!("'{}'", v.to_string()));
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::UtcTimeJiff,
+                            custom: None,
+                        },
+                        opt: false,
+                    })]),
+                    out
+                );
             },
-            Expr::Param { name: x, type_: t } => {
-                let path = path.push_back(format!("Param ({})", x));
+            Expr::Param { name, type_ } => {
                 let mut out = Tokens::new();
-                let mut errs = vec![];
-                let i = match ctx.rust_arg_lookup.entry(x.clone()) {
+                let path = path.push_back(format!("Param ({})", name));
+                let i = match ctx.rust_arg_lookup.entry(name.clone()) {
                     std::collections::hash_map::Entry::Occupied(e) => {
                         let (i, prev_t) = e.get();
-                        if t != prev_t {
-                            errs.push(
-                                format!("Parameter {} specified with multiple types: {:?}, {:?}", x, t, prev_t),
-                            );
+                        if type_ != prev_t {
+                            ctx
+                                .errs
+                                .err(
+                                    &path,
+                                    format!("Parameter {} specified with multiple types: {:?}, {:?}", name, type_, prev_t),
+                                );
                         }
                         *i
                     },
                     std::collections::hash_map::Entry::Vacant(e) => {
-                        let i = ctx.query_args.len();
-                        e.insert((i, t.clone()));
-                        let rust_types = to_rust_types(&t.type_.type_);
+                        let i = ctx.rust_args.len() + 1;
+                        e.insert((i, type_.clone()));
+                        let rust_types = to_rust_types(&type_.type_.type_);
                         let custom_trait_ident = rust_types.custom_trait;
                         let rust_type = rust_types.arg_type;
-                        let ident = format_ident!("{}", sanitize_ident(x).1);
-                        let (mut rust_type, mut rust_forward) = if let Some(custom) = &t.type_.custom {
-                            let custom_ident = match syn::parse_str::<Path>(custom.as_str()) {
+                        let ident = format_ident!("{}", sanitize_ident(name).1);
+                        let (mut rust_type, mut rust_forward) = if let Some(custom) = &type_.type_.custom {
+                            let custom_ident = match syn::parse_str::<syn::Path>(custom.as_str()) {
                                 Ok(p) => p,
                                 Err(e) => {
                                     ctx.errs.err(&path, format!("Couldn't parse custom type {}: {:?}", custom, e));
@@ -577,7 +638,7 @@ impl Expr {
                         } else {
                             (rust_type, quote!(#ident))
                         };
-                        if t.opt {
+                        if type_.opt {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
                         }
@@ -586,11 +647,8 @@ impl Expr {
                         i
                     },
                 };
-                for e in errs {
-                    ctx.errs.err(&path, e);
-                }
-                out.s(&format!("${}", i + 1));
-                return (ExprType(vec![(ExprValName::local(x.clone()), t.clone())]), out);
+                out.s(&format!("${}", i));
+                return (ExprType(vec![(ExprValName::local(name.clone()), type_.clone())]), out);
             },
             Expr::Field(x) => {
                 let name = ExprValName::field(x);
@@ -602,7 +660,7 @@ impl Expr {
                             .err(
                                 path,
                                 format!(
-                                    "Expression references {} but this field isn't available here (available fields: {:?})",
+                                    "Expression references {:?} but this field isn't available here (available fields: {:?})",
                                     x,
                                     scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
                                 ),
@@ -611,96 +669,119 @@ impl Expr {
                     },
                 };
                 let mut out = Tokens::new();
-                out.id(&x.table.id).s(".").id(&x.id);
+                let table_info = ctx.tables.get(&TableRef(x.table_id.clone())).unwrap();
+                let field_info = table_info.fields.get(x).unwrap();
+                out.id(&table_info.sql_name).s(".").id(&field_info.sql_name);
                 return (ExprType(vec![(name, t.clone())]), out);
             },
             Expr::BinOp { left, op, right } => {
-                return do_bin_op(
-                    ctx,
-                    &path.push_back(format!("Bin op {:?}", op)),
-                    scope,
-                    op,
-                    &vec![left.as_ref().clone(), right.as_ref().clone()],
-                );
+                let mut out = Tokens::new();
+                let l_res = left.build(ctx, &path.push_back("Bin op left".into()), scope);
+                let r_res = right.build(ctx, &path.push_back("Bin op right".into()), scope);
+                let t = check_same(&mut ctx.errs, path, &l_res.0, &r_res.0);
+                let token = match op {
+                    BinOp::Plus => "+",
+                    BinOp::Minus => "-",
+                    BinOp::Multiply => "*",
+                    BinOp::Divide => "/",
+                    BinOp::And => "and",
+                    BinOp::Or => "or",
+                    BinOp::Equals => "=",
+                    BinOp::NotEquals => "<>",
+                    BinOp::Is => "is",
+                    BinOp::IsNot => "is not",
+                    BinOp::LessThan => "<",
+                    BinOp::LessThanEqualTo => "<=",
+                    BinOp::GreaterThan => ">",
+                    BinOp::GreaterThanEqualTo => ">=",
+                };
+                out.s(&l_res.1.to_string()).s(token).s(&r_res.1.to_string());
+                let mut res_t = t.unwrap_or(Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::I32,
+                        custom: None,
+                    },
+                    opt: false,
+                });
+                match op {
+                    BinOp::Equals |
+                    BinOp::NotEquals |
+                    BinOp::Is |
+                    BinOp::IsNot |
+                    BinOp::LessThan |
+                    BinOp::LessThanEqualTo |
+                    BinOp::GreaterThan |
+                    BinOp::GreaterThanEqualTo => {
+                        res_t = Type {
+                            type_: SimpleType {
+                                type_: SimpleSimpleType::Bool,
+                                custom: None,
+                            },
+                            opt: false,
+                        };
+                    },
+                    _ => { },
+                }
+                return (ExprType(vec![(ExprValName::empty(), res_t)]), out);
             },
             Expr::BinOpChain { op, exprs } => {
-                return do_bin_op(ctx, &path.push_back(format!("Chain bin op {:?}", op)), scope, op, exprs);
+                let mut out = Tokens::new();
+                let token = match op {
+                    BinOp::And => "and",
+                    BinOp::Or => "or",
+                    _ => panic!("Chain only supported for and/or"),
+                };
+                let mut out_t = None;
+                for (i, e) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        out.s(token);
+                    }
+                    let res = e.build(ctx, &path.push_back(format!("Chain element {}", i)), scope);
+                    check_bool(ctx, &path.push_back(format!("Chain element {}", i)), &res.0);
+                    out.s(&res.1.to_string());
+                    out_t = Some(res.0);
+                }
+                return (out_t.unwrap_or(ExprType(vec![])), out);
             },
             Expr::PrefixOp { op, right } => {
-                let path = path.push_back(format!("Prefix op {:?}", op));
                 let mut out = Tokens::new();
-                let res = right.build(ctx, &path, scope);
-                let (op_text, op_type) = match op {
-                    PrefixOp::Not => {
-                        check_bool(ctx, &path, &res.0);
-                        ("not", SimpleSimpleType::Bool)
-                    },
+                let token = match op {
+                    PrefixOp::Not => "not",
                 };
-                out.s(op_text).s(&res.1.to_string());
-                return empty_type!(out, op_type);
+                let res = right.build(ctx, &path.push_back("Prefix op".into()), scope);
+                check_bool(ctx, path, &res.0);
+                out.s(token).s(&res.1.to_string());
+                return (res.0, out);
             },
             Expr::Call { func, args, compute_type } => {
-                let mut types = vec![];
                 let mut out = Tokens::new();
-                out.s(func);
-                out.s("(");
+                out.s(func).s("(");
+                let mut arg_types = vec![];
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         out.s(",");
                     }
-                    let (arg_type, tokens) =
-                        arg.build(ctx, &path.push_back(format!("Call [{}] arg {}", func, i)), scope);
-                    types.push(arg_type);
+                    let (t, tokens) = arg.build(ctx, &path.push_back(format!("Call arg {}", i)), scope);
                     out.s(&tokens.to_string());
+                    arg_types.push(t);
                 }
                 out.s(")");
-                let type_ = match (compute_type.0)(ctx, path, types) {
-                    Some(t) => t,
-                    None => {
-                        return (ExprType(vec![]), Tokens::new());
-                    },
-                };
-                return (ExprType(vec![(ExprValName::empty(), type_)]), out);
+                return (compute_type.0(ctx, path, &arg_types), out);
             },
             Expr::Select(s) => {
-                let path = path.push_back(format!("Subselect"));
-                return s.build(ctx, &path, QueryResCount::Many);
+                let mut out = Tokens::new();
+                out.s("(");
+                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::pg::QueryResCount::Many);
+                out.s(&tokens.to_string()).s(")");
+                return (t, out);
             },
             Expr::Cast(e, t) => {
-                let path = path.push_back(format!("Cast"));
-                let out = e.build(ctx, &path, scope);
-                let got_t = match out.0.assert_scalar(&mut ctx.errs, &path) {
-                    Some(t) => t,
-                    None => {
-                        return (ExprType(vec![]), Tokens::new());
-                    },
-                };
-                check_general_same_type(ctx, &path, t, &got_t.1);
-                return (ExprType(vec![(got_t.0, t.clone())]), out.1);
+                let mut out = Tokens::new();
+                let (got_t, tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
+                check_general_same(ctx, path, &got_t, &ExprType(vec![(ExprValName::empty(), t.clone())]));
+                out.s("(").s(&tokens.to_string()).s("::").s(&to_rust_types(&t.type_.type_).ret_type.to_string()).s(")");
+                return (ExprType(vec![(ExprValName::empty(), t.clone())]), out);
             },
-        };
+        }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum BinOp {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
-    And,
-    Or,
-    Equals,
-    NotEquals,
-    Is,
-    IsNot,
-    LessThan,
-    LessThanEqualTo,
-    GreaterThan,
-    GreaterThanEqualTo,
-}
-
-#[derive(Clone, Debug)]
-pub enum PrefixOp {
-    Not,
 }

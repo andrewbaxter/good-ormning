@@ -1,16 +1,16 @@
 use std::{
-    rc::Rc,
-    ops::Deref,
     fmt::Display,
 };
+use serde::{
+    Serialize,
+    Deserialize,
+};
 use super::{
-    table::{
-        Table,
-    },
-    field::Field,
+    table::SchemaTableId,
+    field::SchemaFieldId,
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SchemaConstraintId(pub String);
 
 impl Display for SchemaConstraintId {
@@ -19,53 +19,25 @@ impl Display for SchemaConstraintId {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PrimaryKeyDef {
-    pub fields: Vec<Field>,
+    pub fields: Vec<SchemaFieldId>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ForeignKeyDef {
-    pub fields: Vec<(Field, Field)>,
+    pub remote_table: SchemaTableId,
+    pub fields: Vec<(SchemaFieldId, SchemaFieldId)>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ConstraintType {
     PrimaryKey(PrimaryKeyDef),
     ForeignKey(ForeignKeyDef),
 }
 
-pub struct Constraint_ {
-    pub table: Table,
-    pub schema_id: SchemaConstraintId,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Constraint {
     pub id: String,
     pub type_: ConstraintType,
-}
-
-#[derive(Clone)]
-pub struct Constraint(pub Rc<Constraint_>);
-
-impl Display for Constraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(
-            &format!("{}.{} ({}.{})", self.0.table.id, self.0.id, self.0.table.schema_id, self.0.schema_id),
-            f,
-        )
-    }
-}
-
-impl PartialEq for Constraint {
-    fn eq(&self, other: &Self) -> bool {
-        self.table == other.table && self.schema_id == other.schema_id
-    }
-}
-
-impl Eq for Constraint { }
-
-impl Deref for Constraint {
-    type Target = Constraint_;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
 }

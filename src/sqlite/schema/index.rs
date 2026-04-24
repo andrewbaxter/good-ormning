@@ -1,14 +1,15 @@
 use std::{
-    rc::Rc,
-    ops::Deref,
     fmt::Display,
 };
+use serde::{
+    Serialize,
+    Deserialize,
+};
 use super::{
-    field::Field,
-    table::Table,
+    field::SchemaFieldId,
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SchemaIndexId(pub String);
 
 impl Display for SchemaIndexId {
@@ -17,38 +18,9 @@ impl Display for SchemaIndexId {
     }
 }
 
-pub struct Index_ {
-    pub table: Table,
-    pub schema_id: SchemaIndexId,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Index {
     pub id: String,
-    pub fields: Vec<Field>,
+    pub fields: Vec<SchemaFieldId>,
     pub unique: bool,
-}
-
-#[derive(Clone)]
-pub struct Index(pub Rc<Index_>);
-
-impl Display for Index {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(
-            &format!("{}.{} ({}.{})", self.0.table.id, self.0.id, self.0.table.schema_id, self.0.schema_id),
-            f,
-        )
-    }
-}
-
-impl PartialEq for Index {
-    fn eq(&self, other: &Self) -> bool {
-        self.table == other.table && self.schema_id == other.schema_id
-    }
-}
-
-impl Eq for Index { }
-
-impl Deref for Index {
-    type Target = Index_;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
 }

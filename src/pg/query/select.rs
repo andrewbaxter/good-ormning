@@ -8,7 +8,7 @@ use crate::{
         },
         QueryResCount,
         schema::{
-            table::Table,
+            table::TableRef,
         },
     },
 };
@@ -17,6 +17,7 @@ use super::{
         QueryBody,
         PgQueryCtx,
         build_returning_values,
+        Returning,
     },
     expr::{
         Expr,
@@ -36,7 +37,7 @@ pub enum Order {
 #[derive(Clone, Debug)]
 pub enum JoinSource {
     Subsel(Box<Select>),
-    Table(Table),
+    Table(TableRef),
 }
 
 #[derive(Clone, Debug)]
@@ -55,17 +56,17 @@ impl NamedSelectSource {
                 res.0.0.clone()
             },
             JoinSource::Table(s) => {
-                let new_fields = match ctx.tables.get(&s) {
+                let table_info = match ctx.tables.get(&s) {
                     Some(f) => f,
                     None => {
                         ctx
                             .errs
-                            .err(&path.push_back(format!("From")), format!("No table with id {} in version", s));
+                            .err(&path.push_back(format!("From")), format!("No table with id {:?} in version", s));
                         return (vec![], Tokens::new());
                     },
                 };
-                out.id(&s.id);
-                new_fields.iter().map(|e| (ExprValName::field(e.0), e.1.clone())).collect()
+                out.id(&table_info.sql_name);
+                table_info.fields.iter().map(|(id, info)| (ExprValName::field(id), info.type_.clone())).collect()
             },
         };
         if let Some(s) = &self.alias {
@@ -91,12 +92,6 @@ pub struct Join {
     pub source: Box<NamedSelectSource>,
     pub type_: JoinType,
     pub on: Expr,
-}
-
-#[derive(Clone, Debug)]
-pub struct Returning {
-    pub e: Expr,
-    pub rename: Option<String>,
 }
 
 #[derive(Clone, Debug)]

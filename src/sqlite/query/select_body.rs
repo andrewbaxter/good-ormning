@@ -1,3 +1,5 @@
+use crate::sqlite::query::utils::Returning;
+
 use {
     super::{
         expr::{
@@ -11,11 +13,17 @@ use {
         utils::{
             build_returning_values,
             SqliteQueryCtx,
+            SqliteTableInfo,
+            SqliteFieldInfo,
+             
         },
     },
     crate::{
         sqlite::{
-            schema::table::Table,
+            schema::{
+                table::TableRef,
+                field::FieldRef,
+            },
             types::{
                 type_i64,
                 Type,
@@ -36,7 +44,7 @@ pub enum Order {
 #[derive(Clone, Debug)]
 pub enum JoinSource {
     Subsel(Box<SelectBody>),
-    Table(Table),
+    Table(TableRef),
 }
 
 #[derive(Clone, Debug)]
@@ -56,15 +64,15 @@ impl NamedSelectSource {
                 res.0.0.clone()
             },
             JoinSource::Table(s) => {
-                let new_fields = match ctx.tables.get(&s) {
+                let table_info = match ctx.tables.get(&s) {
                     Some(f) => f,
                     None => {
-                        ctx.errs.err(&path.push_back(format!("From")), format!("No known table with id {}", s));
+                        ctx.errs.err(&path.push_back(format!("From")), format!("No known table with id {:?}", s));
                         return (vec![], Tokens::new());
                     },
                 };
-                out.id(&s.id);
-                new_fields.iter().map(|e| (Binding::field(e), e.type_.type_.clone())).collect()
+                out.id(&table_info.sql_name);
+                table_info.fields.iter().map(|(id, info)| (Binding::field(id), info.type_.clone())).collect()
             },
         };
         if let Some(s) = &self.alias {
@@ -93,12 +101,6 @@ pub struct Join {
 }
 
 #[derive(Clone, Debug)]
-pub struct Returning {
-    pub e: Expr,
-    pub rename: Option<String>,
-}
-
-#[derive(Clone, Debug)]
 pub struct SelectBody {
     pub table: NamedSelectSource,
     pub distinct: bool,
@@ -113,7 +115,7 @@ pub struct SelectBody {
 impl SelectBody {
     pub fn build(
         &self,
-        ctx: &mut super::utils::SqliteQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         inject_scope: &HashMap<Binding, Type>,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
@@ -142,7 +144,6 @@ impl SelectBody {
                             v = Type {
                                 opt: true,
                                 type_: v.type_,
-                                array: false,
                             };
                         }
                         scope.insert(k, v);
@@ -232,7 +233,7 @@ pub struct SelectJunction {
 }
 
 pub fn build_select_junction(
-    ctx: &mut super::utils::SqliteQueryCtx,
+    ctx: &mut SqliteQueryCtx,
     path: &rpds::Vector<String>,
     base_type: &ExprType,
     body_junctions: &[SelectJunction],

@@ -3,12 +3,28 @@ use std::{
         Debug,
         Display,
     },
-    rc::Rc,
-    ops::Deref,
-    hash::Hash,
+    collections::BTreeMap,
+};
+use serde::{
+    Serialize,
+    Deserialize,
+};
+use super::{
+    field::{
+        Field,
+        SchemaFieldId,
+    },
+    index::{
+        Index,
+        SchemaIndexId,
+    },
+    constraint::{
+        Constraint,
+        SchemaConstraintId,
+    },
 };
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SchemaTableId(pub String);
 
 impl Display for SchemaTableId {
@@ -17,39 +33,13 @@ impl Display for SchemaTableId {
     }
 }
 
-#[derive(Debug)]
-pub struct Table_ {
-    pub schema_id: SchemaTableId,
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TableRef(pub SchemaTableId);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Table {
     pub id: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct Table(pub Rc<Table_>);
-
-impl Hash for Table {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.schema_id.hash(state)
-    }
-}
-
-impl PartialEq for Table {
-    fn eq(&self, other: &Self) -> bool {
-        self.schema_id == other.schema_id
-    }
-}
-
-impl Eq for Table { }
-
-impl Deref for Table {
-    type Target = Table_;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-impl Display for Table {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&format!("{} ({})", self.id, self.schema_id.0), f)
-    }
+    pub fields: BTreeMap<SchemaFieldId, Field>,
+    pub indices: BTreeMap<SchemaIndexId, Index>,
+    pub constraints: BTreeMap<SchemaConstraintId, Constraint>,
 }

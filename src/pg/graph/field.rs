@@ -4,18 +4,28 @@ use std::collections::{
 };
 use crate::{
     pg::{
-        schema::field::Field,
+        schema::{
+            field::{
+                Field,
+                SchemaFieldId,
+                FieldRef,
+            },
+            table::SchemaTableId,
+        },
         types::{
             to_sql_type,
             Type,
             SimpleSimpleType,
         },
+        PgQueryCtx,
+        PgTableInfo,
+        PgFieldInfo,
         query::{
-            utils::PgQueryCtx,
             expr::{
                 ExprType,
                 ExprValName,
-                check_same,
+                check_general_same,
+                Expr,
             },
         },
     },
@@ -24,22 +34,23 @@ use crate::{
 };
 use super::{
     GraphId,
-    utils::{
-        NodeData,
-        PgMigrateCtx,
-        NodeDataDispatch,
-    },
+    NodeDataDispatch,
+    NodeData,
     Node,
+    utils::PgMigrateCtx,
 };
 
 #[derive(Clone)]
 pub(crate) struct NodeField_ {
+    pub table_schema_id: SchemaTableId,
+    pub table_id: String, // SQL name
+    pub schema_id: SchemaFieldId,
     pub def: Field,
 }
 
 impl NodeField_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.def.table.0.schema_id.clone())) {
+        if created.contains(&GraphId::Table(self.table_schema_id.clone())) {
             return Comparison::Recreate;
         }
         let t = &self.def.type_.type_;
@@ -52,7 +63,7 @@ impl NodeField_ {
     }
 
     fn display_path(&self) -> rpds::Vector<String> {
-        rpds::vector![self.def.to_string()]
+        rpds::vector![format!("{}.{} ({}.{})", self.table_id, self.def.id, self.table_schema_id, self.schema_id)]
     }
 }
 
@@ -62,7 +73,7 @@ impl NodeData for NodeField_ {
             let mut stmt = Tokens::new();
             stmt
                 .s("alter table")
-                .id(&self.def.table.0.id)
+                .id(&self.table_id)
                 .s("rename column")
                 .id(&old.def.id)
                 .s("to")
@@ -77,7 +88,7 @@ impl NodeData for NodeField_ {
                 .push(
                     Tokens::new()
                         .s("alter table")
-                        .id(&self.def.table.id)
+                        .id(&self.table_id)
                         .s("alter column")
                         .id(&self.def.id)
                         .s("drop not null")
@@ -89,7 +100,7 @@ impl NodeData for NodeField_ {
                 .push(
                     Tokens::new()
                         .s("alter table")
-                        .id(&self.def.table.id)
+                        .id(&self.table_id)
                         .s("alter column")
                         .id(&self.def.id)
                         .s("set not null")
@@ -102,7 +113,7 @@ impl NodeData for NodeField_ {
                 .push(
                     Tokens::new()
                         .s("alter table")
-                        .id(&self.def.table.id)
+                        .id(&self.table_id)
                         .s("alter column")
                         .id(&self.def.id)
                         .s("set type")
@@ -122,17 +133,32 @@ impl NodeDataDispatch for NodeField_ {
         let mut stmt = Tokens::new();
         stmt
             .s("alter table")
-            .id(&self.def.table.0.id)
+            .id(&self.table_id)
             .s("add column")
             .id(&self.def.id)
             .s(to_sql_type(&self.def.type_.type_.type_.type_));
         if !self.def.type_.type_.opt {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
-                let qctx_fields = HashMap::new();
-                let mut qctx = PgQueryCtx::new(ctx.errs.clone(), &qctx_fields);
-                let e_res = d.build(&mut qctx, &path, &HashMap::new());
-                check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
+                let mut qctx_tables = HashMap::new();
+                // Create a dummy table info for validation
+                let mut fields = HashMap::new();
+                let field_ref = FieldRef {
+                    table_id: self.table_schema_id.clone(),
+                    field_id: self.schema_id.clone(),
+                };
+                fields.insert(field_ref, PgFieldInfo {
+                    sql_name: self.def.id.clone(),
+                    type_: self.def.type_.type_.clone(),
+                });
+                qctx_tables.insert(crate::pg::schema::table::TableRef(self.table_schema_id.clone()), PgTableInfo {
+                    sql_name: self.table_id.clone(),
+                    fields: fields,
+                });
+                let mut qctx = PgQueryCtx::new(ctx.errs.clone(), &qctx_tables);
+                let expr: Expr = d.clone().into();
+                let e_res = expr.build(&mut qctx, &path, &HashMap::new());
+                check_general_same(&mut qctx, &path, &ExprType(vec![(ExprValName::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                 })]), &e_res.0);
@@ -159,7 +185,7 @@ impl NodeDataDispatch for NodeField_ {
                 .push(
                     Tokens::new()
                         .s("alter table")
-                        .id(&self.def.table.id)
+                        .id(&self.table_id)
                         .s("alter column")
                         .id(&self.def.id)
                         .s("drop default")
@@ -172,7 +198,7 @@ impl NodeDataDispatch for NodeField_ {
         ctx
             .statements
             .push(
-                Tokens::new().s("alter table").id(&self.def.table.id).s("drop column").id(&self.def.id).to_string(),
+                Tokens::new().s("alter table").id(&self.table_id).s("drop column").id(&self.def.id).to_string(),
             );
     }
 

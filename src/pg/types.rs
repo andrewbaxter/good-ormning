@@ -1,9 +1,13 @@
+use serde::{
+    Serialize,
+    Deserialize,
+};
 use quote::{
     quote,
 };
 use crate::utils::RustTypes;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SimpleSimpleType {
     Auto,
     I32,
@@ -103,13 +107,13 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SimpleType {
     pub type_: SimpleSimpleType,
     pub custom: Option<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Type {
     pub type_: SimpleType,
     pub opt: bool,

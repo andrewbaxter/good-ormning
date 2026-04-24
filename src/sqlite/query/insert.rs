@@ -1,3 +1,5 @@
+use crate::sqlite::query::utils::Returning;
+
 use std::{
     collections::{
         HashMap,
@@ -6,136 +8,129 @@ use std::{
 };
 use crate::{
     sqlite::{
-        schema::{
-            field::Field,
-            table::Table,
-        },
         QueryResCount,
+        schema::{
+            field::FieldRef,
+            table::TableRef,
+        },
+        types::SimpleSimpleType,
     },
     utils::Tokens,
 };
 use super::{
     expr::{
-        check_assignable,
         Expr,
         ExprType,
+        check_assignable,
         Binding,
     },
-    select_body::Returning,
     utils::{
+        SqliteQueryCtx,
+        QueryBody,
         build_returning,
         build_set,
-        build_with,
-        QueryBody,
-        With,
     },
+     
 };
 
 pub enum InsertConflict {
     DoNothing,
-    DoUpdate(Vec<(Field, Expr)>),
+    DoUpdate {
+        conflict: Vec<FieldRef>,
+        set: Vec<(FieldRef, Expr)>,
+    },
 }
 
 pub struct Insert {
-    pub with: Option<With>,
-    pub table: Table,
-    pub values: Vec<(Field, Expr)>,
-    pub on_conflict: Option<InsertConflict>,
-    pub returning: Vec<Returning>,
+    pub(crate) table: TableRef,
+    pub(crate) values: Vec<(FieldRef, Expr)>,
+    pub(crate) on_conflict: Option<InsertConflict>,
+    pub(crate) returning: Vec<Returning>,
 }
 
 impl QueryBody for Insert {
     fn build(
         &self,
-        ctx: &mut super::utils::SqliteQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
-        let mut out = Tokens::new();
-
         // Prep
-        if let Some(w) = &self.with {
-            out.s(&build_with(ctx, path, w).to_string());
-        }
         let mut check_inserting_fields = HashSet::new();
         for p in &self.values {
-            if p.0.type_.type_.opt {
+            let field_info = match ctx.tables.get(&self.table).and_then(|t| t.fields.get(&p.0)) {
+                Some(f) => f,
+                None => {
+                    ctx.errs.err(path, format!("Unknown field {:?} for insert into {:?}", p.0, self.table));
+                    continue;
+                },
+            };
+            if field_info.type_.opt {
                 continue;
             }
             if !check_inserting_fields.insert(p.0.clone()) {
-                ctx.errs.err(path, format!("Duplicate field {} in insert", p.0));
+                ctx.errs.err(path, format!("Duplicate field {:?} in insert", p.0));
             }
         }
         let mut scope = HashMap::new();
-        for field in match ctx.tables.get(&self.table) {
+        let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for insert", self.table));
+                ctx.errs.err(path, format!("Unknown table {:?} for insert", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
-        } {
-            scope.insert(Binding::field(field), field.type_.type_.clone());
-            if !field.type_.type_.opt && field.schema_id.0 != "rowid" && !check_inserting_fields.remove(field) {
-                ctx.errs.err(path, format!("{} is a non-optional field but is missing in insert", field));
+        };
+        for (field_ref, info) in &table_info.fields {
+            scope.insert(Binding::field(field_ref), info.type_.clone());
+            if !info.type_.opt && info.type_.type_.type_ != SimpleSimpleType::Auto &&
+                !check_inserting_fields.remove(field_ref) {
+                ctx.errs.err(path, format!("Field {:?} is a non-optional field but is missing in insert", field_ref));
             }
         }
         drop(check_inserting_fields);
 
         // Build query
-        out.s("insert into").id(&self.table.id).s("(");
-        for (i, (field, _)) in self.values.iter().enumerate() {
+        let mut out = Tokens::new();
+        out.s("insert into").id(&table_info.sql_name).s("(");
+        for (i, (field_ref, _)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");
             }
-            out.id(&field.id);
+            let field_info = table_info.fields.get(field_ref).unwrap();
+            out.id(&field_info.sql_name);
         }
         out.s(") values (");
-        for (i, (field, val)) in self.values.iter().enumerate() {
+        for (i, (field_ref, val)) in self.values.iter().enumerate() {
             if i > 0 {
                 out.s(",");
             }
-            let field = match ctx.tables.get(&field.table).and_then(|t| t.get(&field)) {
-                Some(t) => t,
-                None => {
-                    ctx.errs.err(path, format!("Insert destination value field {} is not known", field));
-                    continue;
-                },
-            }.clone();
-            let path = path.push_back(format!("Insert value {} ({})", i, field));
+            let field_info = table_info.fields.get(field_ref).unwrap();
+            let path = path.push_back(format!("Insert value {} ({:?})", i, field_ref));
             let res = val.build(ctx, &path, &scope);
-            check_assignable(&mut ctx.errs, &path, &field.type_.type_, &res.0);
+            check_assignable(&mut ctx.errs, &path, &field_info.type_, &res.0);
             out.s(&res.1.to_string());
         }
         out.s(")");
-        if let Some(c) = &self.on_conflict {
-            out.s("on conflict do");
-            match c {
+        if let Some(conflict) = &self.on_conflict {
+            out.s("on conflict");
+            match conflict {
                 InsertConflict::DoNothing => {
-                    out.s("nothing");
+                    out.s("do nothing");
                 },
-                InsertConflict::DoUpdate(values) => {
-                    out.s("update");
-                    build_set(ctx, path, &scope, &mut out, values);
+                InsertConflict::DoUpdate { conflict, set } => {
+                    out.s("(");
+                    for (i, f) in conflict.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let field_info = table_info.fields.get(f).unwrap();
+                        out.id(&field_info.sql_name);
+                    }
+                    out.s(")");
+                    out.s("do update");
+                    build_set(ctx, path, &scope, &mut out, set);
                 },
             }
-        }
-        match (&res_count, &self.on_conflict) {
-            (QueryResCount::MaybeOne, Some(InsertConflict::DoUpdate(_))) => {
-                ctx.errs.err(path, format!("Insert with [on conflict update] will always return a row"));
-            },
-            (QueryResCount::One, Some(InsertConflict::DoNothing)) => {
-                ctx.errs.err(path, format!("Insert with [on conflict do nothing] may not return a row"));
-            },
-            (QueryResCount::Many, _) => {
-                ctx.errs.err(path, format!("Insert can at most return one row, but res count is many"));
-            },
-            (QueryResCount::None, _) | (QueryResCount::One, None) | (QueryResCount::MaybeOne, None) => {
-                // handled elsewhere, nop
-            },
-            (QueryResCount::One, Some(InsertConflict::DoUpdate(_))) |
-            (QueryResCount::MaybeOne, Some(InsertConflict::DoNothing)) => {
-                // ok
-            },
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
         (out_type, out)

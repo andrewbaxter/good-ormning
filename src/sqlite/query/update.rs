@@ -1,37 +1,35 @@
-use {
-    std::collections::HashMap,
-    crate::{
-        sqlite::{
-            QueryResCount,
-            schema::{
-                table::Table,
-                field::Field,
-            },
-        },
-        utils::Tokens,
-    },
-    super::{
-        expr::{
-            check_bool,
-            Expr,
-            ExprType,
-            Binding,
-        },
-        select_body::Returning,
-        utils::{
-            build_returning,
-            build_set,
-            build_with,
-            QueryBody,
-            With,
+use crate::sqlite::query::utils::Returning;
+
+use std::collections::HashMap;
+use crate::{
+    sqlite::{
+        QueryResCount,
+        schema::{
+            table::TableRef,
+            field::FieldRef,
         },
     },
+    utils::Tokens,
+};
+use super::{
+    expr::{
+        Expr,
+        ExprType,
+        check_bool,
+        Binding,
+    },
+    utils::{
+        SqliteQueryCtx,
+        QueryBody,
+        build_returning,
+        build_set,
+    },
+     
 };
 
 pub struct Update {
-    pub with: Option<With>,
-    pub table: Table,
-    pub values: Vec<(Field, Expr)>,
+    pub table: TableRef,
+    pub values: Vec<(FieldRef, Expr)>,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
 }
@@ -39,29 +37,26 @@ pub struct Update {
 impl QueryBody for Update {
     fn build(
         &self,
-        ctx: &mut super::utils::SqliteQueryCtx,
+        ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
-        let mut out = Tokens::new();
-
         // Prep
-        if let Some(w) = &self.with {
-            out.s(&build_with(ctx, path, w).to_string());
-        }
-        let mut scope = HashMap::new();
-        for field in match ctx.tables.get(&self.table) {
+        let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for update", self.table));
+                ctx.errs.err(path, format!("Unknown table {:?} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
-        } {
-            scope.insert(Binding::field(field), field.type_.type_.clone());
+        };
+        let mut scope = HashMap::new();
+        for (k, info) in &table_info.fields {
+            scope.insert(Binding::field(k), info.type_.clone());
         }
 
         // Build query
-        out.s("update").id(&self.table.id);
+        let mut out = Tokens::new();
+        out.s("update").id(&table_info.sql_name);
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");

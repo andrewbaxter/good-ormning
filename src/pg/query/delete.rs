@@ -3,7 +3,7 @@ use crate::{
     utils::Tokens,
     pg::{
         QueryResCount,
-        schema::table::Table,
+        schema::table::TableRef,
     },
 };
 use super::{
@@ -16,12 +16,12 @@ use super::{
     utils::{
         QueryBody,
         build_returning,
+        Returning,
     },
-    select::Returning,
 };
 
 pub struct Delete {
-    pub(crate) table: Table,
+    pub(crate) table: TableRef,
     pub(crate) where_: Option<Expr>,
     pub(crate) returning: Vec<Returning>,
 }
@@ -34,20 +34,21 @@ impl QueryBody for Delete {
         res_count: QueryResCount,
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
-        let mut scope = HashMap::new();
-        for (k, v) in match ctx.tables.get(&self.table) {
+        let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t,
             None => {
-                ctx.errs.err(path, format!("Unknown table {} for delete", self.table));
+                ctx.errs.err(path, format!("Unknown table {:?} for delete", self.table));
                 return (ExprType(vec![]), Tokens::new());
             },
-        } {
-            scope.insert(ExprValName::field(k), v.clone());
+        };
+        let mut scope = HashMap::new();
+        for (k, info) in &table_info.fields {
+            scope.insert(ExprValName::field(k), info.type_.clone());
         }
 
         // Build query
         let mut out = Tokens::new();
-        out.s("delete from").id(&self.table.id);
+        out.s("delete from").id(&table_info.sql_name);
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());
