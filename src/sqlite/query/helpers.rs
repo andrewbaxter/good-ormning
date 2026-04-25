@@ -33,10 +33,10 @@ pub fn field_param(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
             .as_ref()
             .unwrap()
             .tables
-            .get(&f.table.schema_id)
+            .get(&f.table.id)
             .unwrap()
             .fields
-            .get(&f.schema_id)
+            .get(&f.id)
             .unwrap()
             .type_
             .type_

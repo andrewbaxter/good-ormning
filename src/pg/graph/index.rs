@@ -1,18 +1,14 @@
-use std::collections::{
-    HashSet,
-    HashMap,
-};
+use std::collections::HashSet;
 use crate::{
+    pg::{
+        schema::{
+            index::{
+                Index,
+            },
+        },
+    },
     graphmigrate::Comparison,
     utils::Tokens,
-    pg::schema::{
-        index::{
-            Index,
-            SchemaIndexId,
-        },
-        table::SchemaTableId,
-        field::SchemaFieldId,
-    },
 };
 use super::{
     GraphId,
@@ -24,31 +20,30 @@ use super::{
 
 #[derive(Clone)]
 pub(crate) struct NodeIndex_ {
-    pub table_schema_id: SchemaTableId,
-    // SQL name
     pub table_id: String,
-    pub schema_id: SchemaIndexId,
+    pub table_renamed_from: Option<String>,
     pub def: Index,
-    pub field_sql_names: HashMap<SchemaFieldId, String>,
 }
 
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_schema_id.clone())) || self.def.fields != old.def.fields {
+        if created.contains(&GraphId::Table(self.table_id.clone()))
+            || self.table_id != old.table_id
+            || self.def.id != old.def.id
+            || self.def.fields != old.def.fields
+        {
             Comparison::Recreate
-        } else if self.def.id != old.def.id {
-            Comparison::Update
         } else {
             Comparison::DoNothing
         }
     }
 }
 
-impl NodeDataDispatch for NodeIndex_ {
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
-    }
+impl NodeData for NodeIndex_ {
+    fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) {}
+}
 
+impl NodeDataDispatch for NodeIndex_ {
     fn create(&self, ctx: &mut PgMigrateCtx) {
         let mut stmt = Tokens::new();
         stmt.s("create");
@@ -56,31 +51,25 @@ impl NodeDataDispatch for NodeIndex_ {
             stmt.s("unique");
         }
         stmt.s("index").id(&self.def.id).s("on").id(&self.table_id).s("(");
-        for (j, f_id) in self.def.fields.iter().enumerate() {
-            if j > 0 {
+        for (i, f_id) in self.def.fields.iter().enumerate() {
+            if i > 0 {
                 stmt.s(",");
             }
-            stmt.id(self.field_sql_names.get(f_id).unwrap());
+            stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
         }
         stmt.s(")");
         ctx.statements.push(stmt.to_string());
     }
 
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
-    }
-
     fn delete(&self, ctx: &mut PgMigrateCtx) {
         ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
     }
-}
 
-impl NodeData for NodeIndex_ {
-    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
-        if self.def.id != old.def.id {
-            let mut stmt = Tokens::new();
-            stmt.s("alter index").id(&old.def.id).s("rename to").id(&self.def.id);
-            ctx.statements.push(stmt.to_string());
-        }
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
+    }
+
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 }

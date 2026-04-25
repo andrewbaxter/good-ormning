@@ -246,8 +246,8 @@ impl ExprValName {
 
     pub fn field(f: &FieldRef) -> Self {
         ExprValName {
-            table_id: f.table_id.0.clone(),
-            id: f.field_id.0.clone(),
+            table_id: f.table_id.clone(),
+            id: f.field_id.clone(),
         }
     }
 

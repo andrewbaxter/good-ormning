@@ -65,25 +65,21 @@ use self::{
     schema::{
         field::{
             Field,
-            SchemaFieldId,
             FieldType,
             FieldRef,
         },
         table::{
             Table,
-            SchemaTableId,
             TableRef,
         },
         constraint::{
             ConstraintType,
             Constraint,
-            SchemaConstraintId,
             PrimaryKeyDef,
             ForeignKeyDef,
         },
         index::{
             Index,
-            SchemaIndexId,
         },
     },
     graph::{
@@ -159,10 +155,10 @@ impl InsertBuilder {
                 .as_ref()
                 .unwrap()
                 .tables
-                .get(&f.table.schema_id)
+                .get(&f.table.id)
                 .unwrap()
                 .fields
-                .get(&f.schema_id)
+                .get(&f.id)
                 .unwrap()
                 .id
                 .clone();
@@ -184,10 +180,10 @@ impl InsertBuilder {
                     .as_ref()
                     .unwrap()
                     .tables
-                    .get(&f.table.schema_id)
+                    .get(&f.table.id)
                     .unwrap()
                     .fields
-                    .get(&f.schema_id)
+                    .get(&f.id)
                     .unwrap()
                     .id
                     .clone();
@@ -263,10 +259,10 @@ impl SelectBuilder {
                 .as_ref()
                 .unwrap()
                 .tables
-                .get(&f.table.schema_id)
+                .get(&f.table.id)
                 .unwrap()
                 .fields
-                .get(&f.schema_id)
+                .get(&f.id)
                 .unwrap()
                 .id
                 .clone();
@@ -288,10 +284,10 @@ impl SelectBuilder {
                     .as_ref()
                     .unwrap()
                     .tables
-                    .get(&f.table.schema_id)
+                    .get(&f.table.id)
                     .unwrap()
                     .fields
-                    .get(&f.schema_id)
+                    .get(&f.id)
                     .unwrap()
                     .id
                     .clone();
@@ -413,10 +409,10 @@ impl UpdateBuilder {
                 .as_ref()
                 .unwrap()
                 .tables
-                .get(&f.table.schema_id)
+                .get(&f.table.id)
                 .unwrap()
                 .fields
-                .get(&f.schema_id)
+                .get(&f.id)
                 .unwrap()
                 .id
                 .clone();
@@ -438,10 +434,10 @@ impl UpdateBuilder {
                     .as_ref()
                     .unwrap()
                     .tables
-                    .get(&f.table.schema_id)
+                    .get(&f.table.id)
                     .unwrap()
                     .fields
-                    .get(&f.schema_id)
+                    .get(&f.id)
                     .unwrap()
                     .id
                     .clone();
@@ -522,10 +518,10 @@ impl DeleteBuilder {
                 .as_ref()
                 .unwrap()
                 .tables
-                .get(&f.table.schema_id)
+                .get(&f.table.id)
                 .unwrap()
                 .fields
-                .get(&f.schema_id)
+                .get(&f.id)
                 .unwrap()
                 .id
                 .clone();
@@ -547,10 +543,10 @@ impl DeleteBuilder {
                     .as_ref()
                     .unwrap()
                     .tables
-                    .get(&f.table.schema_id)
+                    .get(&f.table.id)
                     .unwrap()
                     .fields
-                    .get(&f.schema_id)
+                    .get(&f.id)
                     .unwrap()
                     .id
                     .clone();
@@ -624,10 +620,10 @@ impl SelectBodyBuilder {
                 .as_ref()
                 .unwrap()
                 .tables
-                .get(&f.table.schema_id)
+                .get(&f.table.id)
                 .unwrap()
                 .fields
-                .get(&f.schema_id)
+                .get(&f.id)
                 .unwrap()
                 .id
                 .clone();
@@ -649,10 +645,10 @@ impl SelectBodyBuilder {
                     .as_ref()
                     .unwrap()
                     .tables
-                    .get(&f.table.schema_id)
+                    .get(&f.table.id)
                     .unwrap()
                     .fields
-                    .get(&f.schema_id)
+                    .get(&f.id)
                     .unwrap()
                     .id
                     .clone();
@@ -741,8 +737,8 @@ pub struct Query {
 pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> InsertBuilder {
     let mut unique = HashSet::new();
     for v in &values {
-        if !unique.insert(v.0.schema_id.clone()) {
-            panic!("Duplicate field {:?} in insert", v.0.schema_id);
+        if !unique.insert(v.0.id.clone()) {
+            panic!("Duplicate field {:?} in insert", v.0.id);
         }
     }
     InsertBuilder { q: Insert {
@@ -756,18 +752,18 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
 impl InsertBuilder {
     pub fn build_migration(self, version: &VersionHandle) -> String {
         let mut field_lookup: HashMap<TableRef, SqliteTableInfo> = HashMap::new();
-        for (table_schema_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
             let mut fields: HashMap<FieldRef, SqliteFieldInfo> = HashMap::new();
-            for (field_schema_id, field) in &table.fields {
+            for (field_id, field) in &table.fields {
                 fields.insert(FieldRef {
-                    table_id: table_schema_id.clone(),
-                    field_id: field_schema_id.clone(),
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
                 }, SqliteFieldInfo {
                     sql_name: field.id.clone(),
                     type_: field.type_.type_.clone(),
                 });
             }
-            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+            field_lookup.insert(TableRef(table_id.clone()), SqliteTableInfo {
                 sql_name: table.id.clone(),
                 fields: fields,
             });
@@ -820,8 +816,8 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
 pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> UpdateBuilder {
     let mut unique = HashSet::new();
     for v in &values {
-        if !unique.insert(v.0.schema_id.clone()) {
-            panic!("Duplicate field {:?} in update", v.0.schema_id);
+        if !unique.insert(v.0.id.clone()) {
+            panic!("Duplicate field {:?} in update", v.0.id);
         }
     }
     UpdateBuilder { q: Update {
@@ -835,18 +831,18 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
 impl UpdateBuilder {
     pub fn build_migration(self, version: &VersionHandle) -> String {
         let mut field_lookup: HashMap<TableRef, SqliteTableInfo> = HashMap::new();
-        for (table_schema_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
             let mut fields: HashMap<FieldRef, SqliteFieldInfo> = HashMap::new();
-            for (field_schema_id, field) in &table.fields {
+            for (field_id, field) in &table.fields {
                 fields.insert(FieldRef {
-                    table_id: table_schema_id.clone(),
-                    field_id: field_schema_id.clone(),
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
                 }, SqliteFieldInfo {
                     sql_name: field.id.clone(),
                     type_: field.type_.type_.clone(),
                 });
             }
-            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+            field_lookup.insert(TableRef(table_id.clone()), SqliteTableInfo {
                 sql_name: table.id.clone(),
                 fields: fields,
             });
@@ -873,18 +869,18 @@ pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
 impl DeleteBuilder {
     pub fn build_migration(self, version: &VersionHandle) -> String {
         let mut field_lookup: HashMap<TableRef, SqliteTableInfo> = HashMap::new();
-        for (table_schema_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
             let mut fields: HashMap<FieldRef, SqliteFieldInfo> = HashMap::new();
-            for (field_schema_id, field) in &table.fields {
+            for (field_id, field) in &table.fields {
                 fields.insert(FieldRef {
-                    table_id: table_schema_id.clone(),
-                    field_id: field_schema_id.clone(),
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
                 }, SqliteFieldInfo {
                     sql_name: field.id.clone(),
                     type_: field.type_.type_.clone(),
                 });
             }
-            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+            field_lookup.insert(TableRef(table_id.clone()), SqliteTableInfo {
                 sql_name: table.id.clone(),
                 fields: fields,
             });
@@ -898,7 +894,7 @@ impl DeleteBuilder {
 /// The version represents the state of a schema at a point in time.
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Version {
-    pub tables: BTreeMap<SchemaTableId, Table>,
+    pub tables: BTreeMap<String, Table>,
     pub pre_migration: Vec<String>,
     pub post_migration: Vec<String>,
 }
@@ -926,11 +922,11 @@ impl VersionHandle {
         self.0.borrow().as_ref().expect("Version already built").clone()
     }
 
-    pub fn table(&self, schema_id: &str, id: &str) -> TableHandle {
-        let schema_id = SchemaTableId(schema_id.into());
+    pub fn table(&self, id: &str) -> TableHandle {
         self.with(|v| {
-            v.tables.insert(schema_id.clone(), Table {
+            v.tables.insert(id.into(), Table {
                 id: id.into(),
+                renamed_from: None,
                 fields: BTreeMap::new(),
                 indices: BTreeMap::new(),
                 constraints: BTreeMap::new(),
@@ -938,7 +934,7 @@ impl VersionHandle {
         });
         TableHandle {
             version: self.clone(),
-            schema_id: schema_id,
+            id: id.into(),
         }
     }
 
@@ -958,34 +954,42 @@ impl VersionHandle {
 #[derive(Clone)]
 pub struct TableHandle {
     pub version: VersionHandle,
-    pub schema_id: SchemaTableId,
+    pub id: String,
 }
 
 impl TableHandle {
     pub fn to_ref(&self) -> TableRef {
-        TableRef(self.schema_id.clone())
+        TableRef(self.id.clone())
     }
 
-    pub fn field(&self, schema_id: &str, id: &str, type_: FieldType) -> FieldHandle {
-        let field_schema_id = SchemaFieldId(schema_id.into());
+    pub fn renamed_from(self, old_name: &str) -> Self {
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().fields.insert(field_schema_id.clone(), Field {
+            v.tables.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
+        });
+        self
+    }
+
+    pub fn field(&self, id: &str, type_: FieldType) -> FieldHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().fields.insert(id.into(), Field {
                 id: id.into(),
+                renamed_from: None,
                 type_: type_,
             });
         });
         FieldHandle {
             table: self.clone(),
-            schema_id: field_schema_id,
+            id: id.into(),
         }
     }
 
     pub fn rowid_field(&self, id: Option<&str>) -> FieldHandle {
-        let field_schema_id = SchemaFieldId("rowid".into());
-        let id = id.unwrap_or("rowid");
+        let field_id = "rowid";
+        let sql_id = id.unwrap_or("rowid");
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().fields.insert(field_schema_id.clone(), Field {
-                id: id.into(),
+            v.tables.get_mut(&self.id).unwrap().fields.insert(field_id.into(), Field {
+                id: sql_id.into(),
+                renamed_from: None,
                 type_: FieldType {
                     type_: crate::sqlite::types::type_auto().build(),
                     migration_default: None,
@@ -994,76 +998,75 @@ impl TableHandle {
         });
         FieldHandle {
             table: self.clone(),
-            schema_id: field_schema_id,
+            id: field_id.into(),
         }
     }
 
-    pub fn index(&self, schema_id: &str, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
-        let index_schema_id = SchemaIndexId(schema_id.into());
+    pub fn index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().indices.insert(index_schema_id.clone(), Index {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
                 id: id.into(),
-                fields: fields.iter().map(|f| f.schema_id.clone()).collect(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
                 unique: false,
             });
         });
         IndexHandle {
             table: self.clone(),
-            schema_id: index_schema_id,
+            id: id.into(),
         }
     }
 
-    pub fn unique_index(&self, schema_id: &str, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
-        let index_schema_id = SchemaIndexId(schema_id.into());
+    pub fn unique_index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().indices.insert(index_schema_id.clone(), Index {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
                 id: id.into(),
-                fields: fields.iter().map(|f| f.schema_id.clone()).collect(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
                 unique: true,
             });
         });
         IndexHandle {
             table: self.clone(),
-            schema_id: index_schema_id,
+            id: id.into(),
         }
     }
 
-    pub fn primary_key(&self, schema_id: &str, id: &str, fields: &[&FieldHandle]) -> ConstraintHandle {
-        let constraint_schema_id = SchemaConstraintId(schema_id.into());
+    pub fn primary_key(&self, id: &str, fields: &[&FieldHandle]) -> ConstraintHandle {
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().constraints.insert(constraint_schema_id.clone(), Constraint {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
                 id: id.into(),
+                renamed_from: None,
                 type_: ConstraintType::PrimaryKey(
-                    PrimaryKeyDef { fields: fields.iter().map(|f| f.schema_id.clone()).collect() },
+                    PrimaryKeyDef { fields: fields.iter().map(|f| f.id.clone()).collect() },
                 ),
             });
         });
         ConstraintHandle {
             table: self.clone(),
-            schema_id: constraint_schema_id,
+            id: id.into(),
         }
     }
 
     pub fn foreign_key(
         &self,
-        schema_id: &str,
         id: &str,
         fields: &[(&FieldHandle, &FieldHandle)],
     ) -> ConstraintHandle {
-        let constraint_schema_id = SchemaConstraintId(schema_id.into());
-        let remote_table = fields.get(0).unwrap().1.table.schema_id.clone();
+        let remote_table = fields.get(0).unwrap().1.table.id.clone();
         self.version.with(|v| {
-            v.tables.get_mut(&self.schema_id).unwrap().constraints.insert(constraint_schema_id.clone(), Constraint {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
                 id: id.into(),
+                renamed_from: None,
                 type_: ConstraintType::ForeignKey(ForeignKeyDef {
                     remote_table: remote_table,
-                    fields: fields.iter().map(|(l, r)| (l.schema_id.clone(), r.schema_id.clone())).collect(),
+                    fields: fields.iter().map(|(l, r)| (l.id.clone(), r.id.clone())).collect(),
                 }),
             });
         });
         ConstraintHandle {
             table: self.clone(),
-            schema_id: constraint_schema_id,
+            id: id.into(),
         }
     }
 }
@@ -1071,111 +1074,115 @@ impl TableHandle {
 #[derive(Clone)]
 pub struct FieldHandle {
     pub table: TableHandle,
-    pub schema_id: SchemaFieldId,
+    pub id: String,
 }
 
 impl FieldHandle {
     pub fn to_ref(&self) -> FieldRef {
         FieldRef {
-            table_id: self.table.schema_id.clone(),
-            field_id: self.schema_id.clone(),
+            table_id: self.table.id.clone(),
+            field_id: self.id.clone(),
         }
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().fields.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        self
     }
 }
 
 pub struct IndexHandle {
     pub table: TableHandle,
-    pub schema_id: SchemaIndexId,
+    pub id: String,
+}
+
+impl IndexHandle {
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().indices.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        self
+    }
 }
 
 pub struct ConstraintHandle {
     pub table: TableHandle,
-    pub schema_id: SchemaConstraintId,
+    pub id: String,
+}
+
+impl ConstraintHandle {
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        self
+    }
 }
 
 impl Version {
     pub(crate) fn to_migrate_nodes(&self) -> BTreeMap<GraphId, MigrateNode> {
         let mut out = BTreeMap::new();
-        for (table_schema_id, table) in &self.tables {
-            let table_graph_id = GraphId::Table(table_schema_id.clone());
+        for (table_id, table) in &self.tables {
+            let table_graph_id = GraphId::Table(table_id.clone());
+            let table_renamed_from = table.renamed_from.clone();
             out.insert(table_graph_id.clone(), MigrateNode::new(vec![], Node::table(NodeTable_ {
-                schema_id: table_schema_id.clone(),
+                table_id: table_id.clone(),
                 def: table.clone(),
             })));
-            let mut local_field_sql_names = HashMap::new();
-            for (field_schema_id, field) in &table.fields {
-                local_field_sql_names.insert(field_schema_id.clone(), field.id.clone());
-                let field_graph_id = GraphId::Field(table_schema_id.clone(), field_schema_id.clone());
+            for (field_id, field) in &table.fields {
+                let field_graph_id = GraphId::Field(table_id.clone(), field_id.clone());
                 out.insert(field_graph_id, MigrateNode::new(vec![table_graph_id.clone()], Node::field(NodeField_ {
-                    table_schema_id: table_schema_id.clone(),
-                    table_id: table.id.clone(),
-                    schema_id: field_schema_id.clone(),
+                    table_id: table_id.clone(),
+                    table_renamed_from: table_renamed_from.clone(),
                     def: field.clone(),
                 })));
             }
-            for (index_schema_id, index) in &table.indices {
+            for (index_id, index) in &table.indices {
                 let mut deps = vec![table_graph_id.clone()];
                 for f in &index.fields {
-                    deps.push(GraphId::Field(table_schema_id.clone(), f.clone()));
+                    deps.push(GraphId::Field(table_id.clone(), f.clone()));
                 }
                 out.insert(
-                    GraphId::Index(table_schema_id.clone(), index_schema_id.clone()),
+                    GraphId::Index(table_id.clone(), index_id.clone()),
                     MigrateNode::new(deps, Node::table_index(NodeIndex_ {
-                        table_schema_id: table_schema_id.clone(),
-                        table_id: table.id.clone(),
-                        schema_id: index_schema_id.clone(),
+                        table_id: table_id.clone(),
+                        table_renamed_from: table_renamed_from.clone(),
                         def: index.clone(),
-                        field_sql_names: local_field_sql_names.clone(),
                     })),
                 );
             }
-            for (constraint_schema_id, constraint) in &table.constraints {
+            for (constraint_id, constraint) in &table.constraints {
                 let mut deps = vec![table_graph_id.clone()];
-                let mut remote_table_sql_name = None;
-                let mut remote_field_sql_names = HashMap::new();
                 match &constraint.type_ {
                     ConstraintType::PrimaryKey(x) => {
                         for f in &x.fields {
-                            deps.push(GraphId::Field(table_schema_id.clone(), f.clone()));
+                            deps.push(GraphId::Field(table_id.clone(), f.clone()));
                         }
                     },
                     ConstraintType::ForeignKey(x) => {
                         deps.push(GraphId::Table(x.remote_table.clone()));
-                        remote_table_sql_name =
-                            Some(self.tables.get(&x.remote_table).expect("Remote table not found").id.clone());
                         for (l, r) in &x.fields {
-                            deps.push(GraphId::Field(table_schema_id.clone(), l.clone()));
+                            deps.push(GraphId::Field(table_id.clone(), l.clone()));
                             deps.push(GraphId::Field(x.remote_table.clone(), r.clone()));
-                            remote_field_sql_names.insert(
-                                r.clone(),
-                                self
-                                    .tables
-                                    .get(&x.remote_table)
-                                    .unwrap()
-                                    .fields
-                                    .get(r)
-                                    .expect("Remote field not found")
-                                    .id
-                                    .clone(),
-                            );
                         }
                     },
                 }
                 out.insert(
-                    GraphId::Constraint(table_schema_id.clone(), constraint_schema_id.clone()),
+                    GraphId::Constraint(table_id.clone(), constraint_id.clone()),
                     MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
-                        table_schema_id: table_schema_id.clone(),
-                        table_sql_name: table.id.clone(),
-                        schema_id: constraint_schema_id.clone(),
+                        table_id: table_id.clone(),
+                        table_renamed_from: table_renamed_from.clone(),
                         def: constraint.clone(),
-                        local_field_sql_names: local_field_sql_names.clone(),
-                        remote_table_sql_name,
-                        remote_field_sql_names,
                     })),
                 );
             }
         }
-        out
+        return out;
     }
 }
 
@@ -1210,18 +1217,18 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Prep for current version
         field_lookup.clear();
-        for (table_schema_id, table) in &version.tables {
+        for (table_id, table) in &version.tables {
             let mut fields: HashMap<FieldRef, SqliteFieldInfo> = HashMap::new();
-            for (field_schema_id, field) in &table.fields {
+            for (field_id, field) in &table.fields {
                 fields.insert(FieldRef {
-                    table_id: table_schema_id.clone(),
-                    field_id: field_schema_id.clone(),
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
                 }, SqliteFieldInfo {
                     sql_name: field.id.clone(),
                     type_: field.type_.type_.clone(),
                 });
             }
-            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+            field_lookup.insert(TableRef(table_id.clone()), SqliteTableInfo {
                 sql_name: table.id.clone(),
                 fields: fields,
             });
@@ -1251,8 +1258,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         // Main migrations
         {
             let mut table_sql_names = HashMap::new();
-            for (table_schema_id, table) in &version.tables {
-                table_sql_names.insert(table_schema_id.clone(), table.id.clone());
+            for (table_id, table) in &version.tables {
+                table_sql_names.insert(table_id.clone(), table.id.clone());
             }
             let mut state = SqliteMigrateCtx::new(errs.clone(), table_sql_names, version.clone());
             let current_nodes = version.to_migrate_nodes();
@@ -1686,15 +1693,15 @@ mod test {
             // Versions (previous)
             (0usize, {
                 let v = VersionHandle::new();
-                v.table("zMOY9YMCK", "bananna").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                v.table("bananna").field("hizat", field_str().build());
+                v.0.borrow().clone().unwrap()
             }),
             (1usize, {
                 let v = VersionHandle::new();
-                let bananna = v.table("zMOY9YMCK", "bananna");
-                bananna.field("z437INV6D", "hizat", field_str().build());
-                bananna.field("zPREUVAOD", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
-                v.0.borrow().clone()
+                let bananna = v.table("bananna");
+                bananna.field("hizat", field_str().build());
+                bananna.field("zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
+                v.0.borrow().clone().unwrap()
             })
         ], vec![]).is_err());
     }
@@ -1706,15 +1713,15 @@ mod test {
             // Versions (previous)
             (0usize, {
                 let v = VersionHandle::new();
-                v.table("zPAO2PJU4", "bananna").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                v.table("bananna").field("hizat", field_str().build());
+                v.0.borrow().clone().unwrap()
             }),
             (1usize, {
                 let v = VersionHandle::new();
-                let bananna = v.table("zQZQ8E2WD", "bananna");
-                bananna.field("z437INV6D", "hizat", field_str().build());
-                bananna.field("z437INV6D", "zomzom", field_i32().build());
-                v.0.borrow().clone()
+                let bananna = v.table("bananna");
+                bananna.field("hizat", field_str().build());
+                bananna.field("zomzom", field_i32().build());
+                v.0.borrow().clone().unwrap()
             })
         ], vec![]).unwrap();
     }
@@ -1726,14 +1733,14 @@ mod test {
             // Versions (previous)
             (0usize, {
                 let v = VersionHandle::new();
-                v.table("zSNS34DYI", "bananna").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                v.table("bananna").field("hizat", field_str().build());
+                v.0.borrow().clone().unwrap()
             }),
             (1usize, {
                 let v = VersionHandle::new();
-                v.table("zSNS34DYI", "bananna").field("z437INV6D", "hizat", field_str().build());
-                v.table("zSNS34DYI", "bananna").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                v.table("bananna").field("hizat", field_str().build());
+                v.table("bananna").field("hizat", field_str().build());
+                v.0.borrow().clone().unwrap()
             })
         ], vec![]).unwrap();
     }
@@ -1741,12 +1748,12 @@ mod test {
     #[test]
     fn test_res_count_none_bad() {
         let v = VersionHandle::new();
-        let bananna = v.table("z5S18LWQE", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_str().build());
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.0.borrow().clone().unwrap())],
                 vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1755,15 +1762,15 @@ mod test {
     #[test]
     fn test_select_nothing_bad() {
         let v = VersionHandle::new();
-        v.table("zOOR88EQ9", "bananna").field("z437INV6D", "hizat", field_str().build());
+        v.table("bananna").field("hizat", field_str().build());
         let bananna = TableHandle {
             version: v.clone(),
-            schema_id: SchemaTableId("zOOR88EQ9".into()),
+            id: "bananna".into(),
         };
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.0.borrow().clone().unwrap())],
                 vec![new_select(&bananna).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1772,12 +1779,12 @@ mod test {
     #[test]
     fn test_returning_none_bad() {
         let v = VersionHandle::new();
-        let bananna = v.table("zZPD1I2EF", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_str().build());
         assert!(
             generate(
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.0.borrow().clone().unwrap())],
                 vec![
                     new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
                         .return_field(&hizat)

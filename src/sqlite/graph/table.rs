@@ -4,7 +4,6 @@ use crate::{
         schema::{
             table::{
                 Table,
-                SchemaTableId,
             },
         },
         types::to_sql_type,
@@ -22,14 +21,14 @@ use super::{
 
 #[derive(Clone)]
 pub struct NodeTable_ {
-    pub schema_id: SchemaTableId,
+    pub table_id: String,
     pub def: Table,
 }
 
 impl NodeTable_ {
     pub fn compare(&self, old: &Self, _created: &HashSet<GraphId>) -> Comparison {
         if old.def.id != self.def.id {
-            Comparison::Update
+            Comparison::Recreate
         } else {
             Comparison::DoNothing
         }
@@ -37,27 +36,21 @@ impl NodeTable_ {
 }
 
 impl NodeData for NodeTable_ {
-    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
-        if old.def.id != self.def.id {
-            let mut stmt = Tokens::new();
-            stmt.s("alter table").id(&old.def.id).s("rename to").id(&self.def.id);
-            ctx.statements.push(stmt.to_string());
-        }
-    }
+    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {}
 }
 
 impl NodeDataDispatch for NodeTable_ {
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
-            Node::Field(f) if f.table_schema_id == self.schema_id => {
+            Node::Field(f) if f.table_id == self.table_id => {
                 None
             },
-            Node::Constraint(c) if c.table_schema_id == self.schema_id => {
-                self.def.constraints.insert(c.schema_id.clone(), c.def.clone());
+            Node::Constraint(c) if c.table_id == self.table_id => {
+                self.def.constraints.insert(c.def.id.clone(), c.def.clone());
                 None
             },
-            Node::Index(i) if i.table_schema_id == self.schema_id => {
-                self.def.indices.insert(i.schema_id.clone(), i.def.clone());
+            Node::Index(i) if i.table_id == self.table_id => {
+                self.def.indices.insert(i.def.id.clone(), i.def.clone());
                 None
             },
             other => Some(other),
@@ -66,9 +59,9 @@ impl NodeDataDispatch for NodeTable_ {
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
-            Node::Field(f) if f.table_schema_id == self.schema_id => None,
-            Node::Constraint(e) if e.table_schema_id == self.schema_id => None,
-            Node::Index(e) if e.table_schema_id == self.schema_id => None,
+            Node::Field(f) if f.table_id == self.table_id => None,
+            Node::Constraint(e) if e.table_id == self.table_id => None,
+            Node::Index(e) if e.table_id == self.table_id => None,
             other => Some(other),
         }
     }
@@ -95,7 +88,6 @@ impl NodeDataDispatch for NodeTable_ {
                 stmt.s(",");
             }
             first = false;
-            stmt.s("constraint").id(&c.id);
             match &c.type_ {
                 crate::sqlite::schema::constraint::ConstraintType::PrimaryKey(x) => {
                     stmt.s("primary key (");
@@ -120,11 +112,6 @@ impl NodeDataDispatch for NodeTable_ {
                         if i > 0 {
                             stmt.s(",");
                         }
-
-                        // This assumes the remote table is already in the context or we can look it up.
-                        // In the new architecture, we might need a way to get remote field names. For
-                        // now, let's assume the field names are the same as schema IDs or we have a
-                        // lookup. Actually, Version has the info.
                         stmt.id(&ctx.version.tables.get(&x.remote_table).unwrap().fields.get(r_id).unwrap().id);
                     }
                     stmt.s(")");

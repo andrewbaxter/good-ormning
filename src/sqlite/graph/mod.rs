@@ -1,12 +1,6 @@
 use std::collections::HashSet;
 use crate::graphmigrate::Comparison;
 pub use self::utils::SqliteMigrateCtx;
-use super::schema::{
-    table::SchemaTableId,
-    field::SchemaFieldId,
-    constraint::SchemaConstraintId,
-    index::SchemaIndexId,
-};
 
 pub mod table;
 pub mod field;
@@ -27,10 +21,10 @@ pub trait NodeData: NodeDataDispatch {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum GraphId {
-    Table(SchemaTableId),
-    Field(SchemaTableId, SchemaFieldId),
-    Constraint(SchemaTableId, SchemaConstraintId),
-    Index(SchemaTableId, SchemaIndexId),
+    Table(String),
+    Field(String, String),
+    Constraint(String, String),
+    Index(String, String),
 }
 
 #[derive(Clone)]
@@ -135,5 +129,44 @@ impl crate::graphmigrate::NodeData for Node {
 
     fn delete_coalesce(&mut self, other: Self) -> Option<Self> {
         <Self as NodeDataDispatch>::delete_coalesce(self, other)
+    }
+
+    fn renamed_from(&self) -> Option<Self::I> {
+        match self {
+            Node::Table(x) => x.def.renamed_from.as_ref().map(|s| GraphId::Table(s.clone())),
+            Node::Field(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(GraphId::Field(
+                        old_table_id.clone(),
+                        x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                    ))
+                } else {
+                    None
+                }
+            },
+            Node::Constraint(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(GraphId::Constraint(
+                        old_table_id.clone(),
+                        x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                    ))
+                } else {
+                    None
+                }
+            },
+            Node::Index(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(GraphId::Index(
+                        old_table_id.clone(),
+                        x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                    ))
+                } else {
+                    None
+                }
+            },
+        }
     }
 }

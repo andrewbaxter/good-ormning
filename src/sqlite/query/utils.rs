@@ -9,14 +9,10 @@ use crate::{
         QueryResCount,
         schema::{
             field::{
-                Field,
                 FieldRef,
-                SchemaFieldId,
             },
             table::{
-                Table,
                 TableRef,
-                SchemaTableId,
             },
         },
     },
@@ -43,16 +39,14 @@ pub struct With {
 #[derive(Clone, Debug)]
 pub struct Cte {
     pub table_id: String,
-    pub table_schema_id: SchemaTableId,
-    pub columns: Vec<(SchemaFieldId, String, Type)>,
+    pub columns: Vec<(String, String, Type)>,
     pub body: Box<dyn QueryBody>,
     pub body_junctions: Vec<crate::sqlite::query::select_body::SelectJunction>,
 }
 
 pub struct CteBuilder {
     table_id: String,
-    table_schema_id: SchemaTableId,
-    columns: Vec<(SchemaFieldId, String, Type)>,
+    columns: Vec<(String, String, Type)>,
     body: Box<dyn QueryBody>,
     body_junctions: Vec<crate::sqlite::query::select_body::SelectJunction>,
 }
@@ -61,8 +55,7 @@ impl CteBuilder {
     pub fn new(id: impl AsRef<str>, body: Box<dyn QueryBody>) -> Self {
         let table_id = id.as_ref().to_string();
         return Self {
-            table_id: table_id.clone(),
-            table_schema_id: SchemaTableId(table_id),
+            table_id: table_id,
             columns: vec![],
             body: body,
             body_junctions: vec![],
@@ -73,10 +66,9 @@ impl CteBuilder {
         self.body_junctions.push(j);
     }
 
-    pub fn field(&mut self, id: impl AsRef<str>, type_: Type) -> (SchemaFieldId, String, Type) {
+    pub fn field(&mut self, id: impl AsRef<str>, type_: Type) -> (String, String, Type) {
         let field_id = id.as_ref().to_string();
-        let field_schema_id = SchemaFieldId(field_id.clone());
-        let f = (field_schema_id.clone(), field_id, type_);
+        let f = (field_id.clone(), field_id, type_);
         self.columns.push(f.clone());
         return f;
     }
@@ -84,7 +76,6 @@ impl CteBuilder {
     pub fn build(self) -> Cte {
         return Cte {
             table_id: self.table_id,
-            table_schema_id: self.table_schema_id,
             columns: self.columns,
             body: self.body,
             body_junctions: self.body_junctions,
@@ -177,16 +168,16 @@ pub fn build_with(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, with: &
         }
         out.s(")");
         let mut fields = HashMap::new();
-        for (field_schema_id, sql_name, type_) in &cte.columns {
+        for (field_id, sql_name, type_) in &cte.columns {
             fields.insert(FieldRef {
-                table_id: cte.table_schema_id.clone(),
-                field_id: field_schema_id.clone(),
+                table_id: cte.table_id.clone(),
+                field_id: field_id.clone(),
             }, SqliteFieldInfo {
                 sql_name: sql_name.clone(),
                 type_: type_.clone(),
             });
         }
-        ctx.tables.insert(TableRef(cte.table_schema_id.clone()), SqliteTableInfo {
+        ctx.tables.insert(TableRef(cte.table_id.clone()), SqliteTableInfo {
             sql_name: cte.table_id.clone(),
             fields,
         });
@@ -260,7 +251,7 @@ pub fn build_set(
             match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(&field)) {
                 Some(t) => t.clone(),
                 None => {
-                    ctx.errs.err(&path, format!("Update destination value field {:?} is not known", field));
+                    ctx.errs.err(&path, format!("Set field {:?} is not known", field));
                     continue;
                 },
             };

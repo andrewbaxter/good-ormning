@@ -1,18 +1,14 @@
-use std::collections::{
-    HashSet,
-    HashMap,
-};
+use std::collections::HashSet;
 use crate::{
+    sqlite::{
+        schema::{
+            index::{
+                Index,
+            },
+        },
+    },
     graphmigrate::Comparison,
     utils::Tokens,
-    sqlite::schema::{
-        index::{
-            Index,
-            SchemaIndexId,
-        },
-        table::SchemaTableId,
-        field::SchemaFieldId,
-    },
 };
 use super::{
     GraphId,
@@ -24,65 +20,56 @@ use super::{
 
 #[derive(Clone)]
 pub(crate) struct NodeIndex_ {
-    pub table_schema_id: SchemaTableId,
-    // SQL name
     pub table_id: String,
-    pub schema_id: SchemaIndexId,
+    pub table_renamed_from: Option<String>,
     pub def: Index,
-    pub field_sql_names: HashMap<SchemaFieldId, String>,
 }
 
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_schema_id.clone())) || self.def.fields != old.def.fields {
+        if created.contains(&GraphId::Table(self.table_id.clone()))
+            || self.table_id != old.table_id
+            || self.def.id != old.def.id
+            || self.def.fields != old.def.fields
+        {
             Comparison::Recreate
-        } else if self.def.id != old.def.id {
-            Comparison::Update
         } else {
             Comparison::DoNothing
         }
     }
 }
 
+impl NodeData for NodeIndex_ {
+    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {}
+}
+
 impl NodeDataDispatch for NodeIndex_ {
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
-    }
-
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
-        ctx.statements.push(Tokens::new().s("create").f(|t| {
-            if self.def.unique {
-                t.s("unique");
+        let mut stmt = Tokens::new();
+        stmt.s("create");
+        if self.def.unique {
+            stmt.s("unique");
+        }
+        stmt.s("index").id(&self.def.id).s("on").id(&self.table_id).s("(");
+        for (i, f_id) in self.def.fields.iter().enumerate() {
+            if i > 0 {
+                stmt.s(",");
             }
-        }).s("index").id(&self.def.id).s("on").id(&self.table_id).s("(").f(|t| {
-            for (i, field_schema_id) in self.def.fields.iter().enumerate() {
-                if i > 0 {
-                    t.s(",");
-                }
-                t.id(self.field_sql_names.get(field_schema_id).unwrap());
-            }
-        }).s(")").to_string());
-    }
-
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+            stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
+        }
+        stmt.s(")");
+        ctx.statements.push(stmt.to_string());
     }
 
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
         ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
     }
-}
 
-impl NodeData for NodeIndex_ {
-    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
-        if self.def.id != old.def.id {
-            // SQLite doesn't support renaming indexes easily
-            ctx
-                .errs
-                .err(
-                    &rpds::vector![format!("Index {:?}", self.schema_id)],
-                    format!("SQLite doesn't support renaming indexes"),
-                );
-        }
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
+    }
+
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
     }
 }

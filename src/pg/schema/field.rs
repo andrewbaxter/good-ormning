@@ -1,9 +1,3 @@
-use std::{
-    fmt::{
-        Debug,
-        Display,
-    },
-};
 use serde::{
     Serialize,
     Deserialize,
@@ -21,10 +15,6 @@ use crate::{
     },
 };
 
-use super::{
-    table::SchemaTableId,
-};
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FieldType {
     pub type_: Type,
@@ -32,23 +22,15 @@ pub struct FieldType {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SchemaFieldId(pub String);
-
-impl Display for SchemaFieldId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FieldRef {
-    pub table_id: SchemaTableId,
-    pub field_id: SchemaFieldId,
+    pub table_id: String,
+    pub field_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
     pub id: String,
+    pub renamed_from: Option<String>,
     pub type_: FieldType,
 }
 pub struct FieldTypeBuilder(pub FieldType);

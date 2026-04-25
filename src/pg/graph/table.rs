@@ -4,7 +4,6 @@ use crate::{
         schema::{
             table::{
                 Table,
-                SchemaTableId,
             },
         },
         types::to_sql_type,
@@ -22,7 +21,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct NodeTable_ {
-    pub schema_id: SchemaTableId,
+    pub table_id: String,
     pub def: Table,
 }
 
@@ -49,15 +48,15 @@ impl NodeData for NodeTable_ {
 impl NodeDataDispatch for NodeTable_ {
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
-            Node::Field(f) if f.table_schema_id == self.schema_id => {
+            Node::Field(f) if f.table_id == self.table_id => {
                 None
             },
-            Node::Constraint(c) if c.table_schema_id == self.schema_id => {
-                self.def.constraints.insert(c.schema_id.clone(), c.def.clone());
+            Node::Constraint(c) if c.table_id == self.table_id => {
+                self.def.constraints.insert(c.def.id.clone(), c.def.clone());
                 None
             },
-            Node::Index(i) if i.table_schema_id == self.schema_id => {
-                self.def.indices.insert(i.schema_id.clone(), i.def.clone());
+            Node::Index(i) if i.table_id == self.table_id => {
+                self.def.indices.insert(i.def.id.clone(), i.def.clone());
                 None
             },
             other => Some(other),
@@ -66,9 +65,9 @@ impl NodeDataDispatch for NodeTable_ {
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
-            Node::Field(f) if f.table_schema_id == self.schema_id => None,
-            Node::Constraint(e) if e.table_schema_id == self.schema_id => None,
-            Node::Index(e) if e.table_schema_id == self.schema_id => None,
+            Node::Field(f) if f.table_id == self.table_id => None,
+            Node::Constraint(e) if e.table_id == self.table_id => None,
+            Node::Index(e) if e.table_id == self.table_id => None,
             other => Some(other),
         }
     }

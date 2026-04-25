@@ -68,10 +68,10 @@ fn get_type(f: &FieldHandle) -> Type {
         .as_ref()
         .unwrap()
         .tables
-        .get(&f.table.schema_id)
+        .get(&f.table.id)
         .unwrap()
         .fields
-        .get(&f.schema_id)
+        .get(&f.id)
         .unwrap()
         .type_
         .type_
@@ -82,8 +82,8 @@ pub fn build(root: &Path) {
     // # Base: create table, insert, select
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_base_insert.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -97,8 +97,8 @@ pub fn build(root: &Path) {
     // # (insert) Param: i32
     {
         let v = PgVersion::new();
-        let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_i32().build());
         generate(&root.join("tests/pg_gen_param_i32.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -112,8 +112,8 @@ pub fn build(root: &Path) {
     // # (insert) Param: utctime (chrono)
     {
         let v = PgVersion::new();
-        let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_utctime_s_chrono().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_utctime_s_chrono().build());
         generate(&root.join("tests/pg_gen_param_utctime_chrono.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -127,8 +127,8 @@ pub fn build(root: &Path) {
     // # (insert) Param: utctime (jiff)
     {
         let v = PgVersion::new();
-        let bananna = v.table("zJCPRHK37", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_utctime_s_jiff().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_utctime_s_jiff().build());
         generate(&root.join("tests/pg_gen_param_utctime_jiff.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -142,8 +142,8 @@ pub fn build(root: &Path) {
     // # (insert) Param: Opt`<i32>`
     {
         let v = PgVersion::new();
-        let bananna = v.table("z8JI0I1E4", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().opt().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_i32().opt().build());
         generate(&root.join("tests/pg_gen_param_opt_i32.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -157,8 +157,8 @@ pub fn build(root: &Path) {
     // # (insert) Param: Opt`<i32>`, null
     {
         let v = PgVersion::new();
-        let bananna = v.table("zT7F4746C", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().opt().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_i32().opt().build());
         generate(&root.join("tests/pg_gen_param_opt_i32_null.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -172,7 +172,7 @@ pub fn build(root: &Path) {
     // # (insert) Param: All custom types
     {
         let v = PgVersion::new();
-        let bananna = v.table("zH2Q9TOLG", "bananna");
+        let bananna = v.table("bananna");
         let mut custom_fields = vec![];
         for (
             i,
@@ -193,7 +193,7 @@ pub fn build(root: &Path) {
         ]
             .into_iter()
             .enumerate() {
-            custom_fields.push(bananna.field(schema_id, &format!("x_{}", i), type_));
+            custom_fields.push(bananna.field(&format!("x_{}", i), type_));
         }
         generate(&root.join("tests/pg_gen_param_custom.rs"), vec![(0usize, v.build())], vec![
             // Queries
@@ -211,10 +211,10 @@ pub fn build(root: &Path) {
                                 .as_ref()
                                 .unwrap()
                                 .tables
-                                .get(&f.table.schema_id)
+                                .get(&f.table.id)
                                 .unwrap()
                                 .fields
-                                .get(&f.schema_id)
+                                .get(&f.id)
                                 .unwrap()
                                 .id
                                 .clone(),
@@ -240,9 +240,9 @@ pub fn build(root: &Path) {
     // # (insert) Param: Opt`<Custom>`
     {
         let v = PgVersion::new();
-        let bananna = v.table("z202QTVDB", "bananna");
+        let bananna = v.table("bananna");
         let hizat =
-            bananna.field("z437INV6D", "hizat", field_str().custom("integration_tests::MyString").opt().build());
+            bananna.field("hizat", field_str().custom("integration_tests::MyString").opt().build());
         generate(&root.join("tests/pg_gen_param_opt_custom.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -256,9 +256,9 @@ pub fn build(root: &Path) {
     // # Insert on conflict do nothing
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-        bananna.unique_index("zPRVXKY6D", "all", &[&hizat]);
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_str().build());
+        bananna.unique_index("all", &[&hizat]);
         generate(
             &root.join("tests/pg_gen_insert_on_conflict_do_nothing.rs"),
             vec![(0usize, v.build())],
@@ -277,10 +277,10 @@ pub fn build(root: &Path) {
     // # Insert on conflict update
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-        let two = bananna.field("z3AL5J609", "two", field_i32().build());
-        bananna.unique_index("zPRVXKY6D", "all", &[&hizat]);
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_str().build());
+        let two = bananna.field("two", field_i32().build());
+        bananna.unique_index("all", &[&hizat]);
         generate(
             &root.join("tests/pg_gen_insert_on_conflict_update.rs"),
             vec![(0usize, v.build())],
@@ -301,8 +301,8 @@ pub fn build(root: &Path) {
     // # Update
     {
         let v = PgVersion::new();
-        let bananna = v.table("zSPEZNHA8", "bananna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_update.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -320,8 +320,8 @@ pub fn build(root: &Path) {
     // # Update, where
     {
         let v = PgVersion::new();
-        let bananna = v.table("zSPEZNHA8", "ban");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("ban");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_update_where.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -346,8 +346,8 @@ pub fn build(root: &Path) {
     // # Update, returning
     {
         let v = PgVersion::new();
-        let bananna = v.table("zSPEZNHA8", "b");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("b");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_update_returning.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -363,8 +363,8 @@ pub fn build(root: &Path) {
     // # Delete
     {
         let v = PgVersion::new();
-        let bananna = v.table("zLBDEHGRB", "b");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("b");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_delete.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -379,8 +379,8 @@ pub fn build(root: &Path) {
     // # Delete, where
     {
         let v = PgVersion::new();
-        let bananna = v.table("zLBDEHGRB", "ba");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("ba");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_delete_where.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -402,8 +402,8 @@ pub fn build(root: &Path) {
     // # Delete, returning
     {
         let v = PgVersion::new();
-        let bananna = v.table("zLBDEHGRB", "b");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("b");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_delete_returning.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -417,12 +417,12 @@ pub fn build(root: &Path) {
     // # Select + join
     {
         let v = PgVersion::new();
-        let bananna = v.table("zT6D0LWI8", "b");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-        let three = bananna.field("zVXQUXEXT", "three", field_i32().build());
-        let one = v.table("zQ8SFVHEV", "two");
-        let hizat1 = one.field("zDZA6FVSS", "hizat", field_str().build());
-        let two = one.field("z7KU525LW", "two", field_str().build());
+        let bananna = v.table("b");
+        let hizat = bananna.field("hizat", field_str().build());
+        let three = bananna.field("three", field_i32().build());
+        let one = v.table("two");
+        let hizat1 = one.field("hizat", field_str().build());
+        let two = one.field("two", field_str().build());
         v.post_migration(
             new_insert(
                 &bananna,
@@ -456,8 +456,8 @@ pub fn build(root: &Path) {
     // # Select limit
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_select_limit.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -474,8 +474,8 @@ pub fn build(root: &Path) {
     // # Select order
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_i32().build());
         generate(&root.join("tests/pg_gen_select_order.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -492,9 +492,9 @@ pub fn build(root: &Path) {
     // # Select group
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().build());
-        let hizat2 = bananna.field("z3CRAVV3M", "hizat2", field_i32().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_i32().build());
+        let hizat2 = bananna.field("hizat2", field_i32().build());
         generate(&root.join("tests/pg_gen_select_group_by.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
@@ -514,20 +514,18 @@ pub fn build(root: &Path) {
     // # Migrate - add field
     {
         let v = PgVersion::new();
-        let bananna = v.table("zTWA93SX0", "bannna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bannna");
+        let hizat = bananna.field("hizat", field_str().build());
         let zomzom =
-            bananna.field(
-                "zPREUVAOD",
-                "zomzom",
+            bananna.field("zomzom",
                 field_bool().migrate_fill(good_ormning::pg::query::expr::SerialExpr::LitBool(true)).build(),
             );
         generate(&root.join("tests/pg_gen_migrate_add_field.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("zTWA93SX0", "bannna");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+                let bananna = v.table("bannna");
+                let hizat = bananna.field("hizat", field_str().build());
                 v.post_migration(
                     new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("nizoot".into()))]).build_migration(&v),
                 );
@@ -544,14 +542,14 @@ pub fn build(root: &Path) {
     // # Migrate - rename field
     {
         let v = PgVersion::new();
-        let bananna = v.table("zTWA93SX0", "bannna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bannna");
+        let hizat = bananna.field("hizat", field_str().build()).renamed_from("hozot");
         generate(&root.join("tests/pg_gen_migrate_rename_field.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("zTWA93SX0", "bannna");
-                let _hozot = bananna.field("z437INV6D", "hozot", field_str().build());
+                let bananna = v.table("bannna");
+                let _hozot = bananna.field("hozot", field_str().build());
                 let x = v.build();
                 x
             }),
@@ -565,15 +563,15 @@ pub fn build(root: &Path) {
     // # Migrate - remove field
     {
         let v = PgVersion::new();
-        let bananna = v.table("z1MD8L1CZ", "bnanaa");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bnanaa");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_migrate_remove_field.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("z1MD8L1CZ", "bnanaa");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-                bananna.field("zPREUVAOD", "zomzom", field_bool().opt().build());
+                let bananna = v.table("bnanaa");
+                let hizat = bananna.field("hizat", field_str().build());
+                bananna.field("zomzom", field_bool().opt().build());
                 let x = v.build();
                 x
             }),
@@ -590,16 +588,16 @@ pub fn build(root: &Path) {
     // # Migrate - add table
     {
         let v = PgVersion::new();
-        let bananna = v.table("z4RGW742J", "bnanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-        let two = v.table("zHXF3YVGQ", "two");
-        let field_two = two.field("z156A4Q8W", "two", field_i32().build());
+        let bananna = v.table("bnanana");
+        let hizat = bananna.field("hizat", field_str().build());
+        let two = v.table("two");
+        let field_two = two.field("two", field_i32().build());
         generate(&root.join("tests/pg_gen_migrate_add_table.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("z4RGW742J", "bnanana");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+                let bananna = v.table("bnanana");
+                let hizat = bananna.field("hizat", field_str().build());
                 let x = v.build();
                 x
             }),
@@ -616,14 +614,14 @@ pub fn build(root: &Path) {
     // # Migrate - rename table
     {
         let v = PgVersion::new();
-        let bananna = v.table("z4RGW742J", "bana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bana").renamed_from("bnanana");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_migrate_rename_table.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("z4RGW742J", "bnanana");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+                let bananna = v.table("bnanana");
+                let hizat = bananna.field("hizat", field_str().build());
                 let x = v.build();
                 x
             }),
@@ -640,16 +638,16 @@ pub fn build(root: &Path) {
     // # Migrate - remove table
     {
         let v = PgVersion::new();
-        let bananna = v.table("zX7CEK8JC", "bananana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let bananna = v.table("bananana");
+        let hizat = bananna.field("hizat", field_str().build());
         generate(&root.join("tests/pg_gen_migrate_remove_table.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("zX7CEK8JC", "bananana");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
-                let two = v.table("z45HT1YW2", "two");
-                two.field("z156A4Q8W", "two", field_i32().build());
+                let bananna = v.table("bananana");
+                let hizat = bananna.field("hizat", field_str().build());
+                let two = v.table("two");
+                two.field("two", field_i32().build());
                 let x = v.build();
                 x
             }),
@@ -660,20 +658,20 @@ pub fn build(root: &Path) {
     // # Select CTE
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().build());
-        let hizat2 = bananna.field("z3CRAVV3M", "hizat2", field_i32().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_i32().build());
+        let hizat2 = bananna.field("hizat2", field_i32().build());
         let mut hibbo_builder =
             CteBuilder::new("hibbo", Box::new(new_select_body(&bananna).return_field(&hizat2).build()));
         let (zathi_schema, _zathi_sql, _zathi_type) = hibbo_builder.field("zathi", get_type(&hizat2));
         let hibbo_cte = hibbo_builder.build();
         let hibbo_table = TableHandle {
             version: v.clone(),
-            schema_id: hibbo_cte.table_schema_id.clone(),
+            id: hibbo_cte.table_id.clone(),
         };
         let zathi_field = FieldHandle {
             table: hibbo_table.clone(),
-            schema_id: zathi_schema,
+            id: zathi_schema,
         };
         generate(&root.join("tests/pg_gen_select_cte.rs"), vec![(0usize, v.build())], vec![
             // Queries
@@ -691,9 +689,9 @@ pub fn build(root: &Path) {
     // # Window function
     {
         let v = PgVersion::new();
-        let bananna = v.table("zEOIWAACJ", "bannanana");
-        let hizat = bananna.field("z437INV6D", "hizat", field_i32().build());
-        let hizat2 = bananna.field("z3CRAVV3M", "hizat2", field_i32().build());
+        let bananna = v.table("bannanana");
+        let hizat = bananna.field("hizat", field_i32().build());
+        let hizat2 = bananna.field("hizat2", field_i32().build());
         generate(&root.join("tests/pg_gen_select_window.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(
@@ -711,13 +709,13 @@ pub fn build(root: &Path) {
     // # Migrate - pre migration
     {
         let v0 = PgVersion::new();
-        let _v0_bananna = v0.table("zMI5V9F2V", "v0_banana");
-        _v0_bananna.field("z437INV6D", "hizat", field_str().build());
-        let v0_two = v0.table("z450WBJCO", "v0_two");
-        let v0_field_two = v0_two.field("z156A4Q8W", "two", field_i32().build());
+        let _v0_bananna = v0.table("v0_banana");
+        _v0_bananna.field("hizat", field_str().build());
+        let v0_two = v0.table("v0_two");
+        let v0_field_two = v0_two.field("two", field_i32().build());
         let v1 = PgVersion::new();
-        let v1_bananna = v1.table("zMI5V9F2V", "v0_banana");
-        v1_bananna.field("z437INV6D", "hizat", field_str().build());
+        let v1_bananna = v1.table("v0_banana");
+        v1_bananna.field("hizat", field_str().build());
         v1.pre_migration(new_insert(&v0_two, vec![(v0_field_two.clone(), Expr::LitI32(7))]).build_migration(&v0));
         generate(&root.join("tests/pg_gen_migrate_pre_migration.rs"), vec![
             // Versions (previous)
@@ -729,14 +727,14 @@ pub fn build(root: &Path) {
     // # Migrate - make field optional
     {
         let v = PgVersion::new();
-        let bananna = v.table("zTWA93SX0", "bannna");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().opt().build());
+        let bananna = v.table("bannna");
+        let hizat = bananna.field("hizat", field_str().opt().build());
         generate(&root.join("tests/pg_gen_migrate_make_field_optional.rs"), vec![
             // Versions (previous)
             (0usize, {
                 let v = PgVersion::new();
-                let bananna = v.table("zTWA93SX0", "bannna");
-                let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+                let bananna = v.table("bannna");
+                let hizat = bananna.field("hizat", field_str().build());
                 v.build()
             }),
             (1usize, v.build())

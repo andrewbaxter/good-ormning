@@ -26,6 +26,7 @@ pub trait NodeData: Clone {
     fn delete_coalesce(&mut self, other: Self) -> Option<Self>;
     fn delete(&self, ctx: &mut Self::O);
     fn update(&self, ctx: &mut Self::O, old: &Self);
+    fn renamed_from(&self) -> Option<Self::I>;
 }
 
 pub struct Node<T: NodeData> {
@@ -100,8 +101,9 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
             let k = create_graph.data.get(graph_key).unwrap().0.clone();
             let node = version.get(&k).unwrap();
             let create_graph_key = *create_graph_lookup.get(&k).unwrap();
-            if let Some(old_node) = prev_version.as_ref().and_then(|v| v.get(&k)) {
-                let delete_graph_key = *delete_graph_lookup.get(&k).unwrap();
+            let old_k = node.body.renamed_from().unwrap_or_else(|| k.clone());
+            if let Some(old_node) = prev_version.as_ref().and_then(|v| v.get(&old_k)) {
+                let delete_graph_key = *delete_graph_lookup.get(&old_k).unwrap();
                 match node.body.compare(&old_node.body, &created) {
                     Comparison::DoNothing => {
                         *delete_graph.data.get_mut(delete_graph_key).unwrap() = None;

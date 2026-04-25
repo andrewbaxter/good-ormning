@@ -7,10 +7,9 @@ use crate::{
         schema::{
             field::{
                 Field,
-                SchemaFieldId,
                 FieldRef,
             },
-            table::SchemaTableId,
+            table::TableRef,
         },
         types::{
             to_sql_type,
@@ -24,7 +23,6 @@ use crate::{
             expr::{
                 ExprType,
                 ExprValName,
-                check_general_same,
                 check_same,
                 Expr,
             },
@@ -43,21 +41,23 @@ use super::{
 
 #[derive(Clone)]
 pub(crate) struct NodeField_ {
-    pub table_schema_id: SchemaTableId,
-    // SQL name
     pub table_id: String,
-    pub schema_id: SchemaFieldId,
+    pub table_renamed_from: Option<String>,
     pub def: Field,
 }
 
 impl NodeField_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_schema_id.clone())) {
+        if created.contains(&GraphId::Table(self.table_id.clone())) {
             return Comparison::Recreate;
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
-        if self.def.id != old.def.id || t.opt != old_t.opt || t.type_.type_ != old_t.type_.type_ {
+        if self.def.id != old.def.id
+            || self.table_id != old.table_id
+            || t.opt != old_t.opt
+            || t.type_.type_ != old_t.type_.type_
+        {
             Comparison::Update
         } else {
             Comparison::DoNothing
@@ -65,7 +65,7 @@ impl NodeField_ {
     }
 
     fn display_path(&self) -> rpds::Vector<String> {
-        rpds::vector![format!("{}.{} ({}.{})", self.table_id, self.def.id, self.table_schema_id, self.schema_id)]
+        rpds::vector![format!("{}.{}", self.table_id, self.def.id)]
     }
 }
 
@@ -141,14 +141,14 @@ impl NodeDataDispatch for NodeField_ {
                 // Create a dummy table info for validation
                 let mut fields = HashMap::new();
                 let field_ref = FieldRef {
-                    table_id: self.table_schema_id.clone(),
-                    field_id: self.schema_id.clone(),
+                    table_id: self.table_id.clone(),
+                    field_id: self.def.id.clone(),
                 };
                 fields.insert(field_ref, PgFieldInfo {
                     sql_name: self.def.id.clone(),
                     type_: self.def.type_.type_.clone(),
                 });
-                qctx_tables.insert(crate::pg::schema::table::TableRef(self.table_schema_id.clone()), PgTableInfo {
+                qctx_tables.insert(TableRef(self.table_id.clone()), PgTableInfo {
                     sql_name: self.table_id.clone(),
                     fields: fields,
                 });
