@@ -172,24 +172,35 @@ pub fn build(root: &Path) {
     // # (insert) Param: All custom types
     {
         let v = PgVersion::new();
+        let my_bool = v.custom_type("MyBool").rust_type("integration_tests::MyBool").base_type(type_bool().build());
+        let my_i32 = v.custom_type("MyI32").rust_type("integration_tests::MyI32").base_type(type_i32().build());
+        let my_i64 = v.custom_type("MyI64").rust_type("integration_tests::MyI64").base_type(type_i64().build());
+        let my_u32 = v.custom_type("MyU32").rust_type("integration_tests::MyU32").base_type(type_u32().build());
+        let my_f32 = v.custom_type("MyF32").rust_type("integration_tests::MyF32").base_type(type_f32().build());
+        let my_f64 = v.custom_type("MyF64").rust_type("integration_tests::MyF64").base_type(type_f64().build());
+        let my_bytes = v.custom_type("MyBytes").rust_type("integration_tests::MyBytes").base_type(type_bytes().build());
+        let my_string = v.custom_type("MyString").rust_type("integration_tests::MyString").base_type(type_str().build());
+        let my_utctime_chrono = v.custom_type("MyUtctimeChrono").rust_type("integration_tests::MyUtctimeChrono").base_type(type_utctime_s_chrono().build());
+        let my_utctime_jiff = v.custom_type("MyUtctimeJiff").rust_type("integration_tests::MyUtctimeJiff").base_type(type_utctime_s_jiff().build());
+
         let bananna = v.table("bananna");
         let mut custom_fields = vec![];
         for (
             i,
-            (schema_id, type_),
+            type_,
         ) in [
-            ("zPZS1I5WW", field_bool().custom("integration_tests::MyBool").build()),
-            ("zC06X4BAF", field_i32().custom("integration_tests::MyI32").build()),
-            ("z9JQDQ8ZB", field_i64().custom("integration_tests::MyI64").build()),
-            ("zU32S1I5W", field_u32().custom("integration_tests::MyU32").build()),
-            ("zMSGIBKUC", field_f32().custom("integration_tests::MyF32").build()),
-            ("zQ23DTVF3", field_f64().custom("integration_tests::MyF64").build()),
-            ("zV3TUIVTU", field_bytes().custom("integration_tests::MyBytes").build()),
-            ("z7AJMBYHP", field_str().custom("integration_tests::MyString").build()),
-            ("zCKQAR1KC", field_utctime_s_chrono().custom("integration_tests::MyUtctimeChrono").build()),
-            ("zNDD21YUS", field_utctime_s_chrono().custom("integration_tests::MyUtctimeChrono").build()),
-            ("zNDD21YUT", field_utctime_s_jiff().custom("integration_tests::MyUtctimeJiff").build()),
-            ("zNDD21YUU", field_utctime_s_jiff().custom("integration_tests::MyUtctimeJiff").build()),
+            my_bool.field_type(),
+            my_i32.field_type(),
+            my_i64.field_type(),
+            my_u32.field_type(),
+            my_f32.field_type(),
+            my_f64.field_type(),
+            my_bytes.field_type(),
+            my_string.field_type(),
+            my_utctime_chrono.field_type(),
+            my_utctime_chrono.field_type(),
+            my_utctime_jiff.field_type(),
+            my_utctime_jiff.field_type(),
         ]
             .into_iter()
             .enumerate() {
@@ -240,9 +251,10 @@ pub fn build(root: &Path) {
     // # (insert) Param: Opt`<Custom>`
     {
         let v = PgVersion::new();
+        let my_string = v.custom_type("MyString").rust_type("integration_tests::MyString").base_type(type_str().build());
         let bananna = v.table("bananna");
         let hizat =
-            bananna.field("hizat", field_str().custom("integration_tests::MyString").opt().build());
+            bananna.field("hizat", my_string.field_type().opt().build());
         generate(&root.join("tests/pg_gen_param_opt_custom.rs"), vec![(0usize, v.build())], vec![
             // Queries
             new_insert(&bananna, vec![(hizat.clone(), Expr::Param {

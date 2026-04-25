@@ -196,7 +196,7 @@ impl TypeBuilder {
 
     /// Use a custom Rust type for this type. This must be the full path to the type,
     /// like `crate::abcdef::MyType`.
-    pub fn custom(mut self, type_: impl ToString) -> TypeBuilder {
+    pub(crate) fn custom(mut self, type_: impl ToString) -> TypeBuilder {
         self.custom = Some(type_.to_string());
         self
     }

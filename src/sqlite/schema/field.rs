@@ -53,5 +53,5 @@ pub fn field_utctime_s_jiff() -> FieldTypeBuilder { FieldTypeBuilder::new(crate:
 pub fn field_utctime_ms_jiff() -> FieldTypeBuilder { FieldTypeBuilder::new(crate::sqlite::types::type_utctime_ms_jiff().build()) }
 impl FieldTypeBuilder {
     pub fn opt(mut self) -> Self { self.0.type_.opt = true; self }
-    pub fn custom(mut self, s: impl ToString) -> Self { self.0.type_.type_.custom = Some(s.to_string()); self }
+    pub(crate) fn custom(mut self, s: impl ToString) -> Self { self.0.type_.type_.custom = Some(s.to_string()); self }
 }

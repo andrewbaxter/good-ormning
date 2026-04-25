@@ -180,7 +180,7 @@ impl TypeBuilder {
         })
     }
 
-    pub fn custom(mut self, custom: impl ToString) -> Self {
+    pub(crate) fn custom(mut self, custom: impl ToString) -> Self {
         self.0.type_.custom = Some(custom.to_string());
         self
     }

@@ -81,6 +81,9 @@ use self::{
         index::{
             Index,
         },
+        custom_type::{
+            CustomType,
+        },
     },
     graph::{
         table::NodeTable_,
@@ -895,6 +898,7 @@ impl DeleteBuilder {
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Version {
     pub tables: BTreeMap<String, Table>,
+    pub custom_types: BTreeMap<String, CustomType>,
     pub pre_migration: Vec<String>,
     pub post_migration: Vec<String>,
 }
@@ -948,6 +952,84 @@ impl VersionHandle {
         self.with(|v| {
             v.post_migration.push(statement.into());
         });
+    }
+
+    pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
+        CustomTypeBuilder {
+            version: self.clone(),
+            id: id.into(),
+        }
+    }
+}
+
+pub struct CustomTypeBuilder {
+    version: VersionHandle,
+    id: String,
+}
+
+impl CustomTypeBuilder {
+    pub fn rust_type(self, rust_type: &str) -> CustomTypeRustBuilder {
+        CustomTypeRustBuilder {
+            version: self.version,
+            id: self.id,
+            rust_type: rust_type.into(),
+        }
+    }
+}
+
+pub struct CustomTypeRustBuilder {
+    version: VersionHandle,
+    id: String,
+    rust_type: String,
+}
+
+impl CustomTypeRustBuilder {
+    pub fn base_type(self, base_type: Type) -> CustomTypeHandle {
+        self.version.with(|v| {
+            v.custom_types.insert(self.id.clone(), CustomType {
+                id: self.id.clone(),
+                renamed_from: None,
+                rust_type: self.rust_type.clone(),
+                base_type: base_type,
+            });
+        });
+        CustomTypeHandle {
+            version: self.version,
+            id: self.id,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct CustomTypeHandle {
+    pub version: VersionHandle,
+    pub id: String,
+}
+
+impl CustomTypeHandle {
+    pub fn field_type(&self) -> FieldType {
+        let (rust_type, base_type) = self.version.with(|v| {
+            let ct = v.custom_types.get(&self.id).expect("Custom type missing");
+            (ct.rust_type.clone(), ct.base_type.clone())
+        });
+        FieldType {
+            type_: Type {
+                type_: crate::sqlite::types::SimpleType {
+                    type_: base_type.type_.type_,
+                    custom: Some(rust_type),
+                },
+                opt: base_type.opt,
+                arr: base_type.arr,
+            },
+            migration_default: None,
+        }
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.version.with(|v| {
+            v.custom_types.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
+        });
+        self
     }
 }
 
