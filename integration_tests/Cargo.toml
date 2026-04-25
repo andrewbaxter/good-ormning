@@ -8,8 +8,6 @@ publish = false
 chrono = ">=0"
 jiff = ">=0"
 rusqlite = ">=0"
-testcontainers = { version = ">=0" }
-testcontainers-modules = { version = ">=0", features = ["postgres"] }
 tokio = { version = ">=0", features = ["macros", "rt"] }
 "good-ormning-runtime" = { path = "../runtime", features = [
     "chrono",
@@ -23,6 +21,8 @@ tokio-postgres = { version = ">=0", features = [
 ] }
 loga = ">=0"
 flowcontrol = ">=0"
+tempfile = "3.27.0"
+pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide" }
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }

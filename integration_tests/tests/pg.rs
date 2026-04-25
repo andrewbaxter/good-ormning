@@ -4,14 +4,7 @@ use {
         Utc,
     },
     integration_tests::MyString,
-    std::time::Duration,
-    testcontainers::{
-        runners::AsyncRunner,
-        ContainerAsync,
-        ImageExt,
-    },
-    testcontainers_modules::postgres::Postgres,
-    tokio_postgres::Config,
+    pglite_oxide::PgliteServer,
 };
 
 pub mod pg_gen_base_insert;
@@ -44,21 +37,18 @@ pub mod pg_gen_select_cte;
 pub mod pg_gen_select_window;
 pub mod pg_gen_migrate_pre_migration;
 
-async fn db<'a>() -> Result<(tokio_postgres::Client, ContainerAsync<Postgres>), loga::Error> {
-    let db_container = Postgres::default().with_startup_timeout(Duration::from_secs(60 * 5)).start().await?;
-    let mut db_config = Config::new();
-    db_config.host("127.0.0.1");
-    db_config.dbname("postgres");
-    db_config.user("postgres");
-    db_config.password("postgres");
-    db_config.port(db_container.get_host_port_ipv4(5432).await?);
-    let (db, db_conn) = db_config.connect(tokio_postgres::NoTls).await?;
+async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error> {
+    let server = PgliteServer::temporary_tcp().map_err(|e| loga::err(e))?;
+    let (client, db_conn) = tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls)
+        .await
+        .map_err(|e| loga::err(e))?;
     tokio::spawn(async move {
         if let Err(e) = db_conn.await {
             eprintln!("connection error: {}", e);
         }
     });
-    Ok((db, db_container))
+
+    Ok((client, server))
 }
 
 #[tokio::test]
