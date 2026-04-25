@@ -50,7 +50,10 @@ use {
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
 
-use super::select::Select;
+use super::select::{
+    Select,
+    Order,
+};
 
 #[derive(Clone)]
 pub struct ExprType(pub Vec<(Binding, Type)>);
@@ -92,18 +95,24 @@ pub enum SerialExpr {
     LitNull(SimpleType),
     LitBool(bool),
     LitAuto(i64),
+    LitI16(i16),
     LitI32(i32),
     LitI64(i64),
+    LitU32(u32),
     LitF32(f32),
     LitF64(f64),
     LitString(String),
     LitBytes(Vec<u8>),
     #[cfg(feature = "chrono")]
-    LitUtcTimeChrono(DateTime<Utc>),
+    LitUtcTimeSChrono(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeMsChrono(DateTime<Utc>),
     #[cfg(feature = "chrono")]
     LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
     #[cfg(feature = "jiff")]
-    LitUtcTimeJiff(Timestamp),
+    LitUtcTimeSJiff(Timestamp),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeMsJiff(Timestamp),
     BinOp {
         left: Box<SerialExpr>,
         op: BinOp,
@@ -127,18 +136,24 @@ impl From<SerialExpr> for Expr {
             SerialExpr::LitNull(t) => Expr::LitNull(t),
             SerialExpr::LitBool(b) => Expr::LitBool(b),
             SerialExpr::LitAuto(v) => Expr::LitAuto(v),
+            SerialExpr::LitI16(v) => Expr::LitI16(v),
             SerialExpr::LitI32(v) => Expr::LitI32(v),
             SerialExpr::LitI64(v) => Expr::LitI64(v),
+            SerialExpr::LitU32(v) => Expr::LitU32(v),
             SerialExpr::LitF32(v) => Expr::LitF32(v),
             SerialExpr::LitF64(v) => Expr::LitF64(v),
             SerialExpr::LitString(v) => Expr::LitString(v),
             SerialExpr::LitBytes(v) => Expr::LitBytes(v),
             #[cfg(feature = "chrono")]
-            SerialExpr::LitUtcTimeChrono(v) => Expr::LitUtcTimeChrono(v),
+            SerialExpr::LitUtcTimeSChrono(v) => Expr::LitUtcTimeSChrono(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitUtcTimeMsChrono(v) => Expr::LitUtcTimeMsChrono(v),
             #[cfg(feature = "chrono")]
             SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
             #[cfg(feature = "jiff")]
-            SerialExpr::LitUtcTimeJiff(v) => Expr::LitUtcTimeJiff(v),
+            SerialExpr::LitUtcTimeSJiff(v) => Expr::LitUtcTimeSJiff(v),
+            #[cfg(feature = "jiff")]
+            SerialExpr::LitUtcTimeMsJiff(v) => Expr::LitUtcTimeMsJiff(v),
             SerialExpr::BinOp { left, op, right } => Expr::BinOp {
                 left: Box::new(Expr::from(*left)),
                 op: op,
@@ -165,18 +180,24 @@ pub enum Expr {
     LitNull(SimpleType),
     LitBool(bool),
     LitAuto(i64),
+    LitI16(i16),
     LitI32(i32),
     LitI64(i64),
+    LitU32(u32),
     LitF32(f32),
     LitF64(f64),
     LitString(String),
     LitBytes(Vec<u8>),
     #[cfg(feature = "chrono")]
-    LitUtcTimeChrono(DateTime<Utc>),
+    LitUtcTimeSChrono(DateTime<Utc>),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeMsChrono(DateTime<Utc>),
     #[cfg(feature = "chrono")]
     LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
     #[cfg(feature = "jiff")]
-    LitUtcTimeJiff(Timestamp),
+    LitUtcTimeSJiff(Timestamp),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeMsJiff(Timestamp),
     /// A query parameter. This will become a parameter to the generated Rust function
     /// with the specified `name` and `type_`.
     Param {
@@ -205,6 +226,11 @@ pub enum Expr {
         func: String,
         args: Vec<Expr>,
         compute_type: ComputeType,
+    },
+    Window {
+        expr: Box<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<(Expr, Order)>,
     },
     /// A sub SELECT query.
     Select(Box<Select>),
@@ -295,6 +321,7 @@ macro_rules!empty_type {
                     custom: None,
                 },
                 opt: false,
+                arr: false,
             })]),
             $out
         )
@@ -344,6 +371,7 @@ impl Expr {
                     ExprType(vec![(Binding::empty(), Type {
                         type_: t.clone(),
                         opt: true,
+                        arr: false,
                     })]),
                     out
                 );
@@ -358,6 +386,11 @@ impl Expr {
                 out.s(&x.to_string());
                 return empty_type!(out, SimpleSimpleType::Auto);
             },
+            Expr::LitI16(x) => {
+                let mut out = Tokens::new();
+                out.s(&x.to_string());
+                return empty_type!(out, SimpleSimpleType::I16);
+            },
             Expr::LitI32(x) => {
                 let mut out = Tokens::new();
                 out.s(&x.to_string());
@@ -367,6 +400,11 @@ impl Expr {
                 let mut out = Tokens::new();
                 out.s(&x.to_string());
                 return empty_type!(out, SimpleSimpleType::I64);
+            },
+            Expr::LitU32(x) => {
+                let mut out = Tokens::new();
+                out.s(&x.to_string());
+                return empty_type!(out, SimpleSimpleType::U32);
             },
             Expr::LitF32(x) => {
                 let mut out = Tokens::new();
@@ -390,11 +428,17 @@ impl Expr {
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
             #[cfg(feature = "chrono")]
-            Expr::LitUtcTimeChrono(d) => {
+            Expr::LitUtcTimeSChrono(d) => {
+                let mut out = Tokens::new();
+                out.s(&format!("{}", d.timestamp()));
+                return empty_type!(out, SimpleSimpleType::UtcTimeSChrono);
+            },
+            #[cfg(feature = "chrono")]
+            Expr::LitUtcTimeMsChrono(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_rfc3339();
                 out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
+                return empty_type!(out, SimpleSimpleType::UtcTimeMsChrono);
             },
             #[cfg(feature = "chrono")]
             Expr::LitFixedOffsetTimeChrono(d) => {
@@ -404,11 +448,17 @@ impl Expr {
                 return empty_type!(out, SimpleSimpleType::FixedOffsetTimeChrono);
             },
             #[cfg(feature = "jiff")]
-            Expr::LitUtcTimeJiff(d) => {
+            Expr::LitUtcTimeSJiff(d) => {
+                let mut out = Tokens::new();
+                out.s(&format!("{}", d.as_second()));
+                return empty_type!(out, SimpleSimpleType::UtcTimeSJiff);
+            },
+            #[cfg(feature = "jiff")]
+            Expr::LitUtcTimeMsJiff(d) => {
                 let mut out = Tokens::new();
                 let d = d.to_string();
                 out.s(&format!("'{}'", d));
-                return empty_type!(out, SimpleSimpleType::UtcTimeChrono);
+                return empty_type!(out, SimpleSimpleType::UtcTimeMsJiff);
             },
             Expr::Param { name: x, type_: t } => {
                 let path = path.push_back(format!("Param ({})", x));
@@ -451,12 +501,59 @@ impl Expr {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
                         }
+                        rust_forward = match &t.type_.type_ {
+                            SimpleSimpleType::UtcTimeSChrono => {
+                                if t.opt {
+                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(x.timestamp())))
+                                } else {
+                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(#rust_forward.timestamp()))
+                                }
+                            },
+                            SimpleSimpleType::UtcTimeMsChrono => {
+                                if t.opt {
+                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(x.to_rfc3339())))
+                                } else {
+                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(#rust_forward.to_rfc3339()))
+                                }
+                            },
+                            SimpleSimpleType::UtcTimeSJiff => {
+                                if t.opt {
+                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(x.as_second())))
+                                } else {
+                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(#rust_forward.as_second()))
+                                }
+                            },
+                            SimpleSimpleType::UtcTimeMsJiff => {
+                                if t.opt {
+                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(x.to_string())))
+                                } else {
+                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(#rust_forward.to_string()))
+                                }
+                            },
+                            _ => rust_forward,
+                        };
+                        if t.arr {
+                            rust_type = quote!(Vec < #rust_type >);
+                            rust_forward =
+                                quote!(
+                                    std:: rc:: Rc:: new(
+                                        #ident.into_iter(
+                                        ).map(
+                                            | #ident | rusqlite:: types:: Value:: from(#rust_forward)
+                                        ).collect::< Vec < _ >>()
+                                    )
+                                );
+                        }
                         ctx.rust_args.push(quote!(#ident: #rust_type));
                         ctx.query_args.push(quote!(#rust_forward));
                         i
                     },
                 };
-                out.s(&format!("?{}", i + 1));
+                if t.arr {
+                    out.s(&format!("rarray(?{})", i + 1));
+                } else {
+                    out.s(&format!("?{}", i + 1));
+                }
                 return (ExprType(vec![(Binding::local(x.clone()), t.clone())]), out);
             },
             Expr::Field(x) => {
@@ -528,6 +625,37 @@ impl Expr {
                 out.s(")");
                 return (compute_type.0(ctx, path, &arg_types), out);
             },
+            Expr::Window { expr, partition_by, order_by } => {
+                let mut out = Tokens::new();
+                let (t, tokens) = expr.build(ctx, &path.push_back("Window expr".into()), scope);
+                out.s(&tokens.to_string()).s("over (");
+                if !partition_by.is_empty() {
+                    out.s("partition by");
+                    for (i, p) in partition_by.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens) = p.build(ctx, &path.push_back(format!("Partition by {}", i)), scope);
+                        out.s(&tokens.to_string());
+                    }
+                }
+                if !order_by.is_empty() {
+                    out.s("order by");
+                    for (i, (e, o)) in order_by.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
+                        out.s(&tokens.to_string());
+                        match o {
+                            Order::Asc => { out.s("asc"); },
+                            Order::Desc => { out.s("desc"); },
+                        }
+                    }
+                }
+                out.s(")");
+                return (t, out);
+            },
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
@@ -537,11 +665,12 @@ impl Expr {
             },
             Expr::Cast(e, t) => {
                 let mut out = Tokens::new();
-                let (got_t, tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
+                let (got_t, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
                 check_general_same(ctx, path, &got_t, &ExprType(vec![(Binding::empty(), t.clone())]));
-                out.s("cast(").s(&tokens.to_string()).s("as").s(to_rust_types(&t.type_.type_).ret_type.to_string().as_str()).s(")");
+                out.s("cast (").s(&tokens.to_string()).s("as").s(crate::sqlite::types::to_sql_type(&t.type_.type_)).s(")");
                 return (ExprType(vec![(Binding::empty(), t.clone())]), out);
             },
+
         }
     }
 }
@@ -561,6 +690,7 @@ pub(crate) fn check_bool(
                 custom: None,
             },
             opt: false,
+            arr: false,
         })]),
     );
 }
@@ -603,7 +733,7 @@ pub(crate) fn check_general_same(
     }
 }
 
-pub(crate) fn check_same(
+pub fn check_same(
     errs: &mut Errs,
     path: &rpds::Vector<String>,
     left: &ExprType,
@@ -612,7 +742,7 @@ pub(crate) fn check_same(
     let left = left.assert_scalar(errs, &path.push_back("Left".into())) ?;
     let right = right.assert_scalar(errs, &path.push_back("Right".into())) ?;
     check_general_same_type(
-        &mut SqliteQueryCtx::new(errs.clone(), &HashMap::new()),
+        &mut SqliteQueryCtx::new(errs.clone(), HashMap::new()),
         path,
         &left,
         &right,
@@ -696,7 +826,7 @@ fn do_bin_op(
         if i > 0 {
             out.s(token);
         }
-        let (t, tokens) = res.build(ctx, &path.push_back(format!("Operand {}", i)), scope);
+        let (t, tokens): (ExprType, Tokens) = res.build(ctx, &path.push_back(format!("Operand {}", i)), scope);
         let got_t = match t.assert_scalar(&mut ctx.errs, &path.push_back(format!("Operand {}", i))) {
             Some(t) => t,
             None => {
@@ -767,6 +897,7 @@ fn do_bin_op(
                 custom: None,
             },
             opt: false,
+            arr: false,
         },
         _ => out_t.unwrap_or(Type {
             type_: SimpleType {
@@ -774,6 +905,7 @@ fn do_bin_op(
                 custom: None,
             },
             opt: false,
+            arr: false,
         }),
     };
     return (ExprType(vec![(Binding::empty(), res_t)]), out);

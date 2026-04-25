@@ -50,7 +50,10 @@ use {
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
 
-use super::select::Select;
+use super::select::{
+    Select,
+    Order,
+};
 
 #[derive(Clone)]
 pub struct ExprType(pub Vec<(ExprValName, Type)>);
@@ -88,8 +91,10 @@ pub enum SerialExpr {
     LitNull(SimpleType),
     LitBool(bool),
     LitAuto(i64),
+    LitI16(i16),
     LitI32(i32),
     LitI64(i64),
+    LitU32(u32),
     LitF32(f32),
     LitF64(f64),
     LitString(String),
@@ -123,8 +128,10 @@ impl From<SerialExpr> for Expr {
             SerialExpr::LitNull(t) => Expr::LitNull(t),
             SerialExpr::LitBool(b) => Expr::LitBool(b),
             SerialExpr::LitAuto(v) => Expr::LitAuto(v),
+            SerialExpr::LitI16(v) => Expr::LitI16(v),
             SerialExpr::LitI32(v) => Expr::LitI32(v),
             SerialExpr::LitI64(v) => Expr::LitI64(v),
+            SerialExpr::LitU32(v) => Expr::LitU32(v),
             SerialExpr::LitF32(v) => Expr::LitF32(v),
             SerialExpr::LitF64(v) => Expr::LitF64(v),
             SerialExpr::LitString(v) => Expr::LitString(v),
@@ -161,8 +168,10 @@ pub enum Expr {
     LitNull(SimpleType),
     LitBool(bool),
     LitAuto(i64),
+    LitI16(i16),
     LitI32(i32),
     LitI64(i64),
+    LitU32(u32),
     LitF32(f32),
     LitF64(f64),
     LitString(String),
@@ -201,6 +210,11 @@ pub enum Expr {
         func: String,
         args: Vec<Expr>,
         compute_type: ComputeType,
+    },
+    Window {
+        expr: Box<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<(Expr, Order)>,
     },
     /// A sub SELECT query.
     Select(Box<Select>),
@@ -272,6 +286,8 @@ pub enum BinOp {
     LessThanEqualTo,
     GreaterThan,
     GreaterThanEqualTo,
+    In,
+    NotIn,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -440,6 +456,7 @@ impl Expr {
                     ExprType(vec![(ExprValName::empty(), Type {
                         type_: t.clone(),
                         opt: true,
+                        arr: false,
                     })]),
                     out
                 );
@@ -454,6 +471,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -468,6 +486,22 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
+                    })]),
+                    out
+                );
+            },
+            Expr::LitI16(v) => {
+                let mut out = Tokens::new();
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::I16,
+                            custom: None,
+                        },
+                        opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -482,6 +516,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -496,6 +531,22 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
+                    })]),
+                    out
+                );
+            },
+            Expr::LitU32(v) => {
+                let mut out = Tokens::new();
+                out.s(&v.to_string());
+                return (
+                    ExprType(vec![(ExprValName::empty(), Type {
+                        type_: SimpleType {
+                            type_: SimpleSimpleType::U32,
+                            custom: None,
+                        },
+                        opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -510,6 +561,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -524,6 +576,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -538,6 +591,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -552,6 +606,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -563,10 +618,11 @@ impl Expr {
                 return (
                     ExprType(vec![(ExprValName::empty(), Type {
                         type_: SimpleType {
-                            type_: SimpleSimpleType::UtcTimeChrono,
+                            type_: SimpleSimpleType::UtcTimeSChrono,
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -582,6 +638,7 @@ impl Expr {
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -593,10 +650,11 @@ impl Expr {
                 return (
                     ExprType(vec![(ExprValName::empty(), Type {
                         type_: SimpleType {
-                            type_: SimpleSimpleType::UtcTimeJiff,
+                            type_: SimpleSimpleType::UtcTimeSJiff,
                             custom: None,
                         },
                         opt: false,
+                        arr: false,
                     })]),
                     out
                 );
@@ -641,6 +699,9 @@ impl Expr {
                         if type_.opt {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
+                        }
+                        if type_.arr {
+                            rust_type = quote!(Vec < #rust_type >);
                         }
                         ctx.rust_args.push(quote!(#ident: #rust_type));
                         ctx.query_args.push(quote!(#rust_forward));
@@ -694,6 +755,8 @@ impl Expr {
                     BinOp::LessThanEqualTo => "<=",
                     BinOp::GreaterThan => ">",
                     BinOp::GreaterThanEqualTo => ">=",
+                    BinOp::In => "in",
+                    BinOp::NotIn => "not in",
                 };
                 out.s(&l_res.1.to_string()).s(token).s(&r_res.1.to_string());
                 let mut res_t = t.unwrap_or(Type {
@@ -702,6 +765,7 @@ impl Expr {
                         custom: None,
                     },
                     opt: false,
+                    arr: false,
                 });
                 match op {
                     BinOp::Equals |
@@ -711,13 +775,16 @@ impl Expr {
                     BinOp::LessThan |
                     BinOp::LessThanEqualTo |
                     BinOp::GreaterThan |
-                    BinOp::GreaterThanEqualTo => {
+                    BinOp::GreaterThanEqualTo |
+                    BinOp::In |
+                    BinOp::NotIn => {
                         res_t = Type {
                             type_: SimpleType {
                                 type_: SimpleSimpleType::Bool,
                                 custom: None,
                             },
                             opt: false,
+                            arr: false,
                         };
                     },
                     _ => { },
@@ -768,6 +835,37 @@ impl Expr {
                 out.s(")");
                 return (compute_type.0(ctx, path, &arg_types), out);
             },
+            Expr::Window { expr, partition_by, order_by } => {
+                let mut out = Tokens::new();
+                let (t, tokens) = expr.build(ctx, &path.push_back("Window expr".into()), scope);
+                out.s(&tokens.to_string()).s("over (");
+                if !partition_by.is_empty() {
+                    out.s("partition by");
+                    for (i, p) in partition_by.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens) = p.build(ctx, &path.push_back(format!("Partition by {}", i)), scope);
+                        out.s(&tokens.to_string());
+                    }
+                }
+                if !order_by.is_empty() {
+                    out.s("order by");
+                    for (i, (e, o)) in order_by.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
+                        out.s(&tokens.to_string());
+                        match o {
+                            Order::Asc => { out.s("asc"); },
+                            Order::Desc => { out.s("desc"); },
+                        }
+                    }
+                }
+                out.s(")");
+                return (t, out);
+            },
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
@@ -779,7 +877,7 @@ impl Expr {
                 let mut out = Tokens::new();
                 let (got_t, tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
                 check_general_same(ctx, path, &got_t, &ExprType(vec![(ExprValName::empty(), t.clone())]));
-                out.s("(").s(&tokens.to_string()).s("::").s(&to_rust_types(&t.type_.type_).ret_type.to_string()).s(")");
+                out.s("(").s(&tokens.to_string()).s("::").s(crate::pg::types::to_sql_type(&t.type_.type_)).s(")");
                 return (ExprType(vec![(ExprValName::empty(), t.clone())]), out);
             },
         }

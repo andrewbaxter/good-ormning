@@ -23,6 +23,8 @@ rusqlite = { version = "0.37", optional = true, features = [
     "bundled",
 ] }
 tokio-postgres = { version = "0.7", optional = true }
+async-trait = "0.1"
+loga = "0.4"
 
 [package.metadata.docs.rs]
 all-features = true

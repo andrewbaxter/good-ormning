@@ -15,7 +15,7 @@ use {
             SqliteQueryCtx,
             SqliteTableInfo,
             SqliteFieldInfo,
-             
+            QueryBody,
         },
     },
     crate::{
@@ -59,7 +59,7 @@ impl NamedSelectSource {
         let mut new_fields: Vec<(Binding, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res =
-                    s.build(ctx, &HashMap::new(), &path.push_back(format!("From subselect")), QueryResCount::Many);
+                    s.build_internal(ctx, &HashMap::new(), &path.push_back(format!("From subselect")), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
@@ -112,8 +112,19 @@ pub struct SelectBody {
     pub limit: Option<Expr>,
 }
 
+impl QueryBody for SelectBody {
+    fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        res_count: QueryResCount,
+    ) -> (ExprType, Tokens) {
+        return self.build_internal(ctx, &HashMap::new(), path, res_count);
+    }
+}
+
 impl SelectBody {
-    pub fn build(
+    pub fn build_internal(
         &self,
         ctx: &mut SqliteQueryCtx,
         inject_scope: &HashMap<Binding, Type>,
@@ -143,6 +154,7 @@ impl SelectBody {
                         if !v.opt {
                             v = Type {
                                 opt: true,
+                                arr: false,
                                 type_: v.type_,
                             };
                         }
@@ -155,7 +167,9 @@ impl SelectBody {
                     }
                 },
             }
-            out.s("on").s(&je.on.build(ctx, &path, &scope).1.to_string());
+            out.s("on");
+            let (_, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
+            out.s(&on_tokens.to_string());
             joins.push(out.to_string());
         }
 
@@ -177,7 +191,7 @@ impl SelectBody {
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());
-            let (where_t, where_tokens) = where_.build(ctx, &path, &scope);
+            let (where_t, where_tokens): (ExprType, Tokens) = where_.build(ctx, &path, &scope);
             check_bool(ctx, &path, &where_t);
             out.s(&where_tokens.to_string());
         }
@@ -188,7 +202,7 @@ impl SelectBody {
                 if i > 0 {
                     out.s(",");
                 }
-                let (_, g_tokens) = g.build(ctx, &path, &scope);
+                let (_, g_tokens): (ExprType, Tokens) = g.build(ctx, &path, &scope);
                 out.s(&g_tokens.to_string());
             }
         }
@@ -199,18 +213,18 @@ impl SelectBody {
                 if i > 0 {
                     out.s(",");
                 }
-                let (_, o_tokens) = o.0.build(ctx, &path, &scope);
+                let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
                 out.s(&o_tokens.to_string());
-                out.s(match o.1 {
-                    Order::Asc => "asc",
-                    Order::Desc => "desc",
-                });
+                match o.1 {
+                    Order::Asc => { out.s("asc"); },
+                    Order::Desc => { out.s("desc"); },
+                }
             }
         }
         if let Some(l) = &self.limit {
             out.s("limit");
             let path = path.push_back("Limit".into());
-            let (limit_t, limit_tokens) = l.build(ctx, &path, &scope);
+            let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
             check_general_same(ctx, &path, &limit_t, &ExprType(vec![(Binding::empty(), type_i64().build())]));
             out.s(&limit_tokens.to_string());
         }
@@ -255,21 +269,21 @@ pub fn build_select_junction(
                 out.s("except");
             },
         }
-        let j_body = j.body.build(ctx, &HashMap::new(), &path, QueryResCount::Many);
-        if j_body.0.0.len() != base_type.0.len() {
+        let j_body: (ExprType, Tokens) = j.body.build_internal(ctx, &HashMap::new(), &path, QueryResCount::Many);
+        if j_body.0 .0.len() != base_type.0.len() {
             ctx
                 .errs
                 .err(
                     &path,
                     format!(
                         "Select returns {} columns but the base select has {} columns and these must match exactly",
-                        j_body.0.0.len(),
+                        j_body.0 .0.len(),
                         base_type.0.len()
                     ),
                 );
             continue;
         }
-        for (i, ((_, got), (_, want))) in Iterator::zip(j_body.0.0.iter(), base_type.0.iter()).enumerate() {
+        for (i, ((_, got), (_, want))) in Iterator::zip(j_body.0 .0.iter(), base_type.0.iter()).enumerate() {
             let path = path.push_back(format!("Select return {}", i));
             check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
         }

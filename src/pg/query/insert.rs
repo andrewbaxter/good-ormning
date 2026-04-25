@@ -31,6 +31,7 @@ use super::{
     },
 };
 
+#[derive(Clone, Debug)]
 pub enum InsertConflict {
     DoNothing,
     DoUpdate {
@@ -39,6 +40,7 @@ pub enum InsertConflict {
     },
 }
 
+#[derive(Clone, Debug)]
 pub struct Insert {
     pub(crate) table: TableRef,
     pub(crate) values: Vec<(FieldRef, Expr)>,
@@ -72,7 +74,7 @@ impl QueryBody for Insert {
         }
         let mut scope = HashMap::new();
         let table_info = match ctx.tables.get(&self.table) {
-            Some(t) => t,
+            Some(t) => t.clone(),
             None => {
                 ctx.errs.err(path, format!("Unknown table {:?} for insert", self.table));
                 return (ExprType(vec![]), Tokens::new());
@@ -94,7 +96,7 @@ impl QueryBody for Insert {
             if i > 0 {
                 out.s(",");
             }
-            let field_info = table_info.fields.get(field_ref).unwrap();
+            let field_info = table_info.fields.get(field_ref).unwrap().clone();
             out.id(&field_info.sql_name);
         }
         out.s(") values (");
@@ -102,7 +104,7 @@ impl QueryBody for Insert {
             if i > 0 {
                 out.s(",");
             }
-            let field_info = table_info.fields.get(field_ref).unwrap();
+            let field_info = table_info.fields.get(field_ref).unwrap().clone();
             let path = path.push_back(format!("Insert value {} ({:?})", i, field_ref));
             let res = val.build(ctx, &path, &scope);
             check_assignable(&mut ctx.errs, &path, &field_info.type_, &res.0);

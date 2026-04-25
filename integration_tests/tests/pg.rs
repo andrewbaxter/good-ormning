@@ -37,10 +37,12 @@ pub mod pg_gen_select_limit;
 pub mod pg_gen_migrate_add_field;
 pub mod pg_gen_migrate_rename_field;
 pub mod pg_gen_migrate_remove_field;
-pub mod pg_gen_migrate_make_field_opt;
 pub mod pg_gen_migrate_add_table;
 pub mod pg_gen_migrate_rename_table;
 pub mod pg_gen_migrate_remove_table;
+pub mod pg_gen_select_cte;
+pub mod pg_gen_select_window;
+pub mod pg_gen_migrate_pre_migration;
 
 async fn db<'a>() -> Result<(tokio_postgres::Client, ContainerAsync<Postgres>), loga::Error> {
     let db_container = Postgres::default().with_startup_timeout(Duration::from_secs(60 * 5)).start().await?;
@@ -124,16 +126,17 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 async fn test_param_custom() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_param_custom::migrate(&mut db).await?;
-    let x_0 = integration_tests::MyAuto(99);
-    let x_1 = integration_tests::MyBool(true);
-    let x_2 = integration_tests::MyI32(13);
-    let x_3 = integration_tests::MyI64(-22);
+    let x_0 = integration_tests::MyBool(true);
+    let x_1 = integration_tests::MyI32(13);
+    let x_2 = integration_tests::MyI64(-22);
+    let x_3 = integration_tests::MyU32(14);
     let x_4 = integration_tests::MyF32(12.);
     let x_5 = integration_tests::MyF64(99.);
     let x_6 = integration_tests::MyBytes("hi".as_bytes().to_vec());
     let x_7 = integration_tests::MyString("hogo".to_string());
     let x_8 = integration_tests::MyUtctimeChrono(Utc.with_ymd_and_hms(1999, 11, 14, 1, 2, 13).unwrap());
-    let x_9 =
+    let x_9 = integration_tests::MyUtctimeChrono(Utc.with_ymd_and_hms(1999, 6, 14, 10, 13, 57).unwrap());
+    let x_10 =
         integration_tests::MyUtctimeJiff(
             jiff::civil::DateTime::new(1999, 11, 14, 1, 2, 13, 0)
                 .unwrap()
@@ -141,7 +144,29 @@ async fn test_param_custom() -> Result<(), loga::Error> {
                 .unwrap()
                 .timestamp(),
         );
-    pg_gen_param_custom::insert_banan(&mut db, &x_0, &x_1, &x_2, &x_3, &x_4, &x_5, &x_6, &x_7, &x_8, &x_9).await?;
+    let x_11 =
+        integration_tests::MyUtctimeJiff(
+            jiff::civil::DateTime::new(1999, 6, 14, 10, 13, 57, 0)
+                .unwrap()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .unwrap()
+                .timestamp(),
+        );
+    pg_gen_param_custom::insert_banan(
+        &mut db,
+        &x_0,
+        &x_1,
+        &x_2,
+        &x_3,
+        &x_4,
+        &x_5,
+        &x_6,
+        &x_7,
+        &x_8,
+        &x_9,
+        &x_10,
+        &x_11,
+    ).await?;
     let res = pg_gen_param_custom::get_banan(&mut db).await?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);
@@ -152,6 +177,9 @@ async fn test_param_custom() -> Result<(), loga::Error> {
     assert_eq!(x_6, res.x_6);
     assert_eq!(x_7, res.x_7);
     assert_eq!(x_8, res.x_8);
+    assert_eq!(x_9, res.x_9);
+    assert_eq!(x_10, res.x_10);
+    assert_eq!(x_11, res.x_11);
     Ok(())
 }
 
@@ -319,14 +347,6 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
-async fn test_migrate_make_field_opt() -> Result<(), loga::Error> {
-    let (mut db, _cont) = db().await?;
-    pg_gen_migrate_make_field_opt::migrate(&mut db).await?;
-    pg_gen_migrate_make_field_opt::ins(&mut db).await?;
-    Ok(())
-}
-
-#[tokio::test]
 async fn test_migrate_remove_field() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_remove_field::migrate(&mut db).await?;
@@ -354,5 +374,41 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
 async fn test_migrate_remove_table() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_remove_table::migrate(&mut db).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_cte() -> Result<(), loga::Error> {
+    let (mut db, _cont) = db().await?;
+    pg_gen_select_cte::migrate(&mut db).await?;
+    pg_gen_select_cte::insert_banan(&mut db, 1, 7).await?;
+    pg_gen_select_cte::insert_banan(&mut db, 1, 99).await?;
+    let mut res = pg_gen_select_cte::get_banan(&mut db).await?;
+    res.sort();
+    assert_eq!(res, vec![7, 99]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_window() -> Result<(), loga::Error> {
+    let (mut db, _cont) = db().await?;
+    pg_gen_select_window::migrate(&mut db).await?;
+    pg_gen_select_window::insert_banan(&mut db, 1, 7).await?;
+    pg_gen_select_window::insert_banan(&mut db, 1, 99).await?;
+    pg_gen_select_window::insert_banan(&mut db, 2, 3).await?;
+    pg_gen_select_window::insert_banan(&mut db, 2, 10).await?;
+    let mut res =
+        pg_gen_select_window::get_banan(&mut db).await?
+            .into_iter()
+            .collect::<Vec<_>>();
+    res.sort();
+    assert_eq!(res, vec![13, 13, 106, 106]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_pre_migration() -> Result<(), loga::Error> {
+    let (mut db, _cont) = db().await?;
+    pg_gen_migrate_pre_migration::migrate(&mut db).await?;
     Ok(())
 }

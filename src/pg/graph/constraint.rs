@@ -51,56 +51,16 @@ impl NodeDataDispatch for NodeConstraint_ {
         Some(other)
     }
 
-    fn create(&self, ctx: &mut PgMigrateCtx) {
-        let mut stmt = Tokens::new();
-        stmt.s("alter table").id(&self.table_sql_name).s("add constraint").id(&self.def.id);
-        match &self.def.type_ {
-            ConstraintType::PrimaryKey(x) => {
-                stmt.s("primary key (").f(|t| {
-                    for (i, field_schema_id) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(self.local_field_sql_names.get(field_schema_id).unwrap());
-                    }
-                }).s(")");
-            },
-            ConstraintType::ForeignKey(x) => {
-                stmt.s("foreign key (").f(|t| {
-                    for (i, (local_field, _)) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(self.local_field_sql_names.get(local_field).unwrap());
-                    }
-                }).s(") references ").id(self.remote_table_sql_name.as_ref().unwrap()).s("(").f(|t| {
-                    for (i, (_, remote_field)) in x.fields.iter().enumerate() {
-                        if i > 0 {
-                            t.s(",");
-                        }
-                        t.id(self.remote_field_sql_names.get(remote_field).unwrap());
-                    }
-                }).s(")");
-            },
-        }
-        ctx.statements.push(stmt.to_string());
+    fn create(&self, _ctx: &mut PgMigrateCtx) {
+        // Coalesced into table creation
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
 
-    fn delete(&self, ctx: &mut PgMigrateCtx) {
-        ctx
-            .statements
-            .push(
-                Tokens::new()
-                    .s("alter table")
-                    .id(&self.table_sql_name)
-                    .s("drop constraint")
-                    .id(&self.def.id)
-                    .to_string(),
-            );
+    fn delete(&self, _ctx: &mut PgMigrateCtx) {
+        // Coalesced into table deletion
     }
 }
 

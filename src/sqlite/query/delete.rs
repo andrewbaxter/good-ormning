@@ -23,6 +23,7 @@ use super::{
      
 };
 
+#[derive(Clone, Debug)]
 pub struct Delete {
     pub(crate) table: TableRef,
     pub(crate) where_: Option<Expr>,
@@ -38,7 +39,7 @@ impl QueryBody for Delete {
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
         let table_info = match ctx.tables.get(&self.table) {
-            Some(t) => t,
+            Some(t) => t.clone(),
             None => {
                 ctx.errs.err(path, format!("Unknown table {:?} for delete", self.table));
                 return (ExprType(vec![]), Tokens::new());

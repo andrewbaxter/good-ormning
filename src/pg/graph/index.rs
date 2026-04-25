@@ -48,27 +48,16 @@ impl NodeDataDispatch for NodeIndex_ {
         Some(other)
     }
 
-    fn create(&self, ctx: &mut PgMigrateCtx) {
-        ctx.statements.push(Tokens::new().s("create").f(|t| {
-            if self.def.unique {
-                t.s("unique");
-            }
-        }).s("index").id(&self.def.id).s("on").id(&self.table_id).s("(").f(|t| {
-            for (i, field_schema_id) in self.def.fields.iter().enumerate() {
-                if i > 0 {
-                    t.s(",");
-                }
-                t.id(self.field_sql_names.get(field_schema_id).unwrap());
-            }
-        }).s(")").to_string());
+    fn create(&self, _ctx: &mut PgMigrateCtx) {
+        // Coalesced into table creation
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
 
-    fn delete(&self, ctx: &mut PgMigrateCtx) {
-        ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
+    fn delete(&self, _ctx: &mut PgMigrateCtx) {
+        // Coalesced into table deletion
     }
 }
 

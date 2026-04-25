@@ -24,6 +24,7 @@ use super::{
     },
 };
 
+#[derive(Clone, Debug)]
 pub struct Update {
     pub table: TableRef,
     pub values: Vec<(FieldRef, Expr)>,
@@ -40,7 +41,7 @@ impl QueryBody for Update {
     ) -> (super::expr::ExprType, crate::utils::Tokens) {
         // Prep
         let table_info = match ctx.tables.get(&self.table) {
-            Some(t) => t,
+            Some(t) => t.clone(),
             None => {
                 ctx.errs.err(path, format!("Unknown table {:?} for update", self.table));
                 return (ExprType(vec![]), Tokens::new());

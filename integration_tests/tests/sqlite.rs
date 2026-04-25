@@ -36,6 +36,7 @@ pub mod sqlite_gen_migrate_remove_field;
 pub mod sqlite_gen_migrate_add_table;
 pub mod sqlite_gen_migrate_rename_table;
 pub mod sqlite_gen_migrate_remove_table;
+pub mod sqlite_gen_migrate_pre_migration;
 pub mod sqlite_gen_select_cte;
 pub mod sqlite_gen_select_window;
 pub mod sqlite_gen_select_junction;
@@ -168,7 +169,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_arr_i32::migrate(&mut db)?;
     sqlite_gen_param_arr_i32::insert_banan(&mut db, 7)?;
-    assert_eq!(sqlite_gen_param_arr_i32::get_banan(&mut db, vec![7])?, Some(7));
+    assert_eq!(sqlite_gen_param_arr_i32::get_banan(&mut db, vec![7])?, vec![7]);
     Ok(())
 }
 
@@ -228,6 +229,8 @@ fn test_param_custom() -> Result<(), loga::Error> {
     assert_eq!(x_7, res.x_7);
     assert_eq!(x_8, res.x_8);
     assert_eq!(x_9, res.x_9);
+    assert_eq!(x_10, res.x_10);
+    assert_eq!(x_11, res.x_11);
     Ok(())
 }
 
@@ -426,6 +429,13 @@ fn test_migrate_remove_table() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_migrate_pre_migration() -> Result<(), loga::Error> {
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    sqlite_gen_migrate_pre_migration::migrate(&mut db)?;
+    Ok(())
+}
+
+#[test]
 fn test_select_cte() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_cte::migrate(&mut db)?;
@@ -448,10 +458,9 @@ fn test_select_window() -> Result<(), loga::Error> {
     let mut res =
         sqlite_gen_select_window::get_banan(&mut db)?
             .into_iter()
-            .map(|x| (x.hizat, x.hizat2, x.zombo))
             .collect::<Vec<_>>();
     res.sort();
-    assert_eq!(res, vec![(1, 7, 99), (1, 99, 99), (2, 3, 99), (2, 10, 99)]);
+    assert_eq!(res, vec![13, 13, 106, 106]);
     Ok(())
 }
 

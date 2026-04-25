@@ -12,6 +12,48 @@ use jiff::{
     Timestamp,
     Zoned,
 };
+use async_trait::async_trait;
+
+pub trait GoodErrorQuery<T> {
+    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error>;
+}
+
+impl<T> GoodErrorQuery<T> for Result<T, tokio_postgres::Error> {
+    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(loga::err(e).context(format!("Error executing query: {}", query))),
+        }
+    }
+}
+
+#[async_trait]
+pub trait PgConnection: Send {
+    async fn execute(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64, tokio_postgres::Error>;
+    async fn query(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error>;
+}
+
+#[async_trait]
+impl PgConnection for tokio_postgres::Client {
+    async fn execute(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64, tokio_postgres::Error> {
+        tokio_postgres::Client::execute(self, query, params).await
+    }
+
+    async fn query(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
+        tokio_postgres::Client::query(self, query, params).await
+    }
+}
+
+#[async_trait]
+impl PgConnection for tokio_postgres::Transaction<'_> {
+    async fn execute(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64, tokio_postgres::Error> {
+        tokio_postgres::Transaction::execute(self, query, params).await
+    }
+
+    async fn query(&mut self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
+        tokio_postgres::Transaction::query(self, query, params).await
+    }
+}
 
 pub trait GoodOrmningCustomAuto<T> {
     fn to_sql(value: &T) -> i64;
@@ -23,6 +65,11 @@ pub trait GoodOrmningCustomBool<T> {
     fn from_sql(value: bool) -> Result<T, String>;
 }
 
+pub trait GoodOrmningCustomI16<T> {
+    fn to_sql(value: &T) -> i16;
+    fn from_sql(value: i16) -> Result<T, String>;
+}
+
 pub trait GoodOrmningCustomI32<T> {
     fn to_sql(value: &T) -> i32;
     fn from_sql(value: i32) -> Result<T, String>;
@@ -31,6 +78,11 @@ pub trait GoodOrmningCustomI32<T> {
 pub trait GoodOrmningCustomI64<T> {
     fn to_sql(value: &T) -> i64;
     fn from_sql(value: i64) -> Result<T, String>;
+}
+
+pub trait GoodOrmningCustomU32<T> {
+    fn to_sql(value: &T) -> u32;
+    fn from_sql(value: u32) -> Result<T, String>;
 }
 
 pub trait GoodOrmningCustomF32<T> {

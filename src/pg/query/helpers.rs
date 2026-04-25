@@ -1,10 +1,20 @@
+use std::rc::Rc;
 use crate::pg::{
     FieldHandle,
+    types::{
+        SimpleSimpleType,
+        SimpleType,
+        Type,
+    },
 };
 use super::expr::{
     Expr,
     BinOp,
+    ComputeType,
+    ExprValName,
+    ExprType,
 };
+use super::select::Order;
 
 /// Generates a field element for instert and update statements, to set a field
 /// from a parameter of the same type.
@@ -85,5 +95,74 @@ pub fn expr_or(exprs: Vec<Expr>) -> Expr {
     Expr::BinOpChain {
         op: BinOp::Or,
         exprs: exprs,
+    }
+}
+
+pub fn fn_min(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "min".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return ExprType(vec![]);
+            };
+            return ExprType(vec![(ExprValName::empty(), t)]);
+        })),
+    }
+}
+
+pub fn fn_max(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "max".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return ExprType(vec![]);
+            };
+            return ExprType(vec![(ExprValName::empty(), t)]);
+        })),
+    }
+}
+
+pub fn fn_avg(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "avg".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return ExprType(vec![]);
+            };
+            return ExprType(vec![(ExprValName::empty(), t)]);
+        })),
+    }
+}
+
+pub fn fn_sum(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "sum".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return ExprType(vec![]);
+            };
+            return ExprType(vec![(ExprValName::empty(), t)]);
+        })),
+    }
+}
+
+pub fn fn_count(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "count".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+            return ExprType(vec![(ExprValName::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
     }
 }

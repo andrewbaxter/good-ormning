@@ -4,7 +4,9 @@ use {
         ComputeType,
         Expr,
         Binding,
+        ExprType,
     },
+    super::select::Order,
     std::rc::Rc,
     crate::sqlite::{
         FieldHandle,
@@ -122,12 +124,13 @@ pub fn as_utc_chrono(expr: Expr) -> Expr {
                         );
                 }
             };
-            return super::expr::ExprType(vec![(Binding::empty(), Type {
+            return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
-                    type_: SimpleSimpleType::UtcTimeChrono,
+                    type_: SimpleSimpleType::UtcTimeMsChrono,
                     custom: None,
                 },
                 opt: false,
+                arr: false,
             })]);
         })),
     }
@@ -139,9 +142,9 @@ pub fn fn_min(expr: Expr) -> Expr {
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
             let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return super::expr::ExprType(vec![]);
+                return ExprType(vec![]);
             };
-            return super::expr::ExprType(vec![(Binding::empty(), t)]);
+            return ExprType(vec![(Binding::empty(), t)]);
         })),
     }
 }
@@ -152,9 +155,9 @@ pub fn fn_max(expr: Expr) -> Expr {
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
             let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return super::expr::ExprType(vec![]);
+                return ExprType(vec![]);
             };
-            return super::expr::ExprType(vec![(Binding::empty(), t)]);
+            return ExprType(vec![(Binding::empty(), t)]);
         })),
     }
 }
@@ -165,9 +168,22 @@ pub fn fn_avg(expr: Expr) -> Expr {
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
             let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return super::expr::ExprType(vec![]);
+                return ExprType(vec![]);
             };
-            return super::expr::ExprType(vec![(Binding::empty(), t)]);
+            return ExprType(vec![(Binding::empty(), t)]);
+        })),
+    }
+}
+
+pub fn fn_sum(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "sum".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|ctx, path, args| {
+            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
+                return ExprType(vec![]);
+            };
+            return ExprType(vec![(Binding::empty(), t)]);
         })),
     }
 }
@@ -177,12 +193,13 @@ pub fn fn_count(expr: Expr) -> Expr {
         func: "count".to_string(),
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
-            return super::expr::ExprType(vec![(Binding::empty(), Type {
+            return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::I64,
                     custom: None,
                 },
                 opt: false,
+                arr: false,
             })]);
         })),
     }

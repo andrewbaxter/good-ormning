@@ -120,12 +120,13 @@ impl NodeDataDispatch for NodeField_ {
                     sql_name: self.table_id.clone(),
                     fields: fields,
                 });
-                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), &qctx_tables);
+                let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), qctx_tables);
                 let expr: Expr = d.clone().into();
                 let e_res = expr.build(&mut qctx, &path, &HashMap::new());
                 check_general_same(&mut qctx, &path, &ExprType(vec![(Binding::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
+                    arr: false,
                 })]), &e_res.0);
                 if !qctx.rust_args.is_empty() {
                     qctx

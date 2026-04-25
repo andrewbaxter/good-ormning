@@ -50,16 +50,16 @@ impl NodeDataDispatch for NodeConstraint_ {
         Some(other)
     }
 
-    fn create(&self, ctx: &mut SqliteMigrateCtx) {
-        ctx.errs.err(&rpds::vector![format!("Constraint {:?}", self.schema_id)], format!("SQLite doesn't support adding constraints after table creation"));
+    fn create(&self, _ctx: &mut SqliteMigrateCtx) {
+        // Coalesced into table creation
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
 
-    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
-        ctx.errs.err(&rpds::vector![format!("Constraint {:?}", self.schema_id)], format!("SQLite doesn't support dropping constraints"));
+    fn delete(&self, _ctx: &mut SqliteMigrateCtx) {
+        // Coalesced into table deletion
     }
 }
 

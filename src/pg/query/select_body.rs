@@ -1,145 +1,98 @@
 use std::collections::HashMap;
 use crate::{
-    utils::Tokens,
     pg::{
-        types::{
-            Type,
-            type_i64,
-        },
+        types::Type,
         QueryResCount,
         schema::{
             table::TableRef,
         },
-    },
-};
-use super::{
-    utils::{
-        QueryBody,
-        PgQueryCtx,
-        build_returning_values,
-        Returning,
-        With,
-        build_with,
-    },
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        ExprValName,
-        check_general_same,
-    },
-};
-
-#[derive(Clone, Debug)]
-pub enum Order {
-    Asc,
-    Desc,
-}
-
-#[derive(Clone, Debug)]
-pub enum JoinSource {
-    Subsel(Box<Select>),
-    Table(TableRef),
-}
-
-#[derive(Clone, Debug)]
-pub struct NamedSelectSource {
-    pub source: JoinSource,
-    pub alias: Option<String>,
-}
-
-impl NamedSelectSource {
-    pub(crate) fn build(&self, ctx: &mut PgQueryCtx, path: &rpds::Vector<String>) -> (ExprType, Tokens) {
-        let mut out = Tokens::new();
-        let mut new_fields: Vec<(ExprValName, Type)> = match &self.source {
-            JoinSource::Subsel(s) => {
-                let res: (ExprType, Tokens) = s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
-                out.s("(").s(&res.1.to_string()).s(")");
-                res.0.0.clone()
+        query::{
+            utils::{
+                PgQueryCtx,
+                QueryBody,
+                build_returning_values,
+                Returning,
             },
-            JoinSource::Table(s) => {
-                let table_info = match ctx.tables.get(&s) {
-                    Some(f) => f,
-                    None => {
-                        ctx
-                            .errs
-                            .err(&path.push_back(format!("From")), format!("No table with id {:?} in version", s));
-                        return (ExprType(vec![]), Tokens::new());
-                    },
-                };
-                out.id(&table_info.sql_name);
-                table_info.fields.iter().map(|(id, info)| (ExprValName::field(id), info.type_.clone())).collect()
+            expr::{
+                Expr,
+                ExprType,
+                check_bool,
+                ExprValName,
             },
-        };
-        if let Some(s) = &self.alias {
-            out.s("as").id(s);
-            let mut new_fields2 = vec![];
-            for (k, v) in new_fields {
-                new_fields2.push((k.with_alias(s), v));
-            }
-            new_fields = new_fields2;
-        }
-        (ExprType(new_fields), out)
-    }
+            select::{
+                Join,
+                NamedSelectSource,
+                Order,
+            },
+        },
+    },
+    utils::Tokens,
+};
+
+#[derive(Clone, Debug)]
+pub enum SelectJunctionOperator {
+    Union,
+    UnionAll,
+    Intersect,
+    Except,
 }
 
 #[derive(Clone, Debug)]
-pub enum JoinType {
-    Left,
-    Inner,
+pub struct SelectJunction {
+    pub op: SelectJunctionOperator,
+    pub body: Box<dyn QueryBody>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Join {
-    pub source: Box<NamedSelectSource>,
-    pub type_: JoinType,
-    pub on: Expr,
-}
-
-#[derive(Clone, Debug)]
-pub struct Select {
-    pub with: Option<With>,
+pub struct SelectBody {
     pub table: NamedSelectSource,
     pub returning: Vec<Returning>,
     pub join: Vec<Join>,
     pub where_: Option<Expr>,
     pub group: Vec<Expr>,
     pub order: Vec<(Expr, Order)>,
-    pub(crate) limit: Option<Expr>,
+    pub limit: Option<Expr>,
+    pub distinct: bool,
 }
 
-impl QueryBody for Select {
+impl QueryBody for SelectBody {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
-        let mut out = Tokens::new();
-        if let Some(with) = &self.with {
-            out.s(&build_with(ctx, path, with).to_string());
-        }
+        return self.build_internal(ctx, &HashMap::new(), path, res_count);
+    }
+}
 
+impl SelectBody {
+    pub fn build_internal(
+        &self,
+        ctx: &mut PgQueryCtx,
+        inject_scope: &HashMap<ExprValName, Type>,
+        path: &rpds::Vector<String>,
+        res_count: QueryResCount,
+    ) -> (ExprType, Tokens) {
         // Prep
         let source: (ExprType, Tokens) = self.table.build(ctx, path);
-        let mut fields = HashMap::new();
+        let mut scope = inject_scope.clone();
         for (k, v) in source.0 .0 {
-            fields.insert(k, v);
+            scope.insert(k, v);
         }
-        let mut scope = fields.clone();
         let mut joins = vec![];
         for (i, je) in self.join.iter().enumerate() {
             let path = path.push_back(format!("Join {}", i));
             let mut out = Tokens::new();
             match je.type_ {
-                JoinType::Left => out.s("left"),
-                JoinType::Inner => out.s("inner"),
+                crate::pg::query::select::JoinType::Left => out.s("left"),
+                crate::pg::query::select::JoinType::Inner => out.s("inner"),
             };
             out.s("join");
             let source: (ExprType, Tokens) = je.source.build(ctx, &path);
             out.s(&source.1.to_string());
             match je.type_ {
-                JoinType::Left => {
+                crate::pg::query::select::JoinType::Left => {
                     for (k, mut v) in source.0 .0 {
                         if !v.opt {
                             v = Type {
@@ -151,14 +104,14 @@ impl QueryBody for Select {
                         scope.insert(k, v);
                     }
                 },
-                JoinType::Inner => {
+                crate::pg::query::select::JoinType::Inner => {
                     for (k, v) in source.0 .0 {
                         scope.insert(k, v);
                     }
                 },
             }
             out.s("on");
-            let (on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
+            let (_on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
             out.s(&on_tokens.to_string());
             joins.push(out.to_string());
         }
@@ -166,6 +119,9 @@ impl QueryBody for Select {
         // Build query
         let mut out = Tokens::new();
         out.s("select");
+        if self.distinct {
+            out.s("distinct");
+        }
         if self.returning.is_empty() {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
         }
@@ -212,7 +168,7 @@ impl QueryBody for Select {
             out.s("limit");
             let path = path.push_back("Limit".into());
             let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
-            check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), type_i64().build())]));
+            crate::pg::query::expr::check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]));
             out.s(&limit_tokens.to_string());
         }
         (out_type, out)

@@ -27,6 +27,8 @@ use crate::{
         types::{
             Type,
             to_rust_types,
+            to_sql_type,
+            SimpleSimpleType,
         },
         query::expr::Binding,
         graph::utils::SqliteMigrateCtx,
@@ -239,6 +241,11 @@ impl SelectBuilder {
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
+        self
+    }
+
+    pub fn with(mut self, with: self::query::utils::With) -> Self {
+        self.q.with = Some(with);
         self
     }
 
@@ -590,9 +597,35 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
     } }
 }
 
+impl InsertBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, SqliteFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = SqliteQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// Get a builder for a SELECT query.
 pub fn new_select(table: &TableHandle) -> SelectBuilder {
     SelectBuilder { q: Select {
+        with: None,
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
             alias: None,
@@ -611,6 +644,7 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
 /// from a synthetic table).
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
     SelectBuilder { q: Select {
+        with: None,
         table: source,
         returning: vec![],
         junction: vec![],
@@ -642,6 +676,31 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
     } }
 }
 
+impl UpdateBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, SqliteFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = SqliteQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// Get a builder for a DELETE query.
 ///
 /// # Arguments
@@ -655,10 +714,37 @@ pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
     } }
 }
 
+impl DeleteBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, SqliteFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), SqliteTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = SqliteQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// The version represents the state of a schema at a point in time.
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Version {
     pub tables: BTreeMap<SchemaTableId, Table>,
+    pub pre_migration: Vec<String>,
+    pub post_migration: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -681,6 +767,14 @@ impl VersionHandle {
             version: self.clone(),
             schema_id: schema_id,
         }
+    }
+
+    pub fn pre_migration(&self, statement: impl Into<String>) {
+        self.0.borrow_mut().pre_migration.push(statement.into());
+    }
+
+    pub fn post_migration(&self, statement: impl Into<String>) {
+        self.0.borrow_mut().post_migration.push(statement.into());
     }
 }
 
@@ -998,6 +1092,16 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
 
         let version_i = version_i as i64;
+
+        for statement in &version.pre_migration {
+            migration.push(quote!{
+                {
+                    let query = #statement;
+                    db.execute(query, ()).to_good_error_query(query)?;
+                };
+            });
+        }
+
         if let Some(i) = prev_version_i {
             if version_i != i as i64 + 1 {
                 errs.err(
@@ -1013,7 +1117,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Main migrations
         {
-            let mut state = SqliteMigrateCtx::new(errs.clone());
+            let mut table_sql_names = HashMap::new();
+            for (table_schema_id, table) in &version.tables {
+                table_sql_names.insert(table_schema_id.clone(), table.id.clone());
+            }
+            let mut state = SqliteMigrateCtx::new(errs.clone(), table_sql_names, version.clone());
             let current_nodes = version.to_migrate_nodes();
             let prev_nodes = prev_version.take().map(|s| s.to_migrate_nodes());
             crate::graphmigrate::migrate(&mut state, prev_nodes, &current_nodes);
@@ -1021,11 +1129,20 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 migration.push(quote!{
                     {
                         let query = #statement;
-                        db.execute(query, ()).await.to_good_error_query(query)?;
+                        db.execute(query, ()).to_good_error_query(query)?;
                     };
                 });
             }
             errs = state.errs.clone();
+        }
+
+        for statement in &version.post_migration {
+            migration.push(quote!{
+                {
+                    let query = #statement;
+                    db.execute(query, ()).to_good_error_query(query)?;
+                };
+            });
         }
 
         // Build migration
@@ -1046,7 +1163,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
         for q in queries {
             let path = rpds::vector![format!("Query {}", q.name)];
-            let mut ctx = SqliteQueryCtx::new(errs.clone(), &field_lookup);
+            let mut ctx = SqliteQueryCtx::new(errs.clone(), field_lookup.clone());
             let res = QueryBody::build(q.body.as_ref(), &mut ctx, &path, q.res_count.clone());
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
@@ -1075,8 +1192,39 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     if v.opt {
                         ident = quote!(Option < #ident >);
                     }
-                    let mut unforward = quote!{
-                        let x: #ident = r.get(#i);
+                    let mut unforward = match &v.type_.type_ {
+                        SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono => {
+                            quote!{
+                                let x: #ident = match r.get::<_, good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp>(#i) ? {
+                                    good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(i) => {
+                                        chrono::DateTime::from_timestamp(i, 0).unwrap()
+                                    },
+                                    good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(s) => {
+                                        chrono::DateTime::parse_from_rfc3339(&s)
+                                            .map(|d| d.with_timezone(&chrono::Utc))
+                                            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(#i, rusqlite::types::Type::Text, Box::new(GoodError(format!("Error parsing rfc3339 datetime {}: {:?}", s, e))))) ?
+                                    },
+                                };
+                            }
+                        },
+                        SimpleSimpleType::UtcTimeSJiff | SimpleSimpleType::UtcTimeMsJiff => {
+                            quote!{
+                                let x: #ident = match r.get::<_, good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp>(#i) ? {
+                                    good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(i) => {
+                                        jiff::Timestamp::from_second(i).unwrap()
+                                    },
+                                    good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(s) => {
+                                        s.parse::<jiff::Timestamp>()
+                                            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(#i, rusqlite::types::Type::Text, Box::new(GoodError(format!("Error parsing datetime {}: {:?}", s, e))))) ?
+                                    },
+                                };
+                            }
+                        },
+                        _ => {
+                            quote!{
+                                let x: #ident = r.get(#i) ?;
+                            }
+                        },
                     };
                     if let Some(custom) = &v.type_.custom {
                         ident = match syn::parse_str::<syn::Path>(&custom) {
@@ -1099,7 +1247,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                                     Some(
                                         < #ident as #custom_trait_ident < #ident >>:: from_sql(
                                             x
-                                        ).to_good_error(|| format!("Parsing result {}", #i)) ?
+                                        ).map_err(|e| rusqlite::Error::FromSqlConversionFailure(#i, rusqlite::types::Type::Text, Box::new(GoodError(format!("Parsing result {}: {}", #i, e))))) ?
                                     )
                                 }
                                 else {
@@ -1111,7 +1259,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                             unforward = quote!{
                                 #unforward let x =< #ident as #custom_trait_ident < #ident >>:: from_sql(
                                     x
-                                ).to_good_error(|| format!("Parsing result {}", #i)) ?;
+                                ).map_err(|e| rusqlite::Error::FromSqlConversionFailure(#i, rusqlite::types::Type::Text, Box::new(GoodError(format!("Parsing result {}: {}", #i, e))))) ?;
                             };
                         }
                     }
@@ -1120,7 +1268,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     })));
                 }
 
-                if res.0.0.len() == 1 {
+                if res.0 .0.len() == 1 && q.res_name.is_none() {
                     let e = &res.0.0[0];
                     let (_, type_ident, unforward) = match convert_one_res(&mut errs, &path, 0, &e.0, &e.1) {
                         None => {
@@ -1173,10 +1321,10 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             match q.res_count {
                 QueryResCount::None => {
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result <(),
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result <(),
                         GoodError > {
                             let query = #q_text;
-                            db.execute(query, (#(& #args_forward,) *)).await.to_good_error_query(query) ?;
+                            db.execute(query, (#(& #args_forward,) *)).to_good_error_query(query) ?;
                             Ok(())
                         }
                     });
@@ -1186,14 +1334,13 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                         GoodError > {
                             let query = #q_text;
-                            let r = db.query_opt(query, (#(& #args_forward,) *)).await.to_good_error_query(query) ?;
-                            if let Some(r) = r {
-                                return Ok(Some(#unforward_res));
-                            }
-                            Ok(None)
+                            let res = db.query(query, (#(& #args_forward,) *), |r| -> rusqlite::Result<#res_ident> {
+                                Ok(#unforward_res)
+                            }).to_good_error_query(query) ?;
+                            Ok(res.into_iter().next())
                         }
                     });
                 },
@@ -1202,11 +1349,16 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                         GoodError > {
                             let query = #q_text;
-                            let r = db.query_one(query, (#(& #args_forward,) *)).await.to_good_error_query(query) ?;
-                            Ok(#unforward_res)
+                            let mut res = db.query(query, (#(& #args_forward,) *), |r| -> rusqlite::Result<#res_ident> {
+                                Ok(#unforward_res)
+                            }).to_good_error_query(query) ?;
+                            if res.is_empty() {
+                                return Err(GoodError(format!("Query {} returned no results but one was expected", #q_text)));
+                            }
+                            Ok(res.pop().unwrap())
                         }
                     });
                 },
@@ -1215,14 +1367,13 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         db_others.push(res_def);
                     }
                     db_others.push(quote!{
-                        pub async fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
+                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
                         GoodError > {
-                            let mut out = vec![];
                             let query = #q_text;
-                            for r in db.query(query, (#(& #args_forward,) *)).await.to_good_error_query(query) ? {
-                                out.push(#unforward_res);
-                            }
-                            Ok(out)
+                            let res = db.query(query, (#(& #args_forward,) *), |r| -> rusqlite::Result<#res_ident> {
+                                Ok(#unforward_res)
+                            }).to_good_error_query(query) ?;
+                            Ok(res)
                         }
                     });
                 },
@@ -1235,28 +1386,36 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
         use good_ormning_runtime::ToGoodError;
-        pub async fn migrate(db: &mut impl good_ormning_runtime::sqlite::SqliteConnection) -> Result <(),
+
+        fn init_db(db: &mut impl good_ormning_runtime::sqlite::SqliteConnection) -> Result <(),
         GoodError > {
+            db.load_array_module().to_good_error(|| "Error loading array extension for array values".to_string())?;
             {
                 let query =
                     "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);";
-                db.execute(query, ()).await.to_good_error_query(query)?;
+                db.execute(query, ()).to_good_error_query(query)?;
             }
             {
                 let query =
                     "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;";
-                db.execute(query, ()).await.to_good_error_query(query)?;
+                db.execute(query, ()).to_good_error_query(query)?;
             }
+            Ok(())
+        }
+
+        pub fn migrate(db: &mut impl good_ormning_runtime::sqlite::SqliteConnection) -> Result <(),
+        GoodError > {
+            init_db(db)?;
             loop {
                 let query =
                     "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
-                let version = match db.query_opt(query, ()).await.to_good_error_query(query)? {
-                    Some(r) => {
-                        let ver: i64 = r.get("version");
-                        ver
-                    },
+                let version = match db.query(query, (), |r| {
+                    let ver: i64 = r.get("version")?;
+                    Ok(ver)
+                }).to_good_error_query(query)?.pop() {
+                    Some(v) => v,
                     None => {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         continue;
                     },
                 };
@@ -1273,11 +1432,31 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 }
                 #(#migrations) * {
                     let query = "update __good_version set version = ?, lock = 0";
-                    db.execute(query, (#last_version_i,)).await.to_good_error_query(query) ?;
+                    db.execute(query, (#last_version_i,)).to_good_error_query(query) ?;
                 }
                 return Ok(());
             }
         }
+
+        pub fn get_schema_version(db: &mut impl good_ormning_runtime::sqlite::SqliteConnection) -> Result < Option < i64 >,
+        GoodError > {
+            init_db(db)?;
+            let query = "select version from __good_version where rid = 0";
+            let mut res = db.query(query, (), |r| -> rusqlite::Result<i64> {
+                let x: i64 = r.get(0usize)?;
+                Ok(x)
+            }).to_good_error_query(query) ?;
+            if let Some(v) = res.pop() {
+                if v == -1 {
+                    Ok(None)
+                } else {
+                    Ok(Some(v))
+                }
+            } else {
+                Ok(None)
+            }
+        }
+
         #(#db_others) *
     };
     if let Some(p) = output.parent() {

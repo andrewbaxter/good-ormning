@@ -57,6 +57,7 @@ use self::{
             Join,
             Order,
         },
+        select_body::SelectBody,
         update::Update,
         delete::Delete,
     },
@@ -202,6 +203,90 @@ pub struct SelectBuilder {
     pub q: Select,
 }
 
+pub struct SelectBodyBuilder {
+    pub q: SelectBody,
+}
+
+impl SelectBodyBuilder {
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: None,
+            });
+        }
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        self
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
+        self
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
+        self
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        self
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
+        self
+    }
+
+    pub fn distinct(mut self) -> Self {
+        self.q.distinct = true;
+        self
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        self
+    }
+
+    pub fn build(self) -> SelectBody {
+        self.q
+    }
+}
+
 impl SelectBuilder {
     pub fn return_(mut self, v: Expr) -> Self {
         self.q.returning.push(Returning {
@@ -239,6 +324,11 @@ impl SelectBuilder {
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
+        self
+    }
+
+    pub fn with(mut self, with: self::query::utils::With) -> Self {
+        self.q.with = Some(with);
         self
     }
 
@@ -483,9 +573,35 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
     } }
 }
 
+impl InsertBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, PgFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), PgTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = PgQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// Get a builder for a SELECT query.
 pub fn new_select(table: &TableHandle) -> SelectBuilder {
     SelectBuilder { q: Select {
+        with: None,
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
             alias: None,
@@ -499,10 +615,29 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
     } }
 }
 
+/// Get a builder for a SELECT query body. This allows using the query as a
+/// subquery or join source.
+pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
+    SelectBodyBuilder { q: SelectBody {
+        table: NamedSelectSource {
+            source: JoinSource::Table(table.to_ref()),
+            alias: None,
+        },
+        returning: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        order: vec![],
+        limit: None,
+        distinct: false,
+    } }
+}
+
 /// Get a builder for a SELECT query. This allows advanced sources (like selecting
 /// from a synthetic table).
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
     SelectBuilder { q: Select {
+        with: None,
         table: source,
         returning: vec![],
         join: vec![],
@@ -533,6 +668,31 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
     } }
 }
 
+impl UpdateBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, PgFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), PgTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = PgQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// Get a builder for a DELETE query.
 ///
 /// # Arguments
@@ -546,10 +706,37 @@ pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
     } }
 }
 
+impl DeleteBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup = HashMap::new();
+        for (table_schema_id, table) in &version.0.borrow().tables {
+            let mut fields = HashMap::new();
+            for (field_schema_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_schema_id.clone(),
+                    field_id: field_schema_id.clone(),
+                }, PgFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_schema_id.clone()), PgTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = PgQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
 /// The version represents the state of a schema at a point in time.
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Version {
     pub tables: BTreeMap<SchemaTableId, Table>,
+    pub pre_migration: Vec<String>,
+    pub post_migration: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -572,6 +759,14 @@ impl VersionHandle {
             version: self.clone(),
             schema_id: schema_id,
         }
+    }
+
+    pub fn pre_migration(&self, statement: impl Into<String>) {
+        self.0.borrow_mut().pre_migration.push(statement.into());
+    }
+
+    pub fn post_migration(&self, statement: impl Into<String>) {
+        self.0.borrow_mut().post_migration.push(statement.into());
     }
 }
 
@@ -865,6 +1060,16 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
 
         let version_i = version_i as i64;
+
+        for statement in &version.pre_migration {
+            migration.push(quote!{
+                {
+                    let query = #statement;
+                    txn.execute(query, &[]).await.to_good_error_query(query)?;
+                };
+            });
+        }
+
         if let Some(i) = prev_version_i {
             if version_i != i as i64 + 1 {
                 errs.err(
@@ -880,7 +1085,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
 
         // Main migrations
         {
-            let mut state = PgMigrateCtx::new(errs.clone());
+            let mut table_sql_names = HashMap::new();
+            for (table_schema_id, table) in &version.tables {
+                table_sql_names.insert(table_schema_id.clone(), table.id.clone());
+            }
+            let mut state = PgMigrateCtx::new(errs.clone(), table_sql_names, version.clone());
             let current_nodes = version.to_migrate_nodes();
             let prev_nodes = prev_version.take().map(|s| s.to_migrate_nodes());
             crate::graphmigrate::migrate(&mut state, prev_nodes, &current_nodes);
@@ -893,6 +1102,15 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 });
             }
             errs = state.errs.clone();
+        }
+
+        for statement in &version.post_migration {
+            migration.push(quote!{
+                {
+                    let query = #statement;
+                    txn.execute(query, &[]).await.to_good_error_query(query)?;
+                };
+            });
         }
 
         // Build migration
@@ -913,7 +1131,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
         for q in queries {
             let path = rpds::vector![format!("Query {}", q.name)];
-            let mut ctx = PgQueryCtx::new(errs.clone(), &field_lookup);
+            let mut ctx = PgQueryCtx::new(errs.clone(), field_lookup.clone());
             let res = QueryBody::build(q.body.as_ref(), &mut ctx, &path, q.res_count.clone());
             let ident = format_ident!("{}", q.name);
             let q_text = res.1.to_string();
@@ -987,7 +1205,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     })));
                 }
 
-                if res.0.0.len() == 1 {
+                if res.0 .0.len() == 1 && q.res_name.is_none() {
                     let e = &res.0.0[0];
                     let (_, type_ident, unforward) = match convert_one_res(&mut errs, &path, 0, &e.0, &e.1) {
                         None => {
@@ -1036,7 +1254,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                     (res_ident.to_token_stream(), res_def, unforward)
                 }
             };
-            let db_arg = quote!(db: &mut impl tokio_postgres::GenericClient);
+            let db_arg = quote!(db: &mut impl good_ormning_runtime::pg::PgConnection);
             match q.res_count {
                 QueryResCount::None => {
                     db_others.push(quote!{
@@ -1056,8 +1274,8 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                         GoodError > {
                             let query = #q_text;
-                            let r = db.query_opt(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
-                            if let Some(r) = r {
+                            let res = db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                            if let Some(r) = res.first() {
                                 return Ok(Some(#unforward_res));
                             }
                             Ok(None)
@@ -1072,8 +1290,11 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                         GoodError > {
                             let query = #q_text;
-                            let r = db.query_one(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
-                            Ok(#unforward_res)
+                            let res = db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                            if let Some(r) = res.first() {
+                                return Ok(#unforward_res);
+                            }
+                            Err(GoodError(format!("Query {} returned no results but one was expected", #q_text)))
                         }
                     });
                 },
@@ -1102,33 +1323,43 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     let tokens = quote!{
         use good_ormning_runtime::GoodError;
         use good_ormning_runtime::ToGoodError;
-        pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
+
+        async fn init_db(db: &mut impl good_ormning_runtime::pg::PgConnection) -> Result <(),
         GoodError > {
             {
                 let query =
                     "create table if not exists __good_version (rid int primary key, version bigint not null, lock int not null);";
-                db.execute(query, &[]).await.to_good_error_query(query)?;
+                good_ormning_runtime::pg::PgConnection::execute(db, query, &[]).await.to_good_error_query(query)?;
             }
             {
                 let query =
                     "insert into __good_version (rid, version, lock) values (0, -1, 0) on conflict do nothing;";
-                db.execute(query, &[]).await.to_good_error_query(query)?;
+                good_ormning_runtime::pg::PgConnection::execute(db, query, &[]).await.to_good_error_query(query)?;
             }
+            Ok(())
+        }
+
+        pub async fn migrate(db: &mut tokio_postgres::Client) -> Result <(),
+        GoodError > {
+            init_db(db).await?;
             loop {
-                let txn = db.transaction().await.to_good_error(|| "Failed to start transaction".to_string())?;
-                match(|| {
-                    async {
-                        let query =
-                            "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
-                        let version = match txn.query_opt(query, &[]).await.to_good_error_query(query)? {
-                            Some(r) => {
-                                let ver: i64 = r.get("version");
-                                ver
-                            },
-                            None => {
-                                return Ok(false);
-                            },
-                        };
+                let mut txn = db.transaction().await.to_good_error(|| "Failed to start transaction".to_string())?;
+                let migrated = {
+                    let query =
+                        "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
+                    let res = good_ormning_runtime::pg::PgConnection::query(&mut txn, query, &[]).await.to_good_error_query(query)?;
+                    let version = match res.first() {
+                        Some(r) => {
+                            let ver: i64 = r.get(0usize);
+                            ver
+                        },
+                        None => {
+                            -2
+                        },
+                    };
+                    if version == -2 {
+                        false
+                    } else {
                         if version > #last_version_i {
                             return Err(
                                 GoodError(
@@ -1142,48 +1373,37 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                         }
                         #(#migrations) * {
                             let query = "update __good_version set version = $1, lock = 0";
-                            txn.execute(query, &[& #last_version_i]).await.to_good_error_query(query) ?;
+                            good_ormning_runtime::pg::PgConnection::execute(&mut txn, query, &[& #last_version_i]).await.to_good_error_query(query) ?;
                         }
-                        let out: Result < bool,
-                        GoodError >= Ok(true);
-                        out
+                        true
                     }
-                })().await {
-                    Err(e) => {
-                        match txn.rollback().await {
-                            Err(e1) => {
-                                return Err(
-                                    GoodError(
-                                        format!(
-                                            "{}\n\nRolling back the transaction due to the above also failed: {}",
-                                            e,
-                                            e1
-                                        ),
-                                    ),
-                                );
-                            },
-                            Ok(_) => {
-                                return Err(GoodError(e.to_string()));
-                            },
-                        };
-                    }
-                    Ok(migrated) => {
-                        match txn.commit().await {
-                            Err(e) => {
-                                return Err(GoodError(format!("Error committing the migration transaction: {}", e)));
-                            },
-                            Ok(_) => {
-                                if migrated {
-                                    return Ok(())
-                                } else {
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(5 * 1000)).await;
-                                }
-                            },
-                        };
-                    }
+                };
+                if migrated {
+                    txn.commit().await.to_good_error(|| "Failed to commit transaction".to_string())?;
+                    return Ok(());
+                } else {
+                    txn.rollback().await.to_good_error(|| "Failed to rollback transaction".to_string())?;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 }
             }
         }
+
+        pub async fn get_schema_version(db: &mut impl good_ormning_runtime::pg::PgConnection) -> Result < Option < i64 >,
+        GoodError > {
+            init_db(db).await?;
+            let query = "select version from __good_version where rid = 0";
+            let res = db.query(query, &[]).await.to_good_error_query(query) ?;
+            if let Some(r) = res.first() {
+                let x: i64 = r.get(0usize);
+                if x == -1 {
+                    return Ok(None);
+                } else {
+                    return Ok(Some(x));
+                }
+            }
+            Ok(None)
+        }
+
         #(#db_others) *
     };
     if let Some(p) = output.parent() {

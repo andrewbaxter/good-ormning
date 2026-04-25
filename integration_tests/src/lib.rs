@@ -96,6 +96,16 @@ impl sqlite::GoodOrmningCustomI64<MyI64> for MyI64 {
 #[derive(PartialEq, Eq, Debug)]
 pub struct MyU32(pub u32);
 
+impl pg::GoodOrmningCustomU32<MyU32> for MyU32 {
+    fn to_sql(value: &MyU32) -> u32 {
+        value.0
+    }
+
+    fn from_sql(s: u32) -> Result<MyU32, String> {
+        Ok(Self(s))
+    }
+}
+
 impl sqlite::GoodOrmningCustomU32<MyU32> for MyU32 {
     fn to_sql<'a>(value: &'a MyU32) -> u32 {
         value.0
