@@ -108,23 +108,27 @@ pub fn build_with(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, with: &With
         out.s("(");
         let (body_type, body_tokens) = cte.body.build(ctx, &path, QueryResCount::Many);
         if body_type.0.len() != cte.columns.len() {
-            ctx.errs.err(
-                &path,
-                format!(
-                    "Select returns {} columns but the CTE needs exactly {} columns",
-                    body_type.0.len(),
-                    cte.columns.len()
-                ),
-            );
+            ctx
+                .errs
+                .err(
+                    &path,
+                    format!(
+                        "Select returns {} columns but the CTE needs exactly {} columns",
+                        body_type.0.len(),
+                        cte.columns.len()
+                    ),
+                );
         } else {
-            for (i, ((_, got), (_, _, want))) in Iterator::zip(body_type.0.iter(), cte.columns.iter()).enumerate() {
+            for (
+                i,
+                ((_, got), (_, _, want)),
+            ) in Iterator::zip(body_type.0.iter(), cte.columns.iter()).enumerate() {
                 let path = path.push_back(format!("Select return {}", i));
                 check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(ExprValName::empty(), got.clone())]));
             }
         }
         out.s(&body_tokens.to_string());
         out.s(")");
-
         let mut fields = HashMap::new();
         for (field_schema_id, sql_name, type_) in &cte.columns {
             fields.insert(FieldRef {
@@ -205,13 +209,14 @@ pub fn build_set(
         if i > 0 {
             out.s(",");
         }
-        let field_info = match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(&field)) {
-            Some(t) => t.clone(),
-            None => {
-                ctx.errs.err(&path, format!("Update destination value field {:?} is not known", field));
-                continue;
-            },
-        };
+        let field_info =
+            match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(&field)) {
+                Some(t) => t.clone(),
+                None => {
+                    ctx.errs.err(&path, format!("Update destination value field {:?} is not known", field));
+                    continue;
+                },
+            };
         out.id(&field_info.sql_name).s("=");
         let res = val.build(ctx, &path, &scope);
         check_assignable(&mut ctx.errs, &path, &field_info.type_, &res.0);
@@ -268,7 +273,6 @@ pub fn build_returning_values(
         }
         fields.push((name, t));
     }
-
     match res_count {
         QueryResCount::None => {
             if !fields.is_empty() {
@@ -281,6 +285,5 @@ pub fn build_returning_values(
             }
         },
     }
-
     return ExprType(fields);
 }

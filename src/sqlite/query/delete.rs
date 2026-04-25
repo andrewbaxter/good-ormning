@@ -1,5 +1,4 @@
 use crate::sqlite::query::utils::Returning;
-
 use std::collections::HashMap;
 use crate::{
     utils::Tokens,
@@ -20,7 +19,6 @@ use super::{
         QueryBody,
         build_returning,
     },
-     
 };
 
 #[derive(Clone, Debug)]

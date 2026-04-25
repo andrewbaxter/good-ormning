@@ -25,7 +25,8 @@ use super::{
 #[derive(Clone)]
 pub(crate) struct NodeIndex_ {
     pub table_schema_id: SchemaTableId,
-    pub table_id: String, // SQL name
+    // SQL name
+    pub table_id: String,
     pub schema_id: SchemaIndexId,
     pub def: Index,
     pub field_sql_names: HashMap<SchemaFieldId, String>,
@@ -48,16 +49,29 @@ impl NodeDataDispatch for NodeIndex_ {
         Some(other)
     }
 
-    fn create(&self, _ctx: &mut PgMigrateCtx) {
-        // Coalesced into table creation
+    fn create(&self, ctx: &mut PgMigrateCtx) {
+        let mut stmt = Tokens::new();
+        stmt.s("create");
+        if self.def.unique {
+            stmt.s("unique");
+        }
+        stmt.s("index").id(&self.def.id).s("on").id(&self.table_id).s("(");
+        for (j, f_id) in self.def.fields.iter().enumerate() {
+            if j > 0 {
+                stmt.s(",");
+            }
+            stmt.id(self.field_sql_names.get(f_id).unwrap());
+        }
+        stmt.s(")");
+        ctx.statements.push(stmt.to_string());
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
 
-    fn delete(&self, _ctx: &mut PgMigrateCtx) {
-        // Coalesced into table deletion
+    fn delete(&self, ctx: &mut PgMigrateCtx) {
+        ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
     }
 }
 

@@ -53,7 +53,8 @@ impl NamedSelectSource {
         let mut out = Tokens::new();
         let mut new_fields: Vec<(ExprValName, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
-                let res: (ExprType, Tokens) = s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
+                let res: (ExprType, Tokens) =
+                    s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
@@ -123,7 +124,7 @@ impl QueryBody for Select {
         // Prep
         let source: (ExprType, Tokens) = self.table.build(ctx, path);
         let mut fields = HashMap::new();
-        for (k, v) in source.0 .0 {
+        for (k, v) in source.0.0 {
             fields.insert(k, v);
         }
         let mut scope = fields.clone();
@@ -140,7 +141,7 @@ impl QueryBody for Select {
             out.s(&source.1.to_string());
             match je.type_ {
                 JoinType::Left => {
-                    for (k, mut v) in source.0 .0 {
+                    for (k, mut v) in source.0.0 {
                         if !v.opt {
                             v = Type {
                                 opt: true,
@@ -152,7 +153,7 @@ impl QueryBody for Select {
                     }
                 },
                 JoinType::Inner => {
-                    for (k, v) in source.0 .0 {
+                    for (k, v) in source.0.0 {
                         scope.insert(k, v);
                     }
                 },
@@ -164,7 +165,6 @@ impl QueryBody for Select {
         }
 
         // Build query
-        let mut out = Tokens::new();
         out.s("select");
         if self.returning.is_empty() {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
@@ -203,8 +203,12 @@ impl QueryBody for Select {
                 let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
                 out.s(&o_tokens.to_string());
                 match o.1 {
-                    Order::Asc => { out.s("asc"); },
-                    Order::Desc => { out.s("desc"); },
+                    Order::Asc => {
+                        out.s("asc");
+                    },
+                    Order::Desc => {
+                        out.s("desc");
+                    },
                 }
             }
         }

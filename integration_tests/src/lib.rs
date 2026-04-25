@@ -97,12 +97,12 @@ impl sqlite::GoodOrmningCustomI64<MyI64> for MyI64 {
 pub struct MyU32(pub u32);
 
 impl pg::GoodOrmningCustomU32<MyU32> for MyU32 {
-    fn to_sql(value: &MyU32) -> u32 {
-        value.0
+    fn to_sql(value: &MyU32) -> i64 {
+        value.0 as i64
     }
 
-    fn from_sql(s: u32) -> Result<MyU32, String> {
-        Ok(Self(s))
+    fn from_sql(s: i64) -> Result<MyU32, String> {
+        Ok(Self(s as u32))
     }
 }
 

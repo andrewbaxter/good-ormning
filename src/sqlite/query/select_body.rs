@@ -1,5 +1,4 @@
 use crate::sqlite::query::utils::Returning;
-
 use {
     super::{
         expr::{
@@ -59,7 +58,12 @@ impl NamedSelectSource {
         let mut new_fields: Vec<(Binding, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res =
-                    s.build_internal(ctx, &HashMap::new(), &path.push_back(format!("From subselect")), QueryResCount::Many);
+                    s.build_internal(
+                        ctx,
+                        &HashMap::new(),
+                        &path.push_back(format!("From subselect")),
+                        QueryResCount::Many,
+                    );
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
@@ -216,8 +220,12 @@ impl SelectBody {
                 let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
                 out.s(&o_tokens.to_string());
                 match o.1 {
-                    Order::Asc => { out.s("asc"); },
-                    Order::Desc => { out.s("desc"); },
+                    Order::Asc => {
+                        out.s("asc");
+                    },
+                    Order::Desc => {
+                        out.s("desc");
+                    },
                 }
             }
         }
@@ -270,20 +278,20 @@ pub fn build_select_junction(
             },
         }
         let j_body: (ExprType, Tokens) = j.body.build_internal(ctx, &HashMap::new(), &path, QueryResCount::Many);
-        if j_body.0 .0.len() != base_type.0.len() {
+        if j_body.0.0.len() != base_type.0.len() {
             ctx
                 .errs
                 .err(
                     &path,
                     format!(
                         "Select returns {} columns but the base select has {} columns and these must match exactly",
-                        j_body.0 .0.len(),
+                        j_body.0.0.len(),
                         base_type.0.len()
                     ),
                 );
             continue;
         }
-        for (i, ((_, got), (_, want))) in Iterator::zip(j_body.0 .0.iter(), base_type.0.iter()).enumerate() {
+        for (i, ((_, got), (_, want))) in Iterator::zip(j_body.0.0.iter(), base_type.0.iter()).enumerate() {
             let path = path.push_back(format!("Select return {}", i));
             check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
         }

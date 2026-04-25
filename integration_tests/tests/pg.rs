@@ -35,19 +35,18 @@ pub mod pg_gen_migrate_rename_table;
 pub mod pg_gen_migrate_remove_table;
 pub mod pg_gen_select_cte;
 pub mod pg_gen_select_window;
+pub mod pg_gen_migrate_make_field_optional;
 pub mod pg_gen_migrate_pre_migration;
 
 async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error> {
     let server = PgliteServer::temporary_tcp().map_err(|e| loga::err(e))?;
-    let (client, db_conn) = tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls)
-        .await
-        .map_err(|e| loga::err(e))?;
+    let (client, db_conn) =
+        tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls).await.map_err(|e| loga::err(e))?;
     tokio::spawn(async move {
         if let Err(e) = db_conn.await {
             eprintln!("connection error: {}", e);
         }
     });
-
     Ok((client, server))
 }
 
@@ -288,7 +287,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     pg_gen_select_group_by::insert_banan(&mut db, 2, 10).await?;
     let mut res = pg_gen_select_group_by::get_banan(&mut db).await?;
     res.sort();
-    assert_eq!(res, vec![13, 106]);
+    assert_eq!(res, vec![13i64, 106i64]);
     Ok(())
 }
 
@@ -387,12 +386,16 @@ async fn test_select_window() -> Result<(), loga::Error> {
     pg_gen_select_window::insert_banan(&mut db, 1, 99).await?;
     pg_gen_select_window::insert_banan(&mut db, 2, 3).await?;
     pg_gen_select_window::insert_banan(&mut db, 2, 10).await?;
-    let mut res =
-        pg_gen_select_window::get_banan(&mut db).await?
-            .into_iter()
-            .collect::<Vec<_>>();
+    let mut res = pg_gen_select_window::get_banan(&mut db).await?.into_iter().collect::<Vec<_>>();
     res.sort();
-    assert_eq!(res, vec![13, 13, 106, 106]);
+    assert_eq!(res, vec![13i64, 13i64, 106i64, 106i64]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_make_field_optional() -> Result<(), loga::Error> {
+    let (mut db, _cont) = db().await?;
+    pg_gen_migrate_make_field_optional::migrate(&mut db).await?;
     Ok(())
 }
 

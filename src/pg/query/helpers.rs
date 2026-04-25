@@ -25,7 +25,19 @@ pub fn set_field(param_name: impl Into<String>, f: &FieldHandle) -> (FieldHandle
 /// Generates a param matching a field in name in type
 pub fn field_param(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
     let version = f.table.version.0.borrow();
-    let type_ = version.tables.get(&f.table.schema_id).unwrap().fields.get(&f.schema_id).unwrap().type_.type_.clone();
+    let type_ =
+        version
+            .as_ref()
+            .unwrap()
+            .tables
+            .get(&f.table.schema_id)
+            .unwrap()
+            .fields
+            .get(&f.schema_id)
+            .unwrap()
+            .type_
+            .type_
+            .clone();
     Expr::Param {
         name: param_name.into(),
         type_: type_,
@@ -145,7 +157,14 @@ pub fn fn_sum(expr: Expr) -> Expr {
             let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
                 return ExprType(vec![]);
             };
-            return ExprType(vec![(ExprValName::empty(), t)]);
+            let mut out_t = t;
+            match out_t.type_.type_ {
+                SimpleSimpleType::I16 | SimpleSimpleType::I32 | SimpleSimpleType::I64 => {
+                    out_t.type_.type_ = SimpleSimpleType::I64;
+                },
+                _ => { },
+            }
+            return ExprType(vec![(ExprValName::empty(), out_t)]);
         })),
     }
 }

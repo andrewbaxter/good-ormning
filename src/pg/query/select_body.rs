@@ -77,7 +77,7 @@ impl SelectBody {
         // Prep
         let source: (ExprType, Tokens) = self.table.build(ctx, path);
         let mut scope = inject_scope.clone();
-        for (k, v) in source.0 .0 {
+        for (k, v) in source.0.0 {
             scope.insert(k, v);
         }
         let mut joins = vec![];
@@ -93,7 +93,7 @@ impl SelectBody {
             out.s(&source.1.to_string());
             match je.type_ {
                 crate::pg::query::select::JoinType::Left => {
-                    for (k, mut v) in source.0 .0 {
+                    for (k, mut v) in source.0.0 {
                         if !v.opt {
                             v = Type {
                                 opt: true,
@@ -105,7 +105,7 @@ impl SelectBody {
                     }
                 },
                 crate::pg::query::select::JoinType::Inner => {
-                    for (k, v) in source.0 .0 {
+                    for (k, v) in source.0.0 {
                         scope.insert(k, v);
                     }
                 },
@@ -159,8 +159,12 @@ impl SelectBody {
                 let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
                 out.s(&o_tokens.to_string());
                 match o.1 {
-                    Order::Asc => { out.s("asc"); },
-                    Order::Desc => { out.s("desc"); },
+                    Order::Asc => {
+                        out.s("asc");
+                    },
+                    Order::Desc => {
+                        out.s("desc");
+                    },
                 }
             }
         }
@@ -168,7 +172,12 @@ impl SelectBody {
             out.s("limit");
             let path = path.push_back("Limit".into());
             let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
-            crate::pg::query::expr::check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]));
+            crate::pg::query::expr::check_general_same(
+                ctx,
+                &path,
+                &limit_t,
+                &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]),
+            );
             out.s(&limit_tokens.to_string());
         }
         (out_type, out)

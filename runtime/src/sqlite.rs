@@ -25,12 +25,10 @@ impl<T> GoodErrorQuery<T> for Result<T, rusqlite::Error> {
 
 pub trait SqliteConnection {
     fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> rusqlite::Result<usize>;
-    fn query<T, F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>>(
-        &mut self,
-        query: &str,
-        params: impl rusqlite::Params,
-        f: F,
-    ) -> rusqlite::Result<Vec<T>>;
+    fn query<
+        T,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    >(&mut self, query: &str, params: impl rusqlite::Params, f: F) -> rusqlite::Result<Vec<T>>;
     fn load_array_module(&mut self) -> rusqlite::Result<()>;
 }
 
@@ -39,12 +37,10 @@ impl SqliteConnection for rusqlite::Connection {
         rusqlite::Connection::execute(self, query, params)
     }
 
-    fn query<T, F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>>(
-        &mut self,
-        query: &str,
-        params: impl rusqlite::Params,
-        mut f: F,
-    ) -> rusqlite::Result<Vec<T>> {
+    fn query<
+        T,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> rusqlite::Result<Vec<T>> {
         let mut stmt = self.prepare(query)?;
         let rows = stmt.query_map(params, |row| f(row))?;
         let mut res = vec![];
@@ -64,12 +60,10 @@ impl SqliteConnection for rusqlite::Transaction<'_> {
         rusqlite::Connection::execute(self, query, params)
     }
 
-    fn query<T, F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>>(
-        &mut self,
-        query: &str,
-        params: impl rusqlite::Params,
-        mut f: F,
-    ) -> rusqlite::Result<Vec<T>> {
+    fn query<
+        T,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> rusqlite::Result<Vec<T>> {
         let mut stmt = self.prepare(query)?;
         let rows = stmt.query_map(params, |row| f(row))?;
         let mut res = vec![];
@@ -93,8 +87,12 @@ pub enum GoodOrmningSqliteTimestamp {
 impl rusqlite::types::ToSql for GoodOrmningSqliteTimestamp {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         match self {
-            GoodOrmningSqliteTimestamp::String(s) => Ok(rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Text(s.clone()))),
-            GoodOrmningSqliteTimestamp::I64(i) => Ok(rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Integer(*i))),
+            GoodOrmningSqliteTimestamp::String(s) => Ok(
+                rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Text(s.clone())),
+            ),
+            GoodOrmningSqliteTimestamp::I64(i) => Ok(
+                rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Integer(*i)),
+            ),
         }
     }
 }

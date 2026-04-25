@@ -84,7 +84,9 @@ impl QueryBody for Insert {
             scope.insert(ExprValName::field(field_ref), info.type_.clone());
             if !info.type_.opt && info.type_.type_.type_ != SimpleSimpleType::Auto &&
                 !check_inserting_fields.remove(field_ref) {
-                ctx.errs.err(path, format!("Field {:?} is a non-optional field but is missing in insert", field_ref));
+                ctx
+                    .errs
+                    .err(path, format!("Field {:?} is a non-optional field but is missing in insert", field_ref));
             }
         }
         drop(check_inserting_fields);

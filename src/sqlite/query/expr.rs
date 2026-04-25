@@ -46,10 +46,8 @@ use {
         },
     },
 };
-
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
-
 use super::select::{
     Select,
     Order,
@@ -59,16 +57,9 @@ use super::select::{
 pub struct ExprType(pub Vec<(Binding, Type)>);
 
 impl ExprType {
-    pub fn assert_scalar(
-        &self,
-        errs: &mut Errs,
-        path: &rpds::Vector<String>,
-    ) -> Option<Type> {
+    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
         if self.0.len() != 1 {
-            errs.err(
-                path,
-                format!("Expected scalar expression but got {} fields", self.0.len()),
-            );
+            errs.err(path, format!("Expected scalar expression but got {} fields", self.0.len()));
             return None;
         }
         return Some(self.0[0].1.clone());
@@ -238,6 +229,7 @@ pub enum Expr {
     /// having the specified type. Use this for casting between primitive types and
     /// Rust new-types for instance.
     Cast(Box<Expr>, Type),
+    Exists(Box<super::select::Select>),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -312,19 +304,16 @@ pub enum PrefixOp {
     Not,
 }
 
-macro_rules!empty_type {
+macro_rules! empty_type{
     ($out: expr, $t: expr) => {
-        (
-            ExprType(vec![(Binding::empty(), Type {
-                type_: SimpleType {
-                    type_: $t,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]),
-            $out
-        )
+        (ExprType(vec![(Binding::empty(), Type {
+            type_: SimpleType {
+                type_: $t,
+                custom: None,
+            },
+            opt: false,
+            arr: false,
+        })]), $out)
     };
 }
 
@@ -349,36 +338,29 @@ impl Expr {
                     types.push(t);
                 }
                 out.s(")");
-                return (
-                    ExprType(
-                        types
-                            .into_iter()
-                            .flat_with_index(|i, t| t.0.into_iter().map(move |(mut k, v)| {
-                                if k.id.is_empty() {
-                                    k.id = format!("_{}", i);
-                                }
-                                (k, v)
-                            }))
-                            .collect(),
-                    ),
-                    out
-                );
+                return (ExprType(types.into_iter().flat_with_index(|i, t| t.0.into_iter().map(move |(mut k, v)| {
+                    if k.id.is_empty() {
+                        k.id = format!("_{}", i);
+                    }
+                    (k, v)
+                })).collect()), out);
             },
             Expr::LitNull(t) => {
                 let mut out = Tokens::new();
                 out.s("null");
-                return (
-                    ExprType(vec![(Binding::empty(), Type {
-                        type_: t.clone(),
-                        opt: true,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(Binding::empty(), Type {
+                    type_: t.clone(),
+                    opt: true,
+                    arr: false,
+                })]), out);
             },
             Expr::LitBool(x) => {
                 let mut out = Tokens::new();
-                out.s(if *x { "1" } else { "0" });
+                out.s(if *x {
+                    "1"
+                } else {
+                    "0"
+                });
                 return empty_type!(out, SimpleSimpleType::Bool);
             },
             Expr::LitAuto(x) => {
@@ -504,30 +486,70 @@ impl Expr {
                         rust_forward = match &t.type_.type_ {
                             SimpleSimpleType::UtcTimeSChrono => {
                                 if t.opt {
-                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(x.timestamp())))
+                                    quote!(
+                                        #rust_forward.map(
+                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
+                                                x.timestamp()
+                                            )
+                                        )
+                                    )
                                 } else {
-                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(#rust_forward.timestamp()))
+                                    quote!(
+                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
+                                            #rust_forward.timestamp()
+                                        )
+                                    )
                                 }
                             },
                             SimpleSimpleType::UtcTimeMsChrono => {
                                 if t.opt {
-                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(x.to_rfc3339())))
+                                    quote!(
+                                        #rust_forward.map(
+                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(
+                                                x.to_rfc3339()
+                                            )
+                                        )
+                                    )
                                 } else {
-                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(#rust_forward.to_rfc3339()))
+                                    quote!(
+                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
+                                            #rust_forward.to_rfc3339()
+                                        )
+                                    )
                                 }
                             },
                             SimpleSimpleType::UtcTimeSJiff => {
                                 if t.opt {
-                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(x.as_second())))
+                                    quote!(
+                                        #rust_forward.map(
+                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
+                                                x.as_second()
+                                            )
+                                        )
+                                    )
                                 } else {
-                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(#rust_forward.as_second()))
+                                    quote!(
+                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
+                                            #rust_forward.as_second()
+                                        )
+                                    )
                                 }
                             },
                             SimpleSimpleType::UtcTimeMsJiff => {
                                 if t.opt {
-                                    quote!(#rust_forward.map(|x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(x.to_string())))
+                                    quote!(
+                                        #rust_forward.map(
+                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(
+                                                x.to_string()
+                                            )
+                                        )
+                                    )
                                 } else {
-                                    quote!(good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(#rust_forward.to_string()))
+                                    quote!(
+                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
+                                            #rust_forward.to_string()
+                                        )
+                                    )
                                 }
                             },
                             _ => rust_forward,
@@ -590,13 +612,7 @@ impl Expr {
                 );
             },
             Expr::BinOpChain { op, exprs } => {
-                return do_bin_op(
-                    ctx,
-                    &path.push_back(format!("Bin op chain {:?}", op)),
-                    scope,
-                    op,
-                    exprs,
-                );
+                return do_bin_op(ctx, &path.push_back(format!("Bin op chain {:?}", op)), scope, op, exprs);
             },
             Expr::PrefixOp { op, right } => {
                 let mut out = Tokens::new();
@@ -645,11 +661,16 @@ impl Expr {
                         if i > 0 {
                             out.s(",");
                         }
-                        let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
+                        let (_, tokens): (ExprType, Tokens) =
+                            e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
                         out.s(&tokens.to_string());
                         match o {
-                            Order::Asc => { out.s("asc"); },
-                            Order::Desc => { out.s("desc"); },
+                            Order::Asc => {
+                                out.s("asc");
+                            },
+                            Order::Desc => {
+                                out.s("desc");
+                            },
                         }
                     }
                 }
@@ -659,7 +680,8 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
-                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::sqlite::QueryResCount::Many);
+                let (t, tokens) =
+                    s.build(ctx, &path.push_back("Subselect".into()), crate::sqlite::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (t, out);
             },
@@ -667,40 +689,45 @@ impl Expr {
                 let mut out = Tokens::new();
                 let (got_t, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
                 check_general_same(ctx, path, &got_t, &ExprType(vec![(Binding::empty(), t.clone())]));
-                out.s("cast (").s(&tokens.to_string()).s("as").s(crate::sqlite::types::to_sql_type(&t.type_.type_)).s(")");
+                out
+                    .s("cast (")
+                    .s(&tokens.to_string())
+                    .s("as")
+                    .s(crate::sqlite::types::to_sql_type(&t.type_.type_))
+                    .s(")");
                 return (ExprType(vec![(Binding::empty(), t.clone())]), out);
             },
-
+            Expr::Exists(s) => {
+                let mut out = Tokens::new();
+                out.s("exists (");
+                let (_, tokens) =
+                    s.build(ctx, &path.push_back("Exists".into()), crate::sqlite::QueryResCount::Many);
+                out.s(&tokens.to_string()).s(")");
+                return (ExprType(vec![(Binding::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
+            },
         }
     }
 }
 
-pub(crate) fn check_bool(
-    ctx: &mut SqliteQueryCtx,
-    path: &rpds::Vector<String>,
-    t: &ExprType,
-) {
-    check_general_same(
-        ctx,
-        path,
-        t,
-        &ExprType(vec![(Binding::empty(), Type {
-            type_: SimpleType {
-                type_: SimpleSimpleType::Bool,
-                custom: None,
-            },
-            opt: false,
-            arr: false,
-        })]),
-    );
+pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+    check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
+        type_: SimpleType {
+            type_: SimpleSimpleType::Bool,
+            custom: None,
+        },
+        opt: false,
+        arr: false,
+    })]));
 }
 
-pub(crate) fn check_assignable(
-    errs: &mut Errs,
-    path: &rpds::Vector<String>,
-    left: &Type,
-    right: &ExprType,
-) {
+pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
     let Some(right) = right.assert_scalar(errs, path) else {
         return;
     };
@@ -733,20 +760,10 @@ pub(crate) fn check_general_same(
     }
 }
 
-pub fn check_same(
-    errs: &mut Errs,
-    path: &rpds::Vector<String>,
-    left: &ExprType,
-    right: &ExprType,
-) -> Option<Type> {
-    let left = left.assert_scalar(errs, &path.push_back("Left".into())) ?;
-    let right = right.assert_scalar(errs, &path.push_back("Right".into())) ?;
-    check_general_same_type(
-        &mut SqliteQueryCtx::new(errs.clone(), HashMap::new()),
-        path,
-        &left,
-        &right,
-    );
+pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
+    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
+    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
+    check_general_same_type(&mut SqliteQueryCtx::new(errs.clone(), HashMap::new()), path, &left, &right);
     return Some(left);
 }
 
@@ -779,18 +796,11 @@ pub(crate) fn check_general_same_type_assignable(
     if left.type_.type_ != right.type_.type_ {
         errs.err(
             path,
-            format!(
-                "Expression has type {:?} which is not assignable to {:?}",
-                right.type_.type_,
-                left.type_.type_
-            ),
+            format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
         );
     }
     if !left.opt && right.opt {
-        errs.err(
-            path,
-            format!("Expression is optional but destination is not"),
-        );
+        errs.err(path, format!("Expression is optional but destination is not"));
     }
 }
 
@@ -837,11 +847,8 @@ fn do_bin_op(
             BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide => {
                 if !matches!(
                     got_t.type_.type_,
-                    SimpleSimpleType::I32 |
-                    SimpleSimpleType::I64 |
-                    SimpleSimpleType::F32 |
-                    SimpleSimpleType::F64 |
-                    SimpleSimpleType::Auto
+                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
+                        SimpleSimpleType::Auto
                 ) {
                     ctx
                         .errs
@@ -871,7 +878,9 @@ fn do_bin_op(
             BinOp::GreaterThanEqualTo |
             BinOp::Like |
             BinOp::In |
-            BinOp::NotIn => { },
+            BinOp::NotIn => {
+
+            },
         }
         if let Some(out_t) = &mut out_t {
             check_general_same_type(ctx, path, out_t, &got_t);
@@ -912,13 +921,21 @@ fn do_bin_op(
 }
 
 trait FlatWithIndex<T>: Iterator<Item = T> {
-    fn flat_with_index<R: Iterator, F: FnMut(usize, T) -> R>(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
-    where Self: Sized;
+    fn flat_with_index<
+        R: Iterator,
+        F: FnMut(usize, T) -> R,
+    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
+    where
+        Self: Sized;
 }
 
 impl<I: Iterator<Item = T>, T> FlatWithIndex<T> for I {
-    fn flat_with_index<R: Iterator, F: FnMut(usize, T) -> R>(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
-    where Self: Sized {
+    fn flat_with_index<
+        R: Iterator,
+        F: FnMut(usize, T) -> R,
+    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
+    where
+        Self: Sized {
         WithIndex {
             iter: self,
             f: f,

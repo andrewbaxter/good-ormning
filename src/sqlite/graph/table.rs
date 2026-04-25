@@ -120,10 +120,11 @@ impl NodeDataDispatch for NodeTable_ {
                         if i > 0 {
                             stmt.s(",");
                         }
+
                         // This assumes the remote table is already in the context or we can look it up.
-                        // In the new architecture, we might need a way to get remote field names.
-                        // For now, let's assume the field names are the same as schema IDs or we have a lookup.
-                        // Actually, Version has the info.
+                        // In the new architecture, we might need a way to get remote field names. For
+                        // now, let's assume the field names are the same as schema IDs or we have a
+                        // lookup. Actually, Version has the info.
                         stmt.id(&ctx.version.tables.get(&x.remote_table).unwrap().fields.get(r_id).unwrap().id);
                     }
                     stmt.s(")");

@@ -25,7 +25,8 @@ use super::{
 #[derive(Clone)]
 pub(crate) struct NodeIndex_ {
     pub table_schema_id: SchemaTableId,
-    pub table_id: String, // SQL name
+    // SQL name
+    pub table_id: String,
     pub schema_id: SchemaIndexId,
     pub def: Index,
     pub field_sql_names: HashMap<SchemaFieldId, String>,
@@ -76,7 +77,12 @@ impl NodeData for NodeIndex_ {
     fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
         if self.def.id != old.def.id {
             // SQLite doesn't support renaming indexes easily
-            ctx.errs.err(&rpds::vector![format!("Index {:?}", self.schema_id)], format!("SQLite doesn't support renaming indexes"));
+            ctx
+                .errs
+                .err(
+                    &rpds::vector![format!("Index {:?}", self.schema_id)],
+                    format!("SQLite doesn't support renaming indexes"),
+                );
         }
     }
 }

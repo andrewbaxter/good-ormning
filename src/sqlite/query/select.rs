@@ -71,7 +71,8 @@ impl NamedSelectSource {
         let mut out = Tokens::new();
         let mut new_fields: Vec<(Binding, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
-                let res: (ExprType, Tokens) = s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
+                let res: (ExprType, Tokens) =
+                    s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
@@ -89,7 +90,6 @@ impl NamedSelectSource {
                 table_info.fields.iter().map(|(id, info)| (Binding::field(id), info.type_.clone())).collect()
             },
         };
-
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];
@@ -210,7 +210,6 @@ impl QueryBody for Select {
                 }
             }
         }
-
         if let Some(l) = &self.limit {
             out.s("limit");
             let path = path.push_back("Limit".into());
@@ -218,7 +217,6 @@ impl QueryBody for Select {
             check_general_same(ctx, &path, &limit_t, &ExprType(vec![(Binding::empty(), type_i64().build())]));
             out.s(&limit_tokens.to_string());
         }
-
         if !self.junction.is_empty() {
             let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junction);
             out.s(&junction_tokens.to_string());

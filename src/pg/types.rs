@@ -80,8 +80,8 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
         },
         SimpleSimpleType::U32 => RustTypes {
             custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomU32),
-            ret_type: quote!(u32),
-            arg_type: quote!(u32),
+            ret_type: quote!(i64),
+            arg_type: quote!(i64),
         },
         SimpleSimpleType::F32 => RustTypes {
             custom_trait: quote!(good_ormning_runtime::pg::GoodOrmningCustomF32),

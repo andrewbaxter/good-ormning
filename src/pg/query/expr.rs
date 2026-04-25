@@ -46,10 +46,8 @@ use {
         },
     },
 };
-
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
-
 use super::select::{
     Select,
     Order,
@@ -222,6 +220,7 @@ pub enum Expr {
     /// having the specified type. Use this for casting between primitive types and
     /// Rust new-types for instance.
     Cast(Box<Expr>, Type),
+    Exists(Box<super::select::Select>),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -301,8 +300,8 @@ pub(crate) fn check_same(
     left: &ExprType,
     right: &ExprType,
 ) -> Option<Type> {
-    let left = left.assert_scalar(errs, &path.push_back("Left".into())) ?;
-    let right = right.assert_scalar(errs, &path.push_back("Right".into())) ?;
+    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
+    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
     if left.opt != right.opt {
         errs.err(
             path,
@@ -332,11 +331,7 @@ pub(crate) fn check_same(
     Some(left.clone())
 }
 
-pub(crate) fn check_bool(
-    ctx: &mut PgQueryCtx,
-    path: &rpds::Vector<String>,
-    t: &ExprType,
-) {
+pub(crate) fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
         return;
     };
@@ -348,23 +343,14 @@ pub(crate) fn check_bool(
     }
 }
 
-pub(crate) fn check_assignable(
-    errs: &mut Errs,
-    path: &rpds::Vector<String>,
-    left: &Type,
-    right: &ExprType,
-) {
+pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
     let Some(right) = right.assert_scalar(errs, path) else {
         return;
     };
     if left.type_.type_ != right.type_.type_ {
         errs.err(
             path,
-            format!(
-                "Expression has type {:?} which is not assignable to {:?}",
-                right.type_.type_,
-                left.type_.type_
-            ),
+            format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
         );
     }
     if !left.opt && right.opt {
@@ -398,12 +384,7 @@ pub(crate) fn check_general_same(
     }
 }
 
-pub(crate) fn check_general_same_type(
-    ctx: &mut PgQueryCtx,
-    path: &rpds::Vector<String>,
-    left: &Type,
-    right: &Type,
-) {
+pub(crate) fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
     if left.type_.type_ != right.type_.type_ {
         ctx
             .errs
@@ -452,212 +433,174 @@ impl Expr {
             Expr::LitNull(t) => {
                 let mut out = Tokens::new();
                 out.s("null");
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: t.clone(),
-                        opt: true,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: t.clone(),
+                    opt: true,
+                    arr: false,
+                })]), out);
             },
             Expr::LitBool(b) => {
                 let mut out = Tokens::new();
-                out.s(if *b { "true" } else { "false" });
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::Bool,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                out.s(if *b {
+                    "true"
+                } else {
+                    "false"
+                });
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitAuto(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::Auto,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Auto,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitI16(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::I16,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::I16,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitI32(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::I32,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::I32,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitI64(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::I64,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::I64,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitU32(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::U32,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::U32,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitF32(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::F32,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::F32,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitF64(v) => {
                 let mut out = Tokens::new();
                 out.s(&v.to_string());
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::F64,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::F64,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitString(v) => {
                 let mut out = Tokens::new();
                 out.s(&format!("'{}'", v.replace("'", "''")));
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::String,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::String,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::LitBytes(v) => {
                 let mut out = Tokens::new();
                 out.s(&format!("'\\x{}'", hex::encode(v)));
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::Bytes,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bytes,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             #[cfg(feature = "chrono")]
             Expr::LitUtcTimeChrono(v) => {
                 let mut out = Tokens::new();
                 out.s(&format!("'{}'", v.to_rfc3339()));
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::UtcTimeSChrono,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::UtcTimeSChrono,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             #[cfg(feature = "chrono")]
             Expr::LitFixedOffsetTimeChrono(v) => {
                 let mut out = Tokens::new();
                 out.s(&format!("'{}'", v.to_rfc3339()));
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::FixedOffsetTimeChrono,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::FixedOffsetTimeChrono,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             #[cfg(feature = "jiff")]
             Expr::LitUtcTimeJiff(v) => {
                 let mut out = Tokens::new();
                 out.s(&format!("'{}'", v.to_string()));
-                return (
-                    ExprType(vec![(ExprValName::empty(), Type {
-                        type_: SimpleType {
-                            type_: SimpleSimpleType::UtcTimeSJiff,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]),
-                    out
-                );
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::UtcTimeSJiff,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
             Expr::Param { name, type_ } => {
                 let mut out = Tokens::new();
@@ -670,7 +613,12 @@ impl Expr {
                                 .errs
                                 .err(
                                     &path,
-                                    format!("Parameter {} specified with multiple types: {:?}, {:?}", name, type_, prev_t),
+                                    format!(
+                                        "Parameter {} specified with multiple types: {:?}, {:?}",
+                                        name,
+                                        type_,
+                                        prev_t
+                                    ),
                                 );
                         }
                         *i
@@ -855,11 +803,16 @@ impl Expr {
                         if i > 0 {
                             out.s(",");
                         }
-                        let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
+                        let (_, tokens): (ExprType, Tokens) =
+                            e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
                         out.s(&tokens.to_string());
                         match o {
-                            Order::Asc => { out.s("asc"); },
-                            Order::Desc => { out.s("desc"); },
+                            Order::Asc => {
+                                out.s("asc");
+                            },
+                            Order::Desc => {
+                                out.s("desc");
+                            },
                         }
                     }
                 }
@@ -877,8 +830,27 @@ impl Expr {
                 let mut out = Tokens::new();
                 let (got_t, tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
                 check_general_same(ctx, path, &got_t, &ExprType(vec![(ExprValName::empty(), t.clone())]));
-                out.s("(").s(&tokens.to_string()).s("::").s(crate::pg::types::to_sql_type(&t.type_.type_)).s(")");
+                out
+                    .s("(")
+                    .s(&tokens.to_string())
+                    .s("::")
+                    .s(crate::pg::types::to_sql_type(&t.type_.type_))
+                    .s(")");
                 return (ExprType(vec![(ExprValName::empty(), t.clone())]), out);
+            },
+            Expr::Exists(s) => {
+                let mut out = Tokens::new();
+                out.s("exists (");
+                let (_, tokens) = s.build(ctx, &path.push_back("Exists".into()), crate::pg::QueryResCount::Many);
+                out.s(&tokens.to_string()).s(")");
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
             },
         }
     }

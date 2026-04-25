@@ -25,6 +25,7 @@ use crate::{
                 ExprType,
                 Binding,
                 check_general_same,
+                check_same,
                 Expr,
             },
         },
@@ -43,7 +44,8 @@ use super::{
 #[derive(Clone)]
 pub(crate) struct NodeField_ {
     pub table_schema_id: SchemaTableId,
-    pub table_id: String, // SQL name
+    // SQL name
+    pub table_id: String,
     pub schema_id: SchemaFieldId,
     pub def: Field,
 }
@@ -70,22 +72,18 @@ impl NodeField_ {
 impl NodeData for NodeField_ {
     fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
         if self.def.id != old.def.id {
-            // SQLite doesn't support renaming columns easily in older versions,
-            // but we'll try it and let the user handle errors if any.
+            // SQLite doesn't support renaming columns easily in older versions, but we'll try
+            // it and let the user handle errors if any.
             let mut stmt = Tokens::new();
-            stmt
-                .s("alter table")
-                .id(&self.table_id)
-                .s("rename column")
-                .id(&old.def.id)
-                .s("to")
-                .id(&self.def.id);
+            stmt.s("alter table").id(&self.table_id).s("rename column").id(&old.def.id).s("to").id(&self.def.id);
             ctx.statements.push(stmt.to_string());
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
         if (t.opt != old_t.opt) || (t.type_.type_ != old_t.type_.type_) {
-            ctx.errs.err(&self.display_path(), format!("SQLite doesn't support altering column types or nullability"));
+            ctx
+                .errs
+                .err(&self.display_path(), format!("SQLite doesn't support altering column types or nullability"));
         }
     }
 }
@@ -116,14 +114,17 @@ impl NodeDataDispatch for NodeField_ {
                     sql_name: self.def.id.clone(),
                     type_: self.def.type_.type_.clone(),
                 });
-                qctx_tables.insert(crate::sqlite::schema::table::TableRef(self.table_schema_id.clone()), SqliteTableInfo {
-                    sql_name: self.table_id.clone(),
-                    fields: fields,
-                });
+                qctx_tables.insert(
+                    crate::sqlite::schema::table::TableRef(self.table_schema_id.clone()),
+                    SqliteTableInfo {
+                        sql_name: self.table_id.clone(),
+                        fields: fields,
+                    },
+                );
                 let mut qctx = SqliteQueryCtx::new(ctx.errs.clone(), qctx_tables);
-                let expr: Expr = d.clone().into();
+                let expr: Expr = Expr::from(d.clone());
                 let e_res = expr.build(&mut qctx, &path, &HashMap::new());
-                check_general_same(&mut qctx, &path, &ExprType(vec![(Binding::empty(), Type {
+                check_same(&mut qctx.errs, &path, &ExprType(vec![(Binding::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                     arr: false,

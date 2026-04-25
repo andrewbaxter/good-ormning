@@ -455,10 +455,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     sqlite_gen_select_window::insert_banan(&mut db, 1, 99)?;
     sqlite_gen_select_window::insert_banan(&mut db, 2, 3)?;
     sqlite_gen_select_window::insert_banan(&mut db, 2, 10)?;
-    let mut res =
-        sqlite_gen_select_window::get_banan(&mut db)?
-            .into_iter()
-            .collect::<Vec<_>>();
+    let mut res = sqlite_gen_select_window::get_banan(&mut db)?.into_iter().collect::<Vec<_>>();
     res.sort();
     assert_eq!(res, vec![13, 13, 106, 106]);
     Ok(())

@@ -25,6 +25,7 @@ use crate::{
                 ExprType,
                 ExprValName,
                 check_general_same,
+                check_same,
                 Expr,
             },
         },
@@ -43,7 +44,8 @@ use super::{
 #[derive(Clone)]
 pub(crate) struct NodeField_ {
     pub table_schema_id: SchemaTableId,
-    pub table_id: String, // SQL name
+    // SQL name
+    pub table_id: String,
     pub schema_id: SchemaFieldId,
     pub def: Field,
 }
@@ -71,13 +73,7 @@ impl NodeData for NodeField_ {
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
         if self.def.id != old.def.id {
             let mut stmt = Tokens::new();
-            stmt
-                .s("alter table")
-                .id(&self.table_id)
-                .s("rename column")
-                .id(&old.def.id)
-                .s("to")
-                .id(&self.def.id);
+            stmt.s("alter table").id(&self.table_id).s("rename column").id(&old.def.id).s("to").id(&self.def.id);
             ctx.statements.push(stmt.to_string());
         }
         let t = &self.def.type_.type_;
@@ -141,6 +137,7 @@ impl NodeDataDispatch for NodeField_ {
             if let Some(d) = &self.def.type_.migration_default {
                 stmt.s("not null default");
                 let mut qctx_tables = HashMap::new();
+
                 // Create a dummy table info for validation
                 let mut fields = HashMap::new();
                 let field_ref = FieldRef {
@@ -156,9 +153,9 @@ impl NodeDataDispatch for NodeField_ {
                     fields: fields,
                 });
                 let mut qctx = PgQueryCtx::new(ctx.errs.clone(), qctx_tables);
-                let expr: Expr = d.clone().into();
+                let expr: Expr = Expr::from(d.clone());
                 let e_res = expr.build(&mut qctx, &path, &HashMap::new());
-                check_general_same(&mut qctx, &path, &ExprType(vec![(ExprValName::empty(), Type {
+                check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                     arr: false,
