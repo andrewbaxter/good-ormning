@@ -230,7 +230,7 @@ pub struct ExprValName {
 }
 
 impl ExprValName {
-    pub(crate) fn local(name: String) -> Self {
+    pub fn local(name: String) -> Self {
         ExprValName {
             table_id: "".into(),
             id: name,
@@ -251,7 +251,7 @@ impl ExprValName {
         }
     }
 
-    pub(crate) fn with_alias(&self, s: &str) -> ExprValName {
+    pub fn with_alias(&self, s: &str) -> ExprValName {
         ExprValName {
             table_id: s.into(),
             id: self.id.clone(),
@@ -294,12 +294,7 @@ pub enum PrefixOp {
     Not,
 }
 
-pub(crate) fn check_same(
-    errs: &mut Errs,
-    path: &rpds::Vector<String>,
-    left: &ExprType,
-    right: &ExprType,
-) -> Option<Type> {
+pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
     let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
     let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
     if left.opt != right.opt {
@@ -331,7 +326,7 @@ pub(crate) fn check_same(
     Some(left.clone())
 }
 
-pub(crate) fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+pub fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
         return;
     };
@@ -343,7 +338,7 @@ pub(crate) fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &
     }
 }
 
-pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
+pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
     let Some(right) = right.assert_scalar(errs, path) else {
         return;
     };
@@ -358,12 +353,7 @@ pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, lef
     }
 }
 
-pub(crate) fn check_general_same(
-    ctx: &mut PgQueryCtx,
-    path: &rpds::Vector<String>,
-    left: &ExprType,
-    right: &ExprType,
-) {
+pub fn check_general_same(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
     if left.0.len() != right.0.len() {
         ctx
             .errs
@@ -384,7 +374,7 @@ pub(crate) fn check_general_same(
     }
 }
 
-pub(crate) fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
+pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
     if left.type_.type_ != right.type_.type_ {
         ctx
             .errs

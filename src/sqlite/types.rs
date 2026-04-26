@@ -36,82 +36,82 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
         SimpleSimpleType::Auto => RustTypes {
             ret_type: quote!(i64),
             arg_type: quote!(i64),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomAuto),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomAuto),
         },
         SimpleSimpleType::I16 => RustTypes {
             ret_type: quote!(i16),
             arg_type: quote!(i16),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomI16),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomI16),
         },
         SimpleSimpleType::I32 => RustTypes {
             ret_type: quote!(i32),
             arg_type: quote!(i32),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomI32),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomI32),
         },
         SimpleSimpleType::I64 => RustTypes {
             ret_type: quote!(i64),
             arg_type: quote!(i64),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomI64),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomI64),
         },
         SimpleSimpleType::U32 => RustTypes {
             ret_type: quote!(u32),
             arg_type: quote!(u32),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomU32),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomU32),
         },
         SimpleSimpleType::F32 => RustTypes {
             ret_type: quote!(f32),
             arg_type: quote!(f32),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomF32),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomF32),
         },
         SimpleSimpleType::F64 => RustTypes {
             ret_type: quote!(f64),
             arg_type: quote!(f64),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomF64),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomF64),
         },
         SimpleSimpleType::Bool => RustTypes {
             ret_type: quote!(bool),
             arg_type: quote!(bool),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomBool),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomBool),
         },
         SimpleSimpleType::String => RustTypes {
             ret_type: quote!(String),
             arg_type: quote!(&str),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomString),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomString),
         },
         SimpleSimpleType::Bytes => RustTypes {
             ret_type: quote!(Vec < u8 >),
             arg_type: quote!(&[u8]),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomBytes),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomBytes),
         },
         #[cfg(feature = "chrono")]
         SimpleSimpleType::UtcTimeSChrono => RustTypes {
-            ret_type: quote!(chrono::DateTime < chrono::Utc >),
-            arg_type: quote!(chrono::DateTime < chrono::Utc >),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomUtcTimeChrono),
+            ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
+            arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomUtcTimeChrono),
         },
         #[cfg(feature = "chrono")]
         SimpleSimpleType::UtcTimeMsChrono => RustTypes {
-            ret_type: quote!(chrono::DateTime < chrono::Utc >),
-            arg_type: quote!(chrono::DateTime < chrono::Utc >),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomUtcTimeChrono),
+            ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
+            arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomUtcTimeChrono),
         },
         #[cfg(feature = "chrono")]
         SimpleSimpleType::FixedOffsetTimeChrono => RustTypes {
-            ret_type: quote!(chrono::DateTime < chrono::FixedOffset >),
-            arg_type: quote!(chrono::DateTime < chrono::FixedOffset >),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomFixedOffsetTimeChrono),
+            ret_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
+            arg_type: quote!(chrono:: DateTime < chrono:: FixedOffset >),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomFixedOffsetTimeChrono),
         },
         #[cfg(feature = "jiff")]
         SimpleSimpleType::UtcTimeSJiff => RustTypes {
             ret_type: quote!(jiff::Timestamp),
             arg_type: quote!(jiff::Timestamp),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomUtcTimeJiff),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomUtcTimeJiff),
         },
         #[cfg(feature = "jiff")]
         SimpleSimpleType::UtcTimeMsJiff => RustTypes {
             ret_type: quote!(jiff::Timestamp),
             arg_type: quote!(jiff::Timestamp),
-            custom_trait: quote!(good_ormning_runtime::sqlite::GoodOrmningCustomUtcTimeJiff),
+            custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomUtcTimeJiff),
         },
     }
 }

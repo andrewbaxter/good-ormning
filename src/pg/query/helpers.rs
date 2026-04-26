@@ -26,18 +26,7 @@ pub fn set_field(param_name: impl Into<String>, f: &FieldHandle) -> (FieldHandle
 pub fn field_param(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
     let version = f.table.version.0.borrow();
     let type_ =
-        version
-            .as_ref()
-            .unwrap()
-            .tables
-            .get(&f.table.id)
-            .unwrap()
-            .fields
-            .get(&f.id)
-            .unwrap()
-            .type_
-            .type_
-            .clone();
+        version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone();
     Expr::Param {
         name: param_name.into(),
         type_: type_,

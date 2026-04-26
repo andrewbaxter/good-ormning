@@ -27,11 +27,9 @@ pub(crate) struct NodeIndex_ {
 
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_id.clone()))
-            || self.table_id != old.table_id
-            || self.def.id != old.def.id
-            || self.def.fields != old.def.fields
-        {
+        if created.contains(&GraphId::Table(self.table_id.clone())) || self.table_id != old.table_id ||
+            self.def.id != old.def.id ||
+            self.def.fields != old.def.fields {
             Comparison::Recreate
         } else {
             Comparison::DoNothing
@@ -40,7 +38,7 @@ impl NodeIndex_ {
 }
 
 impl NodeData for NodeIndex_ {
-    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {}
+    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) { }
 }
 
 impl NodeDataDispatch for NodeIndex_ {

@@ -239,7 +239,7 @@ pub struct Binding {
 }
 
 impl Binding {
-    pub(crate) fn local(name: String) -> Self {
+    pub fn local(name: String) -> Self {
         Binding {
             table_id: "".into(),
             id: name,
@@ -260,7 +260,7 @@ impl Binding {
         }
     }
 
-    pub(crate) fn with_alias(&self, s: &str) -> Binding {
+    pub fn with_alias(&self, s: &str) -> Binding {
         Binding {
             table_id: s.into(),
             id: self.id.clone(),
@@ -488,14 +488,14 @@ impl Expr {
                                 if t.opt {
                                     quote!(
                                         #rust_forward.map(
-                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
+                                            |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
                                                 x.timestamp()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
-                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
                                             #rust_forward.timestamp()
                                         )
                                     )
@@ -505,14 +505,14 @@ impl Expr {
                                 if t.opt {
                                     quote!(
                                         #rust_forward.map(
-                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(
+                                            |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(
                                                 x.to_rfc3339()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
-                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
                                             #rust_forward.to_rfc3339()
                                         )
                                     )
@@ -522,14 +522,14 @@ impl Expr {
                                 if t.opt {
                                     quote!(
                                         #rust_forward.map(
-                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
+                                            |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::I64(
                                                 x.as_second()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
-                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(
                                             #rust_forward.as_second()
                                         )
                                     )
@@ -539,14 +539,14 @@ impl Expr {
                                 if t.opt {
                                     quote!(
                                         #rust_forward.map(
-                                            |x| good_ormning_runtime::sqlite::GoodOrmningSqliteTimestamp::String(
+                                            |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(
                                                 x.to_string()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
-                                        good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
                                             #rust_forward.to_string()
                                         )
                                     )
@@ -716,7 +716,7 @@ impl Expr {
     }
 }
 
-pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
         type_: SimpleType {
             type_: SimpleSimpleType::Bool,
@@ -727,19 +727,14 @@ pub(crate) fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, 
     })]));
 }
 
-pub(crate) fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
+pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
     let Some(right) = right.assert_scalar(errs, path) else {
         return;
     };
     check_general_same_type_assignable(errs, path, left, &right);
 }
 
-pub(crate) fn check_general_same(
-    ctx: &mut SqliteQueryCtx,
-    path: &rpds::Vector<String>,
-    left: &ExprType,
-    right: &ExprType,
-) {
+pub fn check_general_same(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
     if left.0.len() != right.0.len() {
         ctx
             .errs
@@ -767,12 +762,7 @@ pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType,
     return Some(left);
 }
 
-pub(crate) fn check_general_same_type(
-    ctx: &mut SqliteQueryCtx,
-    path: &rpds::Vector<String>,
-    left: &Type,
-    right: &Type,
-) {
+pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
     if left.type_.type_ != right.type_.type_ {
         ctx
             .errs
@@ -787,12 +777,7 @@ pub(crate) fn check_general_same_type(
     }
 }
 
-pub(crate) fn check_general_same_type_assignable(
-    errs: &mut Errs,
-    path: &rpds::Vector<String>,
-    left: &Type,
-    right: &Type,
-) {
+pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &Type) {
     if left.type_.type_ != right.type_.type_ {
         errs.err(
             path,

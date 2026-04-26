@@ -1,0 +1,21 @@
+[package]
+name = "good-ormning-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[features]
+default = ["pg", "sqlite"]
+pg = []
+sqlite = []
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+sqlparser = "0.52"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+good-ormning = { path = "..", features = ["pg", "sqlite", "chrono", "jiff"] }

@@ -157,15 +157,15 @@ pub struct Returning {
 }
 
 pub struct PgQueryCtx {
-    pub(crate) tables: HashMap<TableRef, PgTableInfo>,
+    pub tables: HashMap<TableRef, PgTableInfo>,
     pub errs: Errs,
-    pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
-    pub(crate) rust_args: Vec<TokenStream>,
-    pub(crate) query_args: Vec<TokenStream>,
+    pub rust_arg_lookup: HashMap<String, (usize, Type)>,
+    pub rust_args: Vec<TokenStream>,
+    pub query_args: Vec<TokenStream>,
 }
 
 impl PgQueryCtx {
-    pub(crate) fn new(errs: Errs, tables: HashMap<TableRef, PgTableInfo>) -> Self {
+    pub fn new(errs: Errs, tables: HashMap<TableRef, PgTableInfo>) -> Self {
         Self {
             tables: tables,
             errs: errs,

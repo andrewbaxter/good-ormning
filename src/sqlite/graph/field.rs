@@ -136,7 +136,7 @@ impl NodeDataDispatch for NodeField_ {
         ctx.statements.push(stmt.to_string());
     }
 
-    fn delete(&self, _ctx: &mut SqliteMigrateCtx) {}
+    fn delete(&self, _ctx: &mut SqliteMigrateCtx) { }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)

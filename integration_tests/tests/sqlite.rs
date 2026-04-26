@@ -1,3 +1,5 @@
+use good_ormning::runtime::ToGoodError;
+use good_ormning_macros::*;
 use {
     chrono::{
         Utc,
@@ -48,9 +50,25 @@ fn test_hello_world() -> Result<(), loga::Error> {
 
     let mut db = rusqlite::Connection::open_in_memory()?;
     queries::migrate(&mut db)?;
-    queries::create_user(&mut db, "rust human", 0)?;
-    for user_id in queries::list_users(&mut db)? {
-        let user = queries::get_user(&mut db, user_id)?;
+    good_query_sqlite!(
+        r#"insert into "users" ( "name" , "points" ) values ( ?1 , ?2 )"#;
+        name = &str,
+        points = i64;
+        &mut db,
+        "rust human",
+        0
+    )?;
+    for user_id in good_query_many_sqlite!(
+        r#"select "users" . "rowid" as "rowid" from "users""#;
+        ;
+        &mut db
+    )? {
+        let user = good_query_one_sqlite!(
+            r#"select "users" . "name" as "name" , "users" . "points" as "points" from "users" where "users" . "rowid" = ?1"#;
+            id = i64;
+            &mut db,
+            user_id
+        )?;
         println!("User {}: {}", user_id, user.name);
     }
     Ok(())
@@ -60,8 +78,17 @@ fn test_hello_world() -> Result<(), loga::Error> {
 fn test_base_insert() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_base_insert::migrate(&mut db)?;
-    sqlite_gen_base_insert::insert_banan(&mut db, "soy")?;
-    assert_eq!(sqlite_gen_base_insert::get_banan(&mut db)?, "soy");
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bannanana" . "hizat" as "hizat" from "bannanana""#;
+        ;
+        &mut db
+    )?, "soy");
     Ok(())
 }
 
@@ -91,8 +118,17 @@ fn test_constraint() -> Result<(), loga::Error> {
 fn test_param_i32() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_i32::migrate(&mut db)?;
-    sqlite_gen_param_i32::insert_banan(&mut db, 22)?;
-    assert_eq!(sqlite_gen_param_i32::get_banan(&mut db)?, 22);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_constraint" ( "hizat" ) values ( ?1 )"#;
+        val = i32;
+        &mut db,
+        22
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_constraint" . "hizat" as "hizat" from "bananna_sqlite_gen_constraint""#;
+        ;
+        &mut db
+    )?, 22);
     Ok(())
 }
 
@@ -101,8 +137,17 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_utctime_s_chrono::migrate(&mut db)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    sqlite_gen_param_utctime_s_chrono::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_s_chrono::get_banan(&mut db)?, ref_date);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_i32" ( "hizat" ) values ( ?1 )"#;
+        val = chrono:: DateTime < chrono:: Utc >;
+        &mut db,
+        ref_date
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_i32" . "hizat" as "hizat" from "bananna_sqlite_gen_param_i32""#;
+        ;
+        &mut db
+    )?, ref_date);
     Ok(())
 }
 
@@ -111,8 +156,17 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_utctime_ms_chrono::migrate(&mut db)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    sqlite_gen_param_utctime_ms_chrono::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_ms_chrono::get_banan(&mut db)?, ref_date);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_utctime_s_chrono" ( "hizat" ) values ( ?1 )"#;
+        val = chrono:: DateTime < chrono:: Utc >;
+        &mut db,
+        ref_date
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_utctime_s_chrono" . "hizat" as "hizat" from "bananna_sqlite_gen_param_utctime_s_chrono""#;
+        ;
+        &mut db
+    )?, ref_date);
     Ok(())
 }
 
@@ -126,8 +180,17 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
             .to_zoned(jiff::tz::TimeZone::UTC)
             .unwrap()
             .timestamp();
-    sqlite_gen_param_utctime_s_jiff::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_s_jiff::get_banan(&mut db)?, ref_date);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_utctime_ms_chrono" ( "hizat" ) values ( ?1 )"#;
+        val = jiff::Timestamp;
+        &mut db,
+        ref_date
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_utctime_ms_chrono" . "hizat" as "hizat" from "bananna_sqlite_gen_param_utctime_ms_chrono""#;
+        ;
+        &mut db
+    )?, ref_date);
     Ok(())
 }
 
@@ -141,8 +204,17 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
             .to_zoned(jiff::tz::TimeZone::UTC)
             .unwrap()
             .timestamp();
-    sqlite_gen_param_utctime_ms_jiff::insert_banan(&mut db, ref_date)?;
-    assert_eq!(sqlite_gen_param_utctime_ms_jiff::get_banan(&mut db)?, ref_date);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_utctime_s_jiff" ( "hizat" ) values ( ?1 )"#;
+        val = jiff::Timestamp;
+        &mut db,
+        ref_date
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_utctime_s_jiff" . "hizat" as "hizat" from "bananna_sqlite_gen_param_utctime_s_jiff""#;
+        ;
+        &mut db
+    )?, ref_date);
     Ok(())
 }
 
@@ -150,8 +222,17 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
 fn test_param_opt_i32() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_opt_i32::migrate(&mut db)?;
-    sqlite_gen_param_opt_i32::insert_banan(&mut db, Some(47))?;
-    assert_eq!(sqlite_gen_param_opt_i32::get_banan(&mut db)?, Some(47));
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_utctime_ms_jiff" ( "hizat" ) values ( ?1 )"#;
+        val = Option < i32 >;
+        &mut db,
+        Some(47)
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_utctime_ms_jiff" . "hizat" as "hizat" from "bananna_sqlite_gen_param_utctime_ms_jiff""#;
+        ;
+        &mut db
+    )?, Some(47));
     Ok(())
 }
 
@@ -159,8 +240,16 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
 fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_opt_i32_null::migrate(&mut db)?;
-    sqlite_gen_param_opt_i32_null::insert_banan(&mut db)?;
-    assert_eq!(sqlite_gen_param_opt_i32_null::get_banan(&mut db)?, None);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_opt_i32" ( "hizat" ) values ( null )"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_opt_i32" . "hizat" as "hizat" from "bananna_sqlite_gen_param_opt_i32""#;
+        ;
+        &mut db
+    )?, None);
     Ok(())
 }
 
@@ -168,8 +257,18 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 fn test_param_arr_i32() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_arr_i32::migrate(&mut db)?;
-    sqlite_gen_param_arr_i32::insert_banan(&mut db, 7)?;
-    assert_eq!(sqlite_gen_param_arr_i32::get_banan(&mut db, vec![7])?, vec![7]);
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_migrate_pre_migration" ( "hizat" ) values ( ?1 )"#;
+        val = i32;
+        &mut db,
+        7
+    )?;
+    assert_eq!(good_query_many_sqlite!(
+        r#"select "bananna_sqlite_gen_migrate_pre_migration" . "hizat" as "hizat" from "bananna_sqlite_gen_migrate_pre_migration" where "bananna_sqlite_gen_migrate_pre_migration" . "hizat" in rarray(?1)"#;
+        vals = Vec < i32 >;
+        &mut db,
+        vec![7]
+    )?, vec![7]);
     Ok(())
 }
 
@@ -203,7 +302,20 @@ fn test_param_custom() -> Result<(), loga::Error> {
                 .unwrap()
                 .timestamp(),
         );
-    sqlite_gen_param_custom::insert_banan(
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_opt_i32_null" ( "x_0" , "x_1" , "x_2" , "x_3" , "x_4" , "x_5" , "x_6" , "x_7" , "x_8" , "x_9" , "x_10" , "x_11" ) values ( ?1 , ?2 , ?3 , ?4 , ?5 , ?6 , ?7 , ?8 , ?9 , ?10 , ?11 , ?12 )"#;
+        x_0 = &integration_tests::MyBool,
+        x_1 = &integration_tests::MyI32,
+        x_2 = &integration_tests::MyI64,
+        x_3 = &integration_tests::MyU32,
+        x_4 = &integration_tests::MyF32,
+        x_5 = &integration_tests::MyF64,
+        x_6 = &integration_tests::MyBytes,
+        x_7 = &integration_tests::MyString,
+        x_8 = &integration_tests::MyUtctimeChrono,
+        x_9 = &integration_tests::MyUtctimeChrono,
+        x_10 = &integration_tests::MyUtctimeJiff,
+        x_11 = &integration_tests::MyUtctimeJiff;
         &mut db,
         &x_0,
         &x_1,
@@ -218,7 +330,11 @@ fn test_param_custom() -> Result<(), loga::Error> {
         &x_10,
         &x_11,
     )?;
-    let res = sqlite_gen_param_custom::get_banan(&mut db)?;
+    let res = good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_opt_i32_null" . "x_0" as "x_0" , "bananna_sqlite_gen_param_opt_i32_null" . "x_1" as "x_1" , "bananna_sqlite_gen_param_opt_i32_null" . "x_2" as "x_2" , "bananna_sqlite_gen_param_opt_i32_null" . "x_3" as "x_3" , "bananna_sqlite_gen_param_opt_i32_null" . "x_4" as "x_4" , "bananna_sqlite_gen_param_opt_i32_null" . "x_5" as "x_5" , "bananna_sqlite_gen_param_opt_i32_null" . "x_6" as "x_6" , "bananna_sqlite_gen_param_opt_i32_null" . "x_7" as "x_7" , "bananna_sqlite_gen_param_opt_i32_null" . "x_8" as "x_8" , "bananna_sqlite_gen_param_opt_i32_null" . "x_9" as "x_9" , "bananna_sqlite_gen_param_opt_i32_null" . "x_10" as "x_10" , "bananna_sqlite_gen_param_opt_i32_null" . "x_11" as "x_11" from "bananna_sqlite_gen_param_opt_i32_null""#;
+        ;
+        &mut db
+    )?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);
     assert_eq!(x_2, res.x_2);
@@ -238,8 +354,17 @@ fn test_param_custom() -> Result<(), loga::Error> {
 fn test_param_opt_custom() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_param_opt_custom::migrate(&mut db)?;
-    sqlite_gen_param_opt_custom::insert_banan(&mut db, Some(&MyString("higgins".into())))?;
-    assert_eq!(sqlite_gen_param_opt_custom::get_banan(&mut db)?, Some(MyString("higgins".into())));
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_custom" ( "hizat" ) values ( ?1 )"#;
+        text = Option <& integration_tests:: MyString >;
+        &mut db,
+        Some(&MyString("higgins".into()))
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_custom" . "hizat" as "hizat" from "bananna_sqlite_gen_param_custom""#;
+        ;
+        &mut db
+    )?, Some(MyString("higgins".into())));
     Ok(())
 }
 
@@ -247,8 +372,18 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
 fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_insert_on_conflict_do_nothing::migrate(&mut db)?;
-    assert!(sqlite_gen_insert_on_conflict_do_nothing::insert_banan(&mut db, "soy")?.is_some());
-    assert!(sqlite_gen_insert_on_conflict_do_nothing::insert_banan(&mut db, "soy")?.is_none());
+    assert!(good_query_opt_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 ) on conflict do nothing returning 1 as "one""#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?.is_some());
+    assert!(good_query_opt_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 ) on conflict do nothing returning 1 as "one""#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?.is_none());
     Ok(())
 }
 
@@ -256,9 +391,30 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
 fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_insert_on_conflict_update::migrate(&mut db)?;
-    assert_eq!(sqlite_gen_insert_on_conflict_update::insert_banan(&mut db, "soy", 33)?, 33);
-    assert_eq!(sqlite_gen_insert_on_conflict_update::insert_banan(&mut db, "soy", 7)?, 34);
-    assert_eq!(sqlite_gen_insert_on_conflict_update::insert_banan(&mut db, "yyyy", 7)?, 7);
+    assert_eq!(good_query_one_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        text = &str,
+        two = i32;
+        &mut db,
+        "soy",
+        33
+    )?, 33);
+    assert_eq!(good_query_one_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        text = &str,
+        two = i32;
+        &mut db,
+        "soy",
+        7
+    )?, 34);
+    assert_eq!(good_query_one_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        text = &str,
+        two = i32;
+        &mut db,
+        "yyyy",
+        7
+    )?, 7);
     Ok(())
 }
 
@@ -266,10 +422,26 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
 fn test_update() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_update::migrate(&mut db)?;
-    sqlite_gen_update::insert_banan(&mut db)?;
-    assert_eq!(sqlite_gen_update::get_banan(&mut db)?, "yog");
-    sqlite_gen_update::update_banan(&mut db)?;
-    assert_eq!(sqlite_gen_update::get_banan(&mut db)?, "tep");
+    good_query_sqlite!(
+        r#"insert into "bananna_sqlite_gen_param_opt_custom" ( "hizat" ) values ( 'yog' )"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_opt_custom" . "hizat" as "hizat" from "bananna_sqlite_gen_param_opt_custom""#;
+        ;
+        &mut db
+    )?, "yog");
+    good_query_sqlite!(
+        r#"update "bananna_sqlite_gen_param_opt_custom" set "hizat" = 'tep'"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "bananna_sqlite_gen_param_opt_custom" . "hizat" as "hizat" from "bananna_sqlite_gen_param_opt_custom""#;
+        ;
+        &mut db
+    )?, "tep");
     Ok(())
 }
 
@@ -277,12 +449,42 @@ fn test_update() -> Result<(), loga::Error> {
 fn test_update_where() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_update_where::migrate(&mut db)?;
-    sqlite_gen_update_where::insert_banan(&mut db)?;
-    assert_eq!(sqlite_gen_update_where::get_banan(&mut db)?, "yog");
-    sqlite_gen_update_where::update_banan(&mut db, "tep", "yog2")?;
-    assert_eq!(sqlite_gen_update_where::get_banan(&mut db)?, "yog");
-    sqlite_gen_update_where::update_banan(&mut db, "tep", "yog")?;
-    assert_eq!(sqlite_gen_update_where::get_banan(&mut db)?, "tep");
+    good_query_sqlite!(
+        r#"insert into "ban" ( "hizat" ) values ( 'yog' )"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        ;
+        &mut db
+    )?, "yog");
+    good_query_sqlite!(
+        r#"update "ban" set "hizat" = ?1 where "ban" . "hizat" = ?2"#;
+        val = &str,
+        cond = &str;
+        &mut db,
+        "tep",
+        "yog2"
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        ;
+        &mut db
+    )?, "yog");
+    good_query_sqlite!(
+        r#"update "ban" set "hizat" = ?1 where "ban" . "hizat" = ?2"#;
+        val = &str,
+        cond = &str;
+        &mut db,
+        "tep",
+        "yog"
+    )?;
+    assert_eq!(good_query_one_sqlite!(
+        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        ;
+        &mut db
+    )?, "tep");
     Ok(())
 }
 
@@ -290,8 +492,16 @@ fn test_update_where() -> Result<(), loga::Error> {
 fn test_update_returning() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_update_returning::migrate(&mut db)?;
-    sqlite_gen_update_returning::insert_banan(&mut db)?;
-    assert_eq!(sqlite_gen_update_returning::update_banan(&mut db)?, Some("tep".to_string()));
+    good_query_sqlite!(
+        r#"insert into "b" ( "hizat" ) values ( 'yog' )"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_opt_sqlite!(
+        r#"update "b" set "hizat" = 'tep' returning "b" . "hizat" as "hizat""#;
+        ;
+        &mut db
+    )?, Some("tep".to_string()));
     Ok(())
 }
 
@@ -299,10 +509,26 @@ fn test_update_returning() -> Result<(), loga::Error> {
 fn test_delete() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_delete::migrate(&mut db)?;
-    sqlite_gen_delete::insert_banan(&mut db)?;
-    assert_eq!(sqlite_gen_delete::get_banan(&mut db)?, Some("seeon".to_string()));
-    sqlite_gen_delete::no_banan(&mut db)?;
-    assert_eq!(sqlite_gen_delete::get_banan(&mut db)?, None);
+    good_query_sqlite!(
+        r#"insert into "b" ( "hizat" ) values ( 'seeon' )"#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_opt_sqlite!(
+        r#"select "b" . "hizat" as "hizat" from "b""#;
+        ;
+        &mut db
+    )?, Some("seeon".to_string()));
+    good_query_sqlite!(
+        r#"delete from "b""#;
+        ;
+        &mut db
+    )?;
+    assert_eq!(good_query_opt_sqlite!(
+        r#"select "b" . "hizat" as "hizat" from "b""#;
+        ;
+        &mut db
+    )?, None);
     Ok(())
 }
 
@@ -310,11 +536,33 @@ fn test_delete() -> Result<(), loga::Error> {
 fn test_delete_where() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_delete_where::migrate(&mut db)?;
-    sqlite_gen_delete_where::insert_banan(&mut db)?;
-    sqlite_gen_delete_where::no_banan(&mut db, "nozo")?;
-    assert_eq!(sqlite_gen_delete_where::get_banan(&mut db)?, Some("seeon".to_string()));
-    sqlite_gen_delete_where::no_banan(&mut db, "seeon")?;
-    assert_eq!(sqlite_gen_delete_where::get_banan(&mut db)?, None);
+    good_query_sqlite!(
+        r#"insert into "ba" ( "hizat" ) values ( 'seeon' )"#;
+        ;
+        &mut db
+    )?;
+    good_query_sqlite!(
+        r#"delete from "ba" where "ba" . "hizat" = ?1"#;
+        hiz = &str;
+        &mut db,
+        "nozo"
+    )?;
+    assert_eq!(good_query_opt_sqlite!(
+        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        ;
+        &mut db
+    )?, Some("seeon".to_string()));
+    good_query_sqlite!(
+        r#"delete from "ba" where "ba" . "hizat" = ?1"#;
+        hiz = &str;
+        &mut db,
+        "seeon"
+    )?;
+    assert_eq!(good_query_opt_sqlite!(
+        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        ;
+        &mut db
+    )?, None);
     Ok(())
 }
 
@@ -322,10 +570,27 @@ fn test_delete_where() -> Result<(), loga::Error> {
 fn test_delete_returning() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_delete_where::migrate(&mut db)?;
-    sqlite_gen_delete_where::insert_banan(&mut db)?;
-    assert!(sqlite_gen_delete_where::get_banan(&mut db)?.is_some());
-    sqlite_gen_delete_where::no_banan(&mut db, "seeon")?;
-    assert!(sqlite_gen_delete_where::get_banan(&mut db)?.is_none());
+    good_query_sqlite!(
+        r#"insert into "ba" ( "hizat" ) values ( 'seeon' )"#;
+        ;
+        &mut db
+    )?;
+    assert!(good_query_opt_sqlite!(
+        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        ;
+        &mut db
+    )?.is_some());
+    good_query_sqlite!(
+        r#"delete from "ba" where "ba" . "hizat" = ?1"#;
+        hiz = &str;
+        &mut db,
+        "seeon"
+    )?;
+    assert!(good_query_opt_sqlite!(
+        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        ;
+        &mut db
+    )?.is_none());
     Ok(())
 }
 
@@ -333,7 +598,11 @@ fn test_delete_returning() -> Result<(), loga::Error> {
 fn test_select_join() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_join::migrate(&mut db)?;
-    let res = sqlite_gen_select_join::get_it(&mut db)?;
+    let res = good_query_one_sqlite!(
+        r#"select "b" . "three" as "three" , "two_sqlite_gen_delete_returning" . "two" as "two" from "b" left join "two_sqlite_gen_delete_returning" on cast ( "b" . "hizat" as text ) = "two_sqlite_gen_delete_returning" . "hizat""#;
+        ;
+        &mut db
+    )?;
     assert_eq!(res.three, 33);
     assert_eq!(res.two, Some("no".into()));
     Ok(())
@@ -343,11 +612,43 @@ fn test_select_join() -> Result<(), loga::Error> {
 fn test_select_group_by() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_group_by::migrate(&mut db)?;
-    sqlite_gen_select_group_by::insert_banan(&mut db, 1, 7)?;
-    sqlite_gen_select_group_by::insert_banan(&mut db, 1, 99)?;
-    sqlite_gen_select_group_by::insert_banan(&mut db, 2, 3)?;
-    sqlite_gen_select_group_by::insert_banan(&mut db, 2, 10)?;
-    let mut res = sqlite_gen_select_group_by::get_banan(&mut db)?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        7
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        99
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        2,
+        3
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        2,
+        10
+    )?;
+    let mut res = good_query_many_sqlite!(
+        r#"select sum ( "bannanana" . "hizat2" ) as "hizat2" from "bannanana" group by "bannanana" . "hizat""#;
+        ;
+        &mut db
+    )?;
     res.sort();
     assert_eq!(res, vec![13, 106]);
     Ok(())
@@ -357,10 +658,29 @@ fn test_select_group_by() -> Result<(), loga::Error> {
 fn test_select_limit() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_limit::migrate(&mut db)?;
-    sqlite_gen_select_limit::insert_banan(&mut db, "soy")?;
-    sqlite_gen_select_limit::insert_banan(&mut db, "soy")?;
-    sqlite_gen_select_limit::insert_banan(&mut db, "soy")?;
-    assert_eq!(sqlite_gen_select_limit::get_banan(&mut db)?.len(), 2);
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        text = &str;
+        &mut db,
+        "soy"
+    )?;
+    assert_eq!(good_query_many_sqlite!(
+        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" limit 2"#;
+        ;
+        &mut db
+    )?.len(), 2);
     Ok(())
 }
 
@@ -368,10 +688,29 @@ fn test_select_limit() -> Result<(), loga::Error> {
 fn test_select_order() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_order::migrate(&mut db)?;
-    sqlite_gen_select_order::insert_banan(&mut db, 0)?;
-    sqlite_gen_select_order::insert_banan(&mut db, 12)?;
-    sqlite_gen_select_order::insert_banan(&mut db, 9)?;
-    assert_eq!(sqlite_gen_select_order::get_banan(&mut db)?, vec![0, 9, 12]);
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        v = i32;
+        &mut db,
+        0
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        v = i32;
+        &mut db,
+        12
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        v = i32;
+        &mut db,
+        9
+    )?;
+    assert_eq!(good_query_many_sqlite!(
+        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" order by "bannanana" . "hizat" asc"#;
+        ;
+        &mut db
+    )?, vec![0, 9, 12]);
     Ok(())
 }
 
@@ -379,7 +718,11 @@ fn test_select_order() -> Result<(), loga::Error> {
 fn test_migrate_add_field() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_add_field::migrate(&mut db)?;
-    match sqlite_gen_migrate_add_field::get_banan(&mut db)? {
+    match good_query_opt_sqlite!(
+        r#"select "bannna" . "hizat" as "hizat" , "bannna" . "zomzom" as "zomzom" from "bannna""#;
+        ;
+        &mut db
+    )? {
         Some(x) => {
             assert_eq!(x.zomzom, true);
             assert_eq!(&x.hizat, "nizoot");
@@ -393,7 +736,11 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
 fn test_migrate_rename_field() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_rename_field::migrate(&mut db)?;
-    sqlite_gen_migrate_rename_field::ins(&mut db)?;
+    good_query_sqlite!(
+        r#"insert into "bannna" ( "hizat" ) values ( 'nizoot' )"#;
+        ;
+        &mut db
+    )?;
     Ok(())
 }
 
@@ -401,7 +748,12 @@ fn test_migrate_rename_field() -> Result<(), loga::Error> {
 fn test_migrate_remove_field() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_remove_field::migrate(&mut db)?;
-    sqlite_gen_migrate_remove_field::new_banan(&mut db, "yordol")?;
+    good_query_sqlite!(
+        r#"insert into "bnanaa" ( "hizat" ) values ( ?1 )"#;
+        okolor = &str;
+        &mut db,
+        "yordol"
+    )?;
     Ok(())
 }
 
@@ -409,7 +761,12 @@ fn test_migrate_remove_field() -> Result<(), loga::Error> {
 fn test_migrate_add_table() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_add_table::migrate(&mut db)?;
-    sqlite_gen_migrate_add_table::two(&mut db, 23)?;
+    good_query_sqlite!(
+        r#"insert into "two_sqlite_gen_migrate_remove_field" ( "two" ) values ( ?1 )"#;
+        two = i32;
+        &mut db,
+        23
+    )?;
     Ok(())
 }
 
@@ -417,7 +774,12 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
 fn test_migrate_rename_table() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_migrate_rename_table::migrate(&mut db)?;
-    sqlite_gen_migrate_rename_table::two(&mut db, "inset")?;
+    good_query_sqlite!(
+        r#"insert into "bana" ( "hizat" ) values ( ?1 )"#;
+        two = &str;
+        &mut db,
+        "inset"
+    )?;
     Ok(())
 }
 
@@ -439,9 +801,27 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
 fn test_select_cte() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_cte::migrate(&mut db)?;
-    sqlite_gen_select_cte::insert_banan(&mut db, 1, 7)?;
-    sqlite_gen_select_cte::insert_banan(&mut db, 1, 99)?;
-    let mut res = sqlite_gen_select_cte::get_banan(&mut db)?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        7
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        99
+    )?;
+    let mut res = good_query_many_sqlite!(
+        r#"with "hibbo" ( "zathi" ) as ( select "bannanana" . "hizat2" as "hizat2" from "bannanana" ) select "hibbo" . "zathi" as "zathi" from "hibbo""#;
+        ;
+        &mut db
+    )?;
     res.sort();
     assert_eq!(res, vec![7, 99]);
     Ok(())
@@ -451,11 +831,43 @@ fn test_select_cte() -> Result<(), loga::Error> {
 fn test_select_window() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_window::migrate(&mut db)?;
-    sqlite_gen_select_window::insert_banan(&mut db, 1, 7)?;
-    sqlite_gen_select_window::insert_banan(&mut db, 1, 99)?;
-    sqlite_gen_select_window::insert_banan(&mut db, 2, 3)?;
-    sqlite_gen_select_window::insert_banan(&mut db, 2, 10)?;
-    let mut res = sqlite_gen_select_window::get_banan(&mut db)?.into_iter().collect::<Vec<_>>();
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        7
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        99
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        2,
+        3
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        2,
+        10
+    )?;
+    let mut res = good_query_many_sqlite!(
+        r#"select sum ( "bannanana" . "hizat2" ) over ( partition by "bannanana" . "hizat" ) as "hizat2" from "bannanana""#;
+        ;
+        &mut db
+    )?.into_iter().collect::<Vec<_>>();
     res.sort();
     assert_eq!(res, vec![13, 13, 106, 106]);
     Ok(())
@@ -465,9 +877,27 @@ fn test_select_window() -> Result<(), loga::Error> {
 fn test_select_junction() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     sqlite_gen_select_junction::migrate(&mut db)?;
-    sqlite_gen_select_junction::insert_banan(&mut db, 1, 7)?;
-    sqlite_gen_select_junction::insert_banan(&mut db, 2, 3)?;
-    let mut res = sqlite_gen_select_junction::get_banan(&mut db)?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        1,
+        7
+    )?;
+    good_query_sqlite!(
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        v = i32,
+        v2 = i32;
+        &mut db,
+        2,
+        3
+    )?;
+    let mut res = good_query_many_sqlite!(
+        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" union select "bannanana" . "hizat2" as "hizat2" from "bannanana""#;
+        ;
+        &mut db
+    )?;
     res.sort();
     assert_eq!(res, vec![1, 2, 3, 7]);
     Ok(())

@@ -42,10 +42,10 @@ pub enum InsertConflict {
 
 #[derive(Clone, Debug)]
 pub struct Insert {
-    pub(crate) table: TableRef,
-    pub(crate) values: Vec<(FieldRef, Expr)>,
-    pub(crate) on_conflict: Option<InsertConflict>,
-    pub(crate) returning: Vec<Returning>,
+    pub table: TableRef,
+    pub values: Vec<(FieldRef, Expr)>,
+    pub on_conflict: Option<InsertConflict>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Insert {

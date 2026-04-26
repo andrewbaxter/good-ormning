@@ -49,7 +49,7 @@ pub struct NamedSelectSource {
 }
 
 impl NamedSelectSource {
-    pub(crate) fn build(&self, ctx: &mut PgQueryCtx, path: &rpds::Vector<String>) -> (ExprType, Tokens) {
+    pub fn build(&self, ctx: &mut PgQueryCtx, path: &rpds::Vector<String>) -> (ExprType, Tokens) {
         let mut out = Tokens::new();
         let mut new_fields: Vec<(ExprValName, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
@@ -106,7 +106,7 @@ pub struct Select {
     pub where_: Option<Expr>,
     pub group: Vec<Expr>,
     pub order: Vec<(Expr, Order)>,
-    pub(crate) limit: Option<Expr>,
+    pub limit: Option<Expr>,
 }
 
 impl QueryBody for Select {

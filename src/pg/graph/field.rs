@@ -53,11 +53,8 @@ impl NodeField_ {
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
-        if self.def.id != old.def.id
-            || self.table_id != old.table_id
-            || t.opt != old_t.opt
-            || t.type_.type_ != old_t.type_.type_
-        {
+        if self.def.id != old.def.id || self.table_id != old.table_id || t.opt != old_t.opt ||
+            t.type_.type_ != old_t.type_.type_ {
             Comparison::Update
         } else {
             Comparison::DoNothing

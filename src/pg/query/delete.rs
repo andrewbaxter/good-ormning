@@ -22,9 +22,9 @@ use super::{
 
 #[derive(Clone, Debug)]
 pub struct Delete {
-    pub(crate) table: TableRef,
-    pub(crate) where_: Option<Expr>,
-    pub(crate) returning: Vec<Returning>,
+    pub table: TableRef,
+    pub where_: Option<Expr>,
+    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Delete {

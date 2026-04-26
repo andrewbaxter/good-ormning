@@ -9,12 +9,13 @@ chrono = ">=0"
 jiff = ">=0"
 rusqlite = ">=0"
 tokio = { version = ">=0", features = ["macros", "rt"] }
-"good-ormning-runtime" = { path = "../runtime", features = [
+"good-ormning" = { path = "..", features = [
     "chrono",
     "pg",
     "sqlite",
     "jiff",
 ] }
+"good-ormning-macros" = { path = "../macros" }
 tokio-postgres = { version = ">=0", features = [
     "with-chrono-0_4",
     "with-jiff-0_2",

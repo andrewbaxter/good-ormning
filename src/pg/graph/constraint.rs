@@ -27,11 +27,9 @@ pub(crate) struct NodeConstraint_ {
 
 impl NodeConstraint_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_id.clone()))
-            || self.table_id != old.table_id
-            || self.def.id != old.def.id
-            || self.def.type_ != old.def.type_
-        {
+        if created.contains(&GraphId::Table(self.table_id.clone())) || self.table_id != old.table_id ||
+            self.def.id != old.def.id ||
+            self.def.type_ != old.def.type_ {
             Comparison::Recreate
         } else {
             Comparison::DoNothing
@@ -40,7 +38,7 @@ impl NodeConstraint_ {
 }
 
 impl NodeData for NodeConstraint_ {
-    fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) {}
+    fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) { }
 }
 
 impl NodeDataDispatch for NodeConstraint_ {
@@ -54,9 +52,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                     if i > 0 {
                         stmt.s(",");
                     }
-                    stmt.id(
-                        &ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id,
-                    );
+                    stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
                 }
                 stmt.s(")");
             },
@@ -66,9 +62,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                     if i > 0 {
                         stmt.s(",");
                     }
-                    stmt.id(
-                        &ctx.version.tables.get(&self.table_id).unwrap().fields.get(l_id).unwrap().id,
-                    );
+                    stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(l_id).unwrap().id);
                 }
                 stmt.s(") references").id(&ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
                 for (i, (_, r_id)) in x.fields.iter().enumerate() {
@@ -87,12 +81,7 @@ impl NodeDataDispatch for NodeConstraint_ {
         ctx
             .statements
             .push(
-                Tokens::new()
-                    .s("alter table")
-                    .id(&self.table_id)
-                    .s("drop constraint")
-                    .id(&self.def.id)
-                    .to_string(),
+                Tokens::new().s("alter table").id(&self.table_id).s("drop constraint").id(&self.def.id).to_string(),
             );
     }
 

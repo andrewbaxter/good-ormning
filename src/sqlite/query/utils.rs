@@ -198,11 +198,11 @@ pub struct SqliteTableInfo {
 }
 
 pub struct SqliteQueryCtx {
-    pub(crate) tables: HashMap<TableRef, SqliteTableInfo>,
+    pub tables: HashMap<TableRef, SqliteTableInfo>,
     pub errs: Errs,
-    pub(crate) rust_arg_lookup: HashMap<String, (usize, Type)>,
-    pub(crate) rust_args: Vec<TokenStream>,
-    pub(crate) query_args: Vec<TokenStream>,
+    pub rust_arg_lookup: HashMap<String, (usize, Type)>,
+    pub rust_args: Vec<TokenStream>,
+    pub query_args: Vec<TokenStream>,
 }
 
 #[derive(Clone, Debug)]
@@ -212,7 +212,7 @@ pub struct Returning {
 }
 
 impl SqliteQueryCtx {
-    pub(crate) fn new(errs: Errs, tables: HashMap<TableRef, SqliteTableInfo>) -> Self {
+    pub fn new(errs: Errs, tables: HashMap<TableRef, SqliteTableInfo>) -> Self {
         Self {
             tables: tables,
             errs: errs,

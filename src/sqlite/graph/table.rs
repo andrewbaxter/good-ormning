@@ -36,7 +36,7 @@ impl NodeTable_ {
 }
 
 impl NodeData for NodeTable_ {
-    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) {}
+    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) { }
 }
 
 impl NodeDataDispatch for NodeTable_ {

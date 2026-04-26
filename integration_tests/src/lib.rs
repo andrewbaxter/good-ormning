@@ -3,7 +3,7 @@ use {
         DateTime,
         Utc,
     },
-    good_ormning_runtime::{
+    good_ormning::runtime::{
         pg,
         sqlite,
     },

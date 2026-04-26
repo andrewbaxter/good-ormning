@@ -12,8 +12,8 @@ readme = "readme.md"
 default = []
 chrono = ["dep:chrono"]
 jiff = ["dep:jiff"]
-pg = []
-sqlite = []
+pg = ["dep:tokio-postgres"]
+sqlite = ["dep:rusqlite"]
 
 [dependencies]
 chrono = { version = "0.4", optional = true, features = ["serde"] }
@@ -30,17 +30,20 @@ samevariant = "0.0"
 stable-hash = "0.4"
 syn = "2"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.37", optional = true, features = [
+    "array",
+    "bundled",
+] }
+tokio-postgres = { version = "0.7", optional = true }
+async-trait = "0.1"
+loga = "0.4"
+sqlparser = "0.52"
 
 [workspace]
-members = ["integration_tests", "runtime"]
+members = ["integration_tests", "macros"]
 
 [dev-dependencies]
-good-ormning-runtime = { path = "runtime", features = [
-    "pg",
-    "sqlite",
-    "chrono",
-    "jiff",
-] }
 rusqlite = "0.37"
 
 [package.metadata.docs.rs]

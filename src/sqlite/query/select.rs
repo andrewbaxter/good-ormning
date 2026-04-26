@@ -67,7 +67,7 @@ pub struct NamedSelectSource {
 }
 
 impl NamedSelectSource {
-    pub(crate) fn build(&self, ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>) -> (ExprType, Tokens) {
+    pub fn build(&self, ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>) -> (ExprType, Tokens) {
         let mut out = Tokens::new();
         let mut new_fields: Vec<(Binding, Type)> = match &self.source {
             JoinSource::Subsel(s) => {

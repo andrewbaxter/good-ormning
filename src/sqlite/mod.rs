@@ -15,6 +15,7 @@ use std::{
     },
     path::Path,
     fs,
+    env,
     rc::Rc,
     cell::RefCell,
 };
@@ -38,6 +39,21 @@ use crate::{
         sanitize_ident,
     },
 };
+pub use crate::sqlite::types::{
+    Type as SqliteType,
+    type_i32 as sqlite_type_i32,
+    type_i64 as sqlite_type_i64,
+    type_u32 as sqlite_type_u32,
+    type_f32 as sqlite_type_f32,
+    type_f64 as sqlite_type_f64,
+    type_bool as sqlite_type_bool,
+    type_bytes as sqlite_type_bytes,
+    type_str as sqlite_type_str,
+    type_utctime_s_chrono as sqlite_type_utctime_s_chrono,
+    type_utctime_s_jiff as sqlite_type_utctime_s_jiff,
+};
+pub use crate::sqlite::schema::field::FieldTypeBuilder as SqliteFieldTypeBuilder;
+pub use crate::QueryResCount;
 use self::{
     query::{
         utils::{
@@ -96,6 +112,15 @@ use self::{
     },
 };
 
+/// This represents an SQL query. A function will be generated which accepts a db
+/// connection and query parameters, and returns the query results. Call the
+/// `new_*` functions to get a builder.
+pub struct Query {
+    pub name: String,
+    pub body: Box<dyn QueryBody>,
+    pub res_count: QueryResCount,
+    pub res_name: Option<String>,
+}
 pub mod types;
 pub mod query;
 pub mod schema;
@@ -105,13 +130,6 @@ pub mod graph;
 /// void, `Option`, the value directly, or a `Vec`. It must be a valid value per
 /// the query body (e.g. select can't have `None` res count).
 #[derive(Debug, Clone)]
-pub enum QueryResCount {
-    None,
-    MaybeOne,
-    One,
-    Many,
-}
-
 /// See Insert for field descriptions. Call `build()` to get a finished query
 /// object.
 pub struct InsertBuilder {
@@ -724,15 +742,7 @@ pub fn new_select_body_from(source: self::query::select_body::NamedSelectSource)
 
 /// This represents an SQL query. A function will be generated which accepts a db
 /// connection and query parameters, and returns the query results. Call the
-/// `new_*` functions to get a builder.
-pub struct Query {
-    pub name: String,
-    pub body: Box<dyn QueryBody>,
-    pub res_count: QueryResCount,
-    pub res_name: Option<String>,
-}
-
-/// Get a builder for an INSERT query.
+/// `new_*` functions to get a builder. Get a builder for an INSERT query.
 ///
 /// # Arguments
 ///
@@ -1130,11 +1140,7 @@ impl TableHandle {
         }
     }
 
-    pub fn foreign_key(
-        &self,
-        id: &str,
-        fields: &[(&FieldHandle, &FieldHandle)],
-    ) -> ConstraintHandle {
+    pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
         let remote_table = fields.get(0).unwrap().1.table.id.clone();
         self.version.with(|v| {
             v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
@@ -1288,6 +1294,25 @@ impl Version {
 ///
 /// * Error - a list of validation or generation errors that occurred
 pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+    // Serialize versions for proc macro
+    if let Ok(out_dir) = env::var("OUT_DIR") {
+        let path = Path::new(&out_dir).join("good_ormning_sqlite_versions.json");
+        let mut versions_map: HashMap<usize, Version> = if path.exists() {
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        for (version_i, version) in versions.iter() {
+            let entry = versions_map.entry(*version_i).or_insert_with(|| Version::default());
+            for (k, v) in &version.tables {
+                entry.tables.insert(k.clone(), v.clone());
+            }
+            for (k, v) in &version.custom_types {
+                entry.custom_types.insert(k.clone(), v.clone());
+            }
+        }
+        let _ = fs::write(path, serde_json::to_string(&versions_map).unwrap());
+    }
     let mut errs = Errs::new();
     let mut migrations = vec![];
     let mut prev_version: Option<Version> = None;
@@ -1379,279 +1404,20 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
     }
 
     // Generate queries
-    let mut db_others = Vec::new();
-    {
-        let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
-        for q in queries {
-            let path = rpds::vector![format!("Query {}", q.name)];
-            let mut ctx = SqliteQueryCtx::new(errs.clone(), field_lookup.clone());
-            let res = QueryBody::build(q.body.as_ref(), &mut ctx, &path, q.res_count.clone());
-            let ident = format_ident!("{}", q.name);
-            let q_text = res.1.to_string();
-            let args = ctx.rust_args.split_off(0);
-            let args_forward = ctx.query_args.split_off(0);
-            errs = ctx.errs.clone();
-            drop(ctx);
-            let (res_ident, res_def, unforward_res) = {
-                fn convert_one_res(
-                    errs: &mut Errs,
-                    path: &rpds::Vector<String>,
-                    i: usize,
-                    k: &Binding,
-                    v: &Type,
-                ) -> Option<(Ident, TokenStream, TokenStream)> {
-                    if k.id.is_empty() {
-                        errs.err(
-                            path,
-                            format!("Result element {} has no name; name it using `rename` if this is intentional", i),
-                        );
-                        return None;
-                    }
-                    let rust_types = to_rust_types(&v.type_.type_);
-                    let custom_trait_ident = rust_types.custom_trait;
-                    let mut ident = rust_types.ret_type;
-                    if v.opt {
-                        ident = quote!(Option < #ident >);
-                    }
-                    let mut unforward = match &v.type_.type_ {
-                        SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono => {
-                            quote!{
-                                let x: #ident = match r.get::< _,
-                                good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
-                                    good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
-                                        chrono::DateTime::from_timestamp(i, 0).unwrap()
-                                    },
-                                    good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
-                                        chrono:: DateTime:: parse_from_rfc3339(
-                                            &s
-                                        ).map(
-                                            |d| d.with_timezone(&chrono::Utc)
-                                        ).map_err(
-                                            | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                                #i,
-                                                rusqlite::types::Type::Text,
-                                                Box::new(
-                                                    GoodError(format!("Error parsing rfc3339 datetime {}: {:?}", s, e))
-                                                )
-                                            )
-                                        ) ?
-                                    },
-                                };
-                            }
-                        },
-                        SimpleSimpleType::UtcTimeSJiff | SimpleSimpleType::UtcTimeMsJiff => {
-                            quote!{
-                                let x: #ident = match r.get::< _,
-                                good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
-                                    good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
-                                        jiff::Timestamp::from_second(i).unwrap()
-                                    },
-                                    good_ormning_runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
-                                        s.parse::< jiff:: Timestamp >(
-                                        ).map_err(
-                                            | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                                #i,
-                                                rusqlite::types::Type::Text,
-                                                Box::new(GoodError(format!("Error parsing datetime {}: {:?}", s, e)))
-                                            )
-                                        ) ?
-                                    },
-                                };
-                            }
-                        },
-                        _ => {
-                            quote!{
-                                let x: #ident = r.get(#i) ?;
-                            }
-                        },
-                    };
-                    if let Some(custom) = &v.type_.custom {
-                        ident = match syn::parse_str::<syn::Path>(&custom) {
-                            Ok(i) => i.to_token_stream(),
-                            Err(e) => {
-                                errs.err(
-                                    path,
-                                    format!(
-                                        "Couldn't parse provided custom type name [{}] as identifier path: {:?}",
-                                        custom,
-                                        e
-                                    ),
-                                );
-                                return None;
-                            },
-                        };
-                        if v.opt {
-                            unforward = quote!{
-                                #unforward let x = if let Some(x) = x {
-                                    Some(
-                                        < #ident as #custom_trait_ident < #ident >>:: from_sql(
-                                            x
-                                        ).map_err(
-                                            | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                                #i,
-                                                rusqlite::types::Type::Text,
-                                                Box::new(GoodError(format!("Parsing result {}: {}", #i, e)))
-                                            )
-                                        ) ?
-                                    )
-                                }
-                                else {
-                                    None
-                                };
-                            };
-                            ident = quote!(Option < #ident >);
-                        } else {
-                            unforward = quote!{
-                                #unforward let x =< #ident as #custom_trait_ident < #ident >>:: from_sql(
-                                    x
-                                ).map_err(
-                                    | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                        #i,
-                                        rusqlite::types::Type::Text,
-                                        Box::new(GoodError(format!("Parsing result {}: {}", #i, e)))
-                                    )
-                                ) ?;
-                            };
-                        }
-                    }
-                    return Some((format_ident!("{}", sanitize_ident(&k.id).1), ident, quote!({
-                        #unforward x
-                    })));
-                }
-
-                if res.0.0.len() == 1 && q.res_name.is_none() {
-                    let e = &res.0.0[0];
-                    let (_, type_ident, unforward) = match convert_one_res(&mut errs, &path, 0, &e.0, &e.1) {
-                        None => {
-                            continue;
-                        },
-                        Some(x) => x,
-                    };
-                    (type_ident, None, unforward)
-                } else {
-                    let mut fields = vec![];
-                    let mut unforward_fields = vec![];
-                    for (i, (k, v)) in res.0.0.into_iter().enumerate() {
-                        let (k_ident, type_ident, unforward) = match convert_one_res(&mut errs, &path, i, &k, &v) {
-                            Some(x) => x,
-                            None => continue,
-                        };
-                        fields.push(quote!{
-                            pub #k_ident: #type_ident
-                        });
-                        unforward_fields.push(quote!{
-                            #k_ident: #unforward
-                        });
-                    }
-                    let body = quote!({
-                        #(#fields,) *
-                    });
-                    let res_type_count = res_type_idents.len();
-                    let (res_ident, res_def) = match res_type_idents.entry(body.to_string()) {
-                        std::collections::hash_map::Entry::Occupied(e) => {
-                            (e.get().clone(), None)
-                        },
-                        std::collections::hash_map::Entry::Vacant(e) => {
-                            let ident = if let Some(name) = q.res_name {
-                                format_ident!("{}", name)
-                            } else {
-                                format_ident!("DbRes{}", res_type_count)
-                            };
-                            e.insert(ident.clone());
-                            let res_def = quote!(pub struct #ident #body);
-                            (ident, Some(res_def))
-                        },
-                    };
-                    let unforward = quote!(#res_ident {
-                        #(#unforward_fields,) *
-                    });
-                    (res_ident.to_token_stream(), res_def, unforward)
-                }
-            };
-            let db_arg = quote!(db: & mut impl good_ormning_runtime:: sqlite:: SqliteConnection);
-            match q.res_count {
-                QueryResCount::None => {
-                    db_others.push(quote!{
-                        pub fn #ident(#db_arg, #(#args,) *) -> Result <(),
-                        GoodError > {
-                            let query = #q_text;
-                            db.execute(query, (#(& #args_forward,) *)).to_good_error_query(query) ?;
-                            Ok(())
-                        }
-                    });
-                },
-                QueryResCount::MaybeOne => {
-                    if let Some(res_def) = res_def {
-                        db_others.push(res_def);
-                    }
-                    db_others.push(quote!{
-                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
-                        GoodError > {
-                            let query = #q_text;
-                            let res = db.query(
-                                query,
-                                (#(& #args_forward,) *),
-                                | r | -> rusqlite:: Result <#res_ident > {
-                                    Ok(#unforward_res)
-                                }
-                            ).to_good_error_query(query) ?;
-                            Ok(res.into_iter().next())
-                        }
-                    });
-                },
-                QueryResCount::One => {
-                    if let Some(res_def) = res_def {
-                        db_others.push(res_def);
-                    }
-                    db_others.push(quote!{
-                        pub fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
-                        GoodError > {
-                            let query = #q_text;
-                            let mut res = db.query(
-                                query,
-                                (#(& #args_forward,) *),
-                                | r | -> rusqlite:: Result <#res_ident > {
-                                    Ok(#unforward_res)
-                                }
-                            ).to_good_error_query(query) ?;
-                            if res.is_empty() {
-                                return Err(
-                                    GoodError(format!("Query {} returned no results but one was expected", #q_text))
-                                );
-                            }
-                            Ok(res.pop().unwrap())
-                        }
-                    });
-                },
-                QueryResCount::Many => {
-                    if let Some(res_def) = res_def {
-                        db_others.push(res_def);
-                    }
-                    db_others.push(quote!{
-                        pub fn #ident(#db_arg, #(#args,) *) -> Result < Vec < #res_ident >,
-                        GoodError > {
-                            let query = #q_text;
-                            let res = db.query(
-                                query,
-                                (#(& #args_forward,) *),
-                                | r | -> rusqlite:: Result <#res_ident > {
-                                    Ok(#unforward_res)
-                                }
-                            ).to_good_error_query(query) ?;
-                            Ok(res)
-                        }
-                    });
-                },
-            }
-        }
-    }
+    let db_others =
+        self::query::generate::generate_query_functions(
+            &mut errs,
+            field_lookup,
+            queries,
+            output.file_stem().unwrap().to_str().unwrap(),
+        );
 
     // Compile, output
     let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
-        use good_ormning_runtime::GoodError;
-        use good_ormning_runtime::ToGoodError;
-        fn init_db(db: & mut impl good_ormning_runtime:: sqlite:: SqliteConnection) -> Result <(),
+        use good_ormning::runtime::GoodError;
+        use good_ormning::runtime::ToGoodError;
+        fn init_db(db: & mut impl good_ormning:: runtime:: sqlite:: SqliteConnection) -> Result <(),
         GoodError > {
             db.load_array_module().to_good_error(|| "Error loading array extension for array values".to_string())?;
             {
@@ -1666,7 +1432,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             }
             Ok(())
         }
-        pub fn migrate(db: & mut impl good_ormning_runtime:: sqlite:: SqliteConnection) -> Result <(),
+        pub fn migrate(db: & mut impl good_ormning:: runtime:: sqlite:: SqliteConnection) -> Result <(),
         GoodError > {
             init_db(db)?;
             loop {
@@ -1700,7 +1466,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
             }
         }
         pub fn get_schema_version(
-            db: & mut impl good_ormning_runtime:: sqlite:: SqliteConnection
+            db: & mut impl good_ormning:: runtime:: sqlite:: SqliteConnection
         ) -> Result < Option < i64 >,
         GoodError > {
             init_db(db)?;

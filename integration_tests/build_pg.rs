@@ -1,5 +1,6 @@
 use good_ormning::pg::Version as PgVersion;
 use good_ormning::sqlite::Version as SqliteVersion;
+use good_ormning::{QueryResCount, pg_type_i32 as type_i32, pg_type_i64 as type_i64, pg_type_u32 as type_u32, pg_type_f32 as type_f32, pg_type_f64 as type_f64, pg_type_bool as type_bool, pg_type_bytes as type_bytes, pg_type_str as type_str, pg_type_utctime_s_chrono as type_utctime_s_chrono, pg_type_utctime_s_jiff as type_utctime_s_jiff, PgType as Type, PgFieldTypeBuilder as FieldTypeBuilder};
 use {
     std::path::Path,
     std::rc::Rc,
@@ -48,15 +49,10 @@ use {
             },
             generate,
             new_insert,
-            QueryResCount,
             new_select,
             new_select_body,
             new_update,
             new_delete,
-            types::{
-                Type,
-                type_i32,
-            },
         },
     },
     flowcontrol::shed,
@@ -77,96 +73,53 @@ fn get_type(f: &FieldHandle) -> Type {
         .type_
         .clone()
 }
-
 pub fn build(root: &Path) {
     // # Base: create table, insert, select
     {
         let v = PgVersion::new();
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_base_insert.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "text".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_base_insert.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: i32
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_base_insert");
         let hizat = bananna.field("hizat", field_i32().build());
-        generate(&root.join("tests/pg_gen_param_i32.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_i32.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: utctime (chrono)
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_i32");
         let hizat = bananna.field("hizat", field_utctime_s_chrono().build());
-        generate(&root.join("tests/pg_gen_param_utctime_chrono.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_utctime_chrono.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: utctime (jiff)
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_utctime_chrono");
         let hizat = bananna.field("hizat", field_utctime_s_jiff().build());
-        generate(&root.join("tests/pg_gen_param_utctime_jiff.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_utctime_jiff.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: Opt`<i32>`
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_utctime_jiff");
         let hizat = bananna.field("hizat", field_i32().opt().build());
-        generate(&root.join("tests/pg_gen_param_opt_i32.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_opt_i32.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: Opt`<i32>`, null
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_opt_i32");
         let hizat = bananna.field("hizat", field_i32().opt().build());
-        generate(&root.join("tests/pg_gen_param_opt_i32_null.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitNull(get_type(&hizat).type_))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_opt_i32_null.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: All custom types
@@ -183,7 +136,7 @@ pub fn build(root: &Path) {
         let my_utctime_chrono = v.custom_type("MyUtctimeChrono").rust_type("integration_tests::MyUtctimeChrono").base_type(type_utctime_s_chrono().build());
         let my_utctime_jiff = v.custom_type("MyUtctimeJiff").rust_type("integration_tests::MyUtctimeJiff").base_type(type_utctime_s_jiff().build());
 
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_opt_i32_null");
         let mut custom_fields = vec![];
         for (
             i,
@@ -206,63 +159,17 @@ pub fn build(root: &Path) {
             .enumerate() {
             custom_fields.push(bananna.field(&format!("x_{}", i), type_));
         }
-        generate(&root.join("tests/pg_gen_param_custom.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                custom_fields
-                    .iter()
-                    .map(
-                        |f| set_field(
-                            &f
-                                .table
-                                .version
-                                .0
-                                .borrow()
-                                .as_ref()
-                                .unwrap()
-                                .tables
-                                .get(&f.table.id)
-                                .unwrap()
-                                .fields
-                                .get(&f.id)
-                                .unwrap()
-                                .id
-                                .clone(),
-                            f
-                        )
-                    )
-                    .collect(),
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna)
-                .returns_from_iter(
-                    custom_fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, f): (usize, &_)| good_ormning::pg::query::utils::Returning {
-                            e: Expr::Field(f.to_ref()),
-                            rename: Some(format!("x_{}", i)),
-                        })
-                )
-                .build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_param_custom.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # (insert) Param: Opt`<Custom>`
     {
         let v = PgVersion::new();
         let my_string = v.custom_type("MyString").rust_type("integration_tests::MyString").base_type(type_str().build());
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_custom");
         let hizat =
-            bananna.field("hizat", my_string.field_type().opt().build());
-        generate(&root.join("tests/pg_gen_param_opt_custom.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "text".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One)
-        ]).unwrap();
+            bananna.field("hizat", FieldTypeBuilder::new(my_string.field_type().type_).opt().build());
+        generate(&root.join("tests/pg_gen_param_opt_custom.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Insert on conflict do nothing
@@ -313,20 +220,9 @@ pub fn build(root: &Path) {
     // # Update
     {
         let v = PgVersion::new();
-        let bananna = v.table("bananna");
+        let bananna = v.table("bananna_pg_gen_param_opt_custom");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_update.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("yog".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One),
-            new_update(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("tep".into()))],
-            ).build_query("update_banan", QueryResCount::None)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_update.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Update, where
@@ -334,25 +230,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("ban");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_update_where.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("yog".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::One),
-            new_update(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "val".into(),
-                type_: get_type(&hizat),
-            })]).where_(Expr::BinOp {
-                left: Box::new(Expr::Field(hizat.to_ref())),
-                op: BinOp::Equals,
-                right: Box::new(Expr::Param {
-                    name: "cond".into(),
-                    type_: get_type(&hizat),
-                }),
-            }).build_query("update_banan", QueryResCount::None)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_update_where.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Update, returning
@@ -360,16 +238,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("b");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_update_returning.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("yog".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_update(&bananna, vec![(hizat.clone(), Expr::LitString("tep".into()))])
-                .return_field(&hizat)
-                .build_query("update_banan", QueryResCount::MaybeOne)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_update_returning.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Delete
@@ -377,15 +246,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("b");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_delete.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("seeon".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::MaybeOne),
-            new_delete(&bananna).build_query("no_banan", QueryResCount::None)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_delete.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Delete, where
@@ -393,22 +254,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("ba");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_delete_where.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("seeon".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_field(&hizat).build_query("get_banan", QueryResCount::MaybeOne),
-            new_delete(&bananna).where_(Expr::BinOp {
-                left: Box::new(Expr::Field(hizat.to_ref())),
-                op: BinOp::Equals,
-                right: Box::new(Expr::Param {
-                    name: "hiz".into(),
-                    type_: get_type(&hizat),
-                }),
-            }).build_query("no_banan", QueryResCount::None)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_delete_where.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Delete, returning
@@ -416,14 +262,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("b");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_delete_returning.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("seeon".into()))],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_delete(&bananna).return_field(&hizat).build_query("no_banan", QueryResCount::One)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_delete_returning.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Select + join
@@ -432,7 +271,7 @@ pub fn build(root: &Path) {
         let bananna = v.table("b");
         let hizat = bananna.field("hizat", field_str().build());
         let three = bananna.field("three", field_i32().build());
-        let one = v.table("two");
+        let one = v.table("two_pg_gen_delete_returning");
         let hizat1 = one.field("hizat", field_str().build());
         let two = one.field("two", field_str().build());
         v.post_migration(
@@ -470,17 +309,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_str().build());
-        generate(&root.join("tests/pg_gen_select_limit.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "text".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna)
-                .return_field(&hizat)
-                .limit(Expr::LitI64(2))
-                .build_query("get_banan", QueryResCount::Many)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_select_limit.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Select order
@@ -488,17 +317,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_i32().build());
-        generate(&root.join("tests/pg_gen_select_order.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "v".into(),
-                type_: get_type(&hizat),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna)
-                .return_field(&hizat)
-                .order(Expr::Field(hizat.to_ref()), Order::Asc)
-                .build_query("get_banan", QueryResCount::Many)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_select_order.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Select group
@@ -507,20 +326,7 @@ pub fn build(root: &Path) {
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_i32().build());
         let hizat2 = bananna.field("hizat2", field_i32().build());
-        generate(&root.join("tests/pg_gen_select_group_by.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "v".into(),
-                type_: get_type(&hizat),
-            }), (hizat2.clone(), Expr::Param {
-                name: "v2".into(),
-                type_: get_type(&hizat2),
-            })]).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna)
-                .return_named("hizat2", fn_sum(Expr::Field(hizat2.to_ref())))
-                .group(vec![Expr::Field(hizat.to_ref())])
-                .build_query("get_banan", QueryResCount::Many)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_select_group_by.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Migrate - add field
@@ -545,10 +351,7 @@ pub fn build(root: &Path) {
                 x
             }),
             (1usize, v.build())
-        ], vec![
-            // Queries
-            new_select(&bananna).return_field(&hizat).return_field(&zomzom).build_query("get_banan", QueryResCount::MaybeOne)
-        ]).unwrap();
+        ], vec![]).unwrap();
     }
 
     // # Migrate - rename field
@@ -566,10 +369,7 @@ pub fn build(root: &Path) {
                 x
             }),
             (1usize, v.build())
-        ], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("nizoot".into()))],).build_query("ins", QueryResCount::None)
-        ]).unwrap();
+        ], vec![]).unwrap();
     }
 
     // # Migrate - remove field
@@ -588,13 +388,7 @@ pub fn build(root: &Path) {
                 x
             }),
             (1usize, v.build())
-        ], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "okolor".into(),
-                type_: get_type(&hizat),
-            })]).build_query("new_banan", QueryResCount::None)
-        ]).unwrap();
+        ], vec![]).unwrap();
     }
 
     // # Migrate - add table
@@ -602,7 +396,7 @@ pub fn build(root: &Path) {
         let v = PgVersion::new();
         let bananna = v.table("bnanana");
         let hizat = bananna.field("hizat", field_str().build());
-        let two = v.table("two");
+        let two = v.table("two_pg_gen_migrate_remove_field");
         let field_two = two.field("two", field_i32().build());
         generate(&root.join("tests/pg_gen_migrate_add_table.rs"), vec![
             // Versions (previous)
@@ -614,13 +408,7 @@ pub fn build(root: &Path) {
                 x
             }),
             (1usize, v.build())
-        ], vec![
-            // Queries
-            new_insert(&two, vec![(field_two.clone(), Expr::Param {
-                name: "two".into(),
-                type_: get_type(&field_two),
-            })]).build_query("two", QueryResCount::None)
-        ]).unwrap();
+        ], vec![]).unwrap();
     }
 
     // # Migrate - rename table
@@ -638,13 +426,7 @@ pub fn build(root: &Path) {
                 x
             }),
             (1usize, v.build())
-        ], vec![
-            // Queries
-            new_insert(&bananna, vec![(hizat.clone(), Expr::Param {
-                name: "two".into(),
-                type_: get_type(&hizat),
-            })]).build_query("two", QueryResCount::None)
-        ]).unwrap();
+        ], vec![]).unwrap();
     }
 
     // # Migrate - remove table
@@ -658,7 +440,7 @@ pub fn build(root: &Path) {
                 let v = PgVersion::new();
                 let bananna = v.table("bananana");
                 let hizat = bananna.field("hizat", field_str().build());
-                let two = v.table("two");
+                let two = v.table("two_pg_gen_migrate_remove_table");
                 two.field("two", field_i32().build());
                 let x = v.build();
                 x
@@ -685,17 +467,7 @@ pub fn build(root: &Path) {
             table: hibbo_table.clone(),
             id: zathi_schema,
         };
-        generate(&root.join("tests/pg_gen_select_cte.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![set_field("v", &hizat), set_field("v2", &hizat2)],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&hibbo_table).with(With {
-                recursive: false,
-                ctes: vec![hibbo_cte],
-            }).return_named("zathi", Expr::Field(zathi_field.to_ref())).build_query("get_banan", QueryResCount::Many)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_select_cte.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Window function
@@ -704,18 +476,7 @@ pub fn build(root: &Path) {
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_i32().build());
         let hizat2 = bananna.field("hizat2", field_i32().build());
-        generate(&root.join("tests/pg_gen_select_window.rs"), vec![(0usize, v.build())], vec![
-            // Queries
-            new_insert(
-                &bananna,
-                vec![set_field("v", &hizat), set_field("v2", &hizat2)],
-            ).build_query("insert_banan", QueryResCount::None),
-            new_select(&bananna).return_named("hizat2", Expr::Window {
-                expr: Box::new(fn_sum(Expr::Field(hizat2.to_ref()))),
-                partition_by: vec![Expr::Field(hizat.to_ref())],
-                order_by: vec![],
-            }).build_query("get_banan", QueryResCount::Many)
-        ]).unwrap();
+        generate(&root.join("tests/pg_gen_select_window.rs"), vec![(0usize, v.build())], vec![]).unwrap();
     }
 
     // # Migrate - pre migration

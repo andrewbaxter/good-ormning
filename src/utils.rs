@@ -49,7 +49,7 @@ pub struct Errs_ {
 pub struct Errs(Rc<RefCell<Errs_>>);
 
 impl Errs {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })))
     }
 
