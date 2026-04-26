@@ -1,24 +1,29 @@
 use sqlparser::ast as sql;
-use quote::quote;
+use std::collections::HashSet;
 use crate::GoodQueryInput;
 use good_ormning::pg::{
     query::{
         expr::{
             Expr,
             BinOp,
-            ExprValName,
         },
         select::{
             Select,
             NamedSelectSource,
             JoinSource,
+            Order,
         },
-        insert::Insert,
+        insert::{
+            Insert,
+            InsertConflict,
+        },
         update::Update,
         delete::Delete,
         utils::{
             Returning,
             QueryBody,
+            With,
+            CteBuilder,
         },
         helpers::*,
     },
@@ -27,24 +32,42 @@ use good_ormning::pg::{
         field::FieldRef,
     },
     types::{
-        Type,
         SimpleType,
         SimpleSimpleType,
+        Type,
     },
     Query,
 };
 use good_ormning::QueryResCount;
+use super::{
+    param_type_to_pg_type,
+    sql_type_to_pg_type,
+};
 
-pub fn convert_query(input: &GoodQueryInput, statement: &sql::Statement) -> Query {
+pub fn convert_query(
+    input: &GoodQueryInput,
+    statement: &sql::Statement,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Query {
+    let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => Box::new(convert_select(input, q)),
-        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert)),
-        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
-            convert_update(input, table, assignments, selection, returning),
+        sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types)),
+        sql::Statement::Insert(insert) => Box::new(
+            convert_insert(input, insert, &mut used_params, custom_types),
         ),
-        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete)),
+        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
+            convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types),
+        ),
+        sql::Statement::Delete(delete) => Box::new(
+            convert_delete(input, delete, &mut used_params, custom_types),
+        ),
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
+    for (ident, _) in &input.params {
+        if !used_params.contains(&ident.to_string()) {
+            panic!("Parameter {} not used in query", ident);
+        }
+    }
     Query {
         name: "unnamed".to_string(),
         body,
@@ -54,21 +77,67 @@ pub fn convert_query(input: &GoodQueryInput, statement: &sql::Statement) -> Quer
     }
 }
 
-fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    TableRef(name.0.last().unwrap().value.clone())
+fn convert_select_query(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Select {
+    match &*q.body {
+        sql::SetExpr::Select(s) => {
+            let mut sel = convert_select(input, q, s, used_params, custom_types);
+            if let Some(with) = &q.with {
+                let mut ctes = vec![];
+                for cte in &with.cte_tables {
+                    let name = cte.alias.name.value.clone();
+                    let query = convert_select_query(input, &cte.query, used_params, custom_types);
+                    let mut builder = CteBuilder::new(name, Box::new(query.clone()));
+                    if !cte.alias.columns.is_empty() {
+                        for col in &cte.alias.columns {
+                            builder = builder.column(
+                                col.value.clone(),
+                                good_ormning::pg::types::type_i32().build(),
+                            );
+                        }
+                    } else {
+                        for r in &query.returning {
+                            let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
+                            builder = builder.column(r_name, good_ormning::pg::types::type_i32().build());
+                        }
+                    }
+                    ctes.push(good_ormning::pg::query::utils::Cte::from(builder));
+                }
+                sel.with = Some(With {
+                    recursive: with.recursive,
+                    ctes,
+                });
+            }
+            sel
+        },
+        _ => unimplemented!("Only simple Select queries supported in macro for now"),
+    }
 }
 
-fn convert_returning(input: &GoodQueryInput, returning: &Option<Vec<sql::SelectItem>>) -> Vec<Returning> {
+fn get_table_ref(name: &sql::ObjectName) -> TableRef {
+    TableRef(name.0.last().expect("ObjectName should not be empty").value.clone())
+}
+
+fn convert_returning(
+    input: &GoodQueryInput,
+    returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Vec<Returning> {
     let mut out = vec![];
     if let Some(items) = returning {
         for item in items {
             match item {
                 sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
-                    e: convert_expr(input, e),
+                    e: convert_expr(input, e, used_params, custom_types),
                     rename: None,
                 }),
                 sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
-                    e: convert_expr(input, expr),
+                    e: convert_expr(input, expr, used_params, custom_types),
                     rename: Some(alias.value.clone()),
                 }),
                 _ => unimplemented!("Unsupported returning item"),
@@ -78,7 +147,12 @@ fn convert_returning(input: &GoodQueryInput, returning: &Option<Vec<sql::SelectI
     out
 }
 
-fn convert_insert(input: &GoodQueryInput, insert: &sql::Insert) -> Insert {
+fn convert_insert(
+    input: &GoodQueryInput,
+    insert: &sql::Insert,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Insert {
     let table = get_table_ref(&insert.table_name);
     let mut values = vec![];
     if let Some(q) = &insert.source {
@@ -89,19 +163,60 @@ fn convert_insert(input: &GoodQueryInput, insert: &sql::Insert) -> Insert {
                         table_id: table.0.clone(),
                         field_id: insert.columns[i].value.clone(),
                     };
-                    values.push((field, convert_expr(input, expr)));
+                    values.push((field, convert_expr(input, expr, used_params, custom_types)));
                 }
             }
         } else {
             unimplemented!("Only values supported for insert")
         }
     }
+    let on_conflict = if let Some(on) = &insert.on {
+        match on {
+            sql::OnInsert::OnConflict(oc) => match &oc.action {
+                sql::OnConflictAction::DoNothing => Some(InsertConflict::DoNothing),
+                sql::OnConflictAction::DoUpdate(du) => {
+                    let mut updates = vec![];
+                    for a in &du.assignments {
+                        let target_name = match &a.target {
+                            sql::AssignmentTarget::ColumnName(name) => name.0.last().unwrap().value.clone(),
+                            _ => unimplemented!("Assignment target in ON CONFLICT"),
+                        };
+                        let field = FieldRef {
+                            table_id: table.0.clone(),
+                            field_id: target_name,
+                        };
+                        updates.push((field, convert_expr(input, &a.value, used_params, custom_types)));
+                    }
+                    let conflict = if let Some(target) = &oc.conflict_target {
+                        match target {
+                            sql::ConflictTarget::Columns(idents) => idents
+                                .iter()
+                                .map(|id| FieldRef {
+                                    table_id: table.0.clone(),
+                                    field_id: id.value.clone(),
+                                })
+                                .collect(),
+                            _ => vec![],
+                        }
+                    } else {
+                        vec![]
+                    };
+                    Some(InsertConflict::DoUpdate {
+                        conflict,
+                        set: updates,
+                    })
+                },
+            },
+            _ => None,
+        }
+    } else {
+        None
+    };
     Insert {
         table,
         values,
-        // implement if needed
-        on_conflict: None,
-        returning: convert_returning(input, &insert.returning),
+        on_conflict,
+        returning: convert_returning(input, &insert.returning, used_params, custom_types),
     }
 }
 
@@ -111,6 +226,8 @@ fn convert_update(
     assignments: &[sql::Assignment],
     selection: &Option<sql::Expr>,
     returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
 ) -> Update {
     let table_ref = match &table.relation {
         sql::TableFactor::Table { name, .. } => get_table_ref(name),
@@ -126,17 +243,22 @@ fn convert_update(
             table_id: table_ref.0.clone(),
             field_id: target_name,
         };
-        values.push((field, convert_expr(input, &a.value)));
+        values.push((field, convert_expr(input, &a.value, used_params, custom_types)));
     }
     Update {
         table: table_ref,
         values,
-        where_: selection.as_ref().map(|e| convert_expr(input, e)),
-        returning: convert_returning(input, returning),
+        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+        returning: convert_returning(input, returning, used_params, custom_types),
     }
 }
 
-fn convert_delete(input: &GoodQueryInput, delete: &sql::Delete) -> Delete {
+fn convert_delete(
+    input: &GoodQueryInput,
+    delete: &sql::Delete,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Delete {
     let relation = match &delete.from {
         sql::FromTable::WithFromKeyword(f) => &f[0].relation,
         sql::FromTable::WithoutKeyword(f) => &f[0].relation,
@@ -147,50 +269,100 @@ fn convert_delete(input: &GoodQueryInput, delete: &sql::Delete) -> Delete {
     };
     Delete {
         table: table_ref,
-        where_: delete.selection.as_ref().map(|e| convert_expr(input, e)),
-        returning: convert_returning(input, &delete.returning),
+        where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+        returning: convert_returning(input, &delete.returning, used_params, custom_types),
     }
 }
 
-fn convert_select(input: &GoodQueryInput, q: &sql::Query) -> Select {
-    match &*q.body {
-        sql::SetExpr::Select(s) => {
-            let table = match &s.from[0].relation {
-                sql::TableFactor::Table { name, alias, .. } => {
-                    NamedSelectSource {
-                        source: JoinSource::Table(get_table_ref(name)),
-                        alias: Some(
-                            alias
-                                .as_ref()
-                                .map(|a| a.name.value.clone())
-                                .unwrap_or_else(|| get_table_ref(name).0.clone()),
-                        ),
-                    }
-                },
-                _ => unimplemented!("Select table factor"),
-            };
-            Select {
-                with: None,
-                table,
-                returning: convert_returning(input, &Some(s.projection.clone())),
-                join: vec![],
-                where_: s.selection.as_ref().map(|e| convert_expr(input, e)),
-                group: match &s.group_by {
-                    sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
-                    sql::GroupByExpr::Expressions(exprs, _) => exprs
-                        .iter()
-                        .map(|e| convert_expr(input, e))
-                        .collect(),
-                },
-                order: vec![],
-                limit: q.limit.as_ref().map(|e| convert_expr(input, e)),
-            }
+fn convert_select(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    s: &sql::Select,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Select {
+    let table = match &s.from[0].relation {
+        sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
+            source: JoinSource::Table(get_table_ref(name)),
+            alias: Some(
+                alias
+                    .as_ref()
+                    .map(|a| a.name.value.clone())
+                    .unwrap_or_else(|| get_table_ref(name).0.clone()),
+            ),
         },
-        _ => unimplemented!("Select body"),
+        _ => unimplemented!("Select table factor"),
+    };
+    let mut join = vec![];
+    for j in &s.from[0].joins {
+        let source = match &j.relation {
+            sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
+                source: JoinSource::Table(get_table_ref(name)),
+                alias: Some(
+                    alias
+                        .as_ref()
+                        .map(|a| a.name.value.clone())
+                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                ),
+            },
+            _ => unimplemented!("Join table factor"),
+        };
+        let type_ = match j.join_operator {
+            sql::JoinOperator::LeftOuter(_) => {
+                good_ormning::pg::query::select::JoinType::Left
+            },
+            sql::JoinOperator::Inner(_) => good_ormning::pg::query::select::JoinType::Inner,
+            _ => unimplemented!("Join type: {:?}", j.join_operator),
+        };
+        let on = match &j.join_operator {
+            sql::JoinOperator::LeftOuter(constraint)
+            | sql::JoinOperator::Inner(constraint) => match constraint {
+                sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
+                _ => unimplemented!("Join constraint"),
+            },
+            _ => unreachable!(),
+        };
+        join.push(good_ormning::pg::query::select::Join {
+            source: Box::new(source),
+            type_,
+            on,
+        });
+    }
+    let mut order = vec![];
+    if let Some(order_by) = &q.order_by {
+        for o in &order_by.exprs {
+            let e = convert_expr(input, &o.expr, used_params, custom_types);
+            let dir = match o.asc {
+                Some(true) | None => Order::Asc,
+                Some(false) => Order::Desc,
+            };
+            order.push((e, dir));
+        }
+    }
+    Select {
+        with: None,
+        table,
+        returning: convert_returning(input, &Some(s.projection.clone()), used_params, custom_types),
+        join,
+        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+        group: match &s.group_by {
+            sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
+            sql::GroupByExpr::Expressions(exprs, _) => exprs
+                .iter()
+                .map(|e| convert_expr(input, e, used_params, custom_types))
+                .collect(),
+        },
+        order,
+        limit: q.limit.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
     }
 }
 
-fn convert_expr(input: &GoodQueryInput, e: &sql::Expr) -> Expr {
+fn convert_expr(
+    input: &GoodQueryInput,
+    e: &sql::Expr,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+) -> Expr {
     match e {
         sql::Expr::Identifier(ident) => {
             Expr::Field(FieldRef {
@@ -220,39 +392,22 @@ fn convert_expr(input: &GoodQueryInput, e: &sql::Expr) -> Expr {
                 sql::Value::SingleQuotedString(s) => Expr::LitString(s.clone()),
                 sql::Value::Boolean(b) => Expr::LitBool(*b),
                 sql::Value::Placeholder(p) => {
-                    let num_str = p.replace("$", "").replace("?", "");
-                    if let Ok(idx) = num_str.parse::<usize>() {
-                        let (ident, ty) = &input.params[idx - 1];
-                        let type_str = quote!(#ty).to_string().replace(" ", "");
-                        let mut is_opt = type_str.contains("Option<");
-                        let inner_type = if is_opt {
-                            type_str.replace("Option<", "").replace(">", "")
-                        } else {
-                            type_str.clone()
-                        };
-                        let (simple_type, custom) = match inner_type.as_str() {
-                            "i32" => (SimpleSimpleType::I32, None),
-                            "i64" => (SimpleSimpleType::I64, None),
-                            "u32" => (SimpleSimpleType::U32, None),
-                            "bool" => (SimpleSimpleType::Bool, None),
-                            "String" | "&str" => (SimpleSimpleType::String, None),
-                            "chrono::DateTime<chrono::Utc>" => (SimpleSimpleType::UtcTimeSChrono, None),
-                            "jiff::Timestamp" => (SimpleSimpleType::UtcTimeSJiff, None),
-                            _ => (SimpleSimpleType::I32, Some(inner_type)),
-                        };
-                        Expr::Param {
-                            name: ident.to_string(),
-                            type_: Type {
-                                type_: SimpleType {
-                                    type_: simple_type,
-                                    custom: custom,
-                                },
-                                opt: is_opt,
-                                arr: false,
-                            },
-                        }
+                    let placeholder_name = p.replace("$", "").replace("?", "");
+                    let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
+                        format!("p{}", idx - 1)
                     } else {
-                        unimplemented!("Placeholder parsing: {}", p)
+                        placeholder_name
+                    };
+                    used_params.insert(param_name.clone());
+                    let pt = input
+                        .params
+                        .iter()
+                        .find(|(ident, _)| ident.to_string() == param_name)
+                        .map(|(_, pt)| pt)
+                        .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
+                    Expr::Param {
+                        name: param_name,
+                        type_: param_type_to_pg_type(pt, custom_types),
                     }
                 },
                 sql::Value::Null => Expr::LitNull(SimpleType {
@@ -263,8 +418,8 @@ fn convert_expr(input: &GoodQueryInput, e: &sql::Expr) -> Expr {
             }
         },
         sql::Expr::BinaryOp { left, op, right } => {
-            let l = convert_expr(input, left);
-            let r = convert_expr(input, right);
+            let l = convert_expr(input, left, used_params, custom_types);
+            let r = convert_expr(input, right, used_params, custom_types);
             let o = match op {
                 sql::BinaryOperator::Eq => BinOp::Equals,
                 sql::BinaryOperator::NotEq => BinOp::NotEquals,
@@ -286,6 +441,40 @@ fn convert_expr(input: &GoodQueryInput, e: &sql::Expr) -> Expr {
                 right: Box::new(r),
             }
         },
+        sql::Expr::Nested(expr) => convert_expr(input, expr, used_params, custom_types),
+        sql::Expr::Cast { expr, data_type, .. } => {
+            let e = convert_expr(input, expr, used_params, custom_types);
+            let t = sql_type_to_pg_type(data_type, custom_types);
+            Expr::Cast(Box::new(e), t)
+        },
+        sql::Expr::InSubquery { expr, subquery, negated } => {
+            let l = convert_expr(input, expr, used_params, custom_types);
+            let r = convert_select_query(input, subquery, used_params, custom_types);
+            Expr::BinOp {
+                left: Box::new(l),
+                op: if *negated {
+                    BinOp::NotIn
+                } else {
+                    BinOp::In
+                },
+                right: Box::new(Expr::Select(Box::new(r))),
+            }
+        },
+        sql::Expr::InList { expr, list, negated } => {
+            let l = convert_expr(input, expr, used_params, custom_types);
+            let r = Expr::LitArray(
+                list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect(),
+            );
+            Expr::BinOp {
+                left: Box::new(l),
+                op: if *negated {
+                    BinOp::NotIn
+                } else {
+                    BinOp::In
+                },
+                right: Box::new(r),
+            }
+        },
         sql::Expr::Function(f) => {
             let name = f.name.to_string().to_lowercase();
             let mut args = vec![];
@@ -293,12 +482,52 @@ fn convert_expr(input: &GoodQueryInput, e: &sql::Expr) -> Expr {
                 for arg in &list.args {
                     match arg {
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => args.push(
-                            convert_expr(input, e),
+                            convert_expr(input, e, used_params, custom_types),
                         ),
                         _ => unimplemented!("Function argument type not supported"),
                     }
                 }
             }
+
+            if let Some(over) = &f.over {
+                let arg = if args.is_empty() {
+                     Expr::LitI32(0) // DUMMY
+                } else {
+                     args.pop().unwrap()
+                };
+                let e = match name.as_str() {
+                    "sum" => fn_sum(arg),
+                    "count" => fn_count(arg),
+                    "min" => fn_min(arg),
+                    "max" => fn_max(arg),
+                    "avg" => fn_avg(arg),
+                    _ => unimplemented!("Function {} not supported in window", name),
+                };
+                match over {
+                    sql::WindowType::WindowSpec(spec) => {
+                        let mut partition_by = vec![];
+                        for p in &spec.partition_by {
+                            partition_by.push(convert_expr(input, p, used_params, custom_types));
+                        }
+                        let mut order_by = vec![];
+                        for o in &spec.order_by {
+                            let expr = convert_expr(input, &o.expr, used_params, custom_types);
+                            let dir = match o.asc {
+                                Some(true) | None => Order::Asc,
+                                Some(false) => Order::Desc,
+                            };
+                            order_by.push((expr, dir));
+                        }
+                        return Expr::Window {
+                            expr: Box::new(e),
+                            partition_by,
+                            order_by,
+                        };
+                    },
+                    sql::WindowType::NamedWindow(_) => unimplemented!("Named windows not supported"),
+                }
+            }
+
             if args.len() != 1 {
                 unimplemented!("Only 1-argument functions supported");
             }

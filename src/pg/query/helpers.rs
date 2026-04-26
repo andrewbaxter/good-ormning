@@ -14,7 +14,6 @@ use super::expr::{
     ExprValName,
     ExprType,
 };
-use super::select::Order;
 
 /// Generates a field element for instert and update statements, to set a field
 /// from a parameter of the same type.

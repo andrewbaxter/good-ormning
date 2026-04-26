@@ -6,7 +6,6 @@ use {
         Binding,
         ExprType,
     },
-    super::select::Order,
     std::rc::Rc,
     crate::sqlite::{
         FieldHandle,

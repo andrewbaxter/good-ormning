@@ -9,36 +9,36 @@ use {
     pglite_oxide::PgliteServer,
 };
 
-pub mod pg_gen_base_insert;
-pub mod pg_gen_param_i32;
-pub mod pg_gen_param_utctime_chrono;
-pub mod pg_gen_param_utctime_jiff;
-pub mod pg_gen_param_opt_i32;
-pub mod pg_gen_param_opt_i32_null;
-pub mod pg_gen_param_custom;
-pub mod pg_gen_param_opt_custom;
-pub mod pg_gen_insert_on_conflict_do_nothing;
-pub mod pg_gen_insert_on_conflict_update;
-pub mod pg_gen_update;
-pub mod pg_gen_update_where;
-pub mod pg_gen_update_returning;
-pub mod pg_gen_delete;
-pub mod pg_gen_delete_where;
-pub mod pg_gen_delete_returning;
-pub mod pg_gen_select_join;
-pub mod pg_gen_select_group_by;
-pub mod pg_gen_select_order;
-pub mod pg_gen_select_limit;
-pub mod pg_gen_migrate_add_field;
-pub mod pg_gen_migrate_rename_field;
-pub mod pg_gen_migrate_remove_field;
-pub mod pg_gen_migrate_add_table;
-pub mod pg_gen_migrate_rename_table;
-pub mod pg_gen_migrate_remove_table;
-pub mod pg_gen_select_cte;
-pub mod pg_gen_select_window;
-pub mod pg_gen_migrate_make_field_optional;
-pub mod pg_gen_migrate_pre_migration;
+pub mod pg_gen_base_insert { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_base_insert.rs")); }
+pub mod pg_gen_param_i32 { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_i32.rs")); }
+pub mod pg_gen_param_utctime_chrono { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_utctime_chrono.rs")); }
+pub mod pg_gen_param_utctime_jiff { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_utctime_jiff.rs")); }
+pub mod pg_gen_param_opt_i32 { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_opt_i32.rs")); }
+pub mod pg_gen_param_opt_i32_null { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_opt_i32_null.rs")); }
+pub mod pg_gen_param_custom { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_custom.rs")); }
+pub mod pg_gen_param_opt_custom { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_param_opt_custom.rs")); }
+pub mod pg_gen_insert_on_conflict_do_nothing { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_insert_on_conflict_do_nothing.rs")); }
+pub mod pg_gen_insert_on_conflict_update { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_insert_on_conflict_update.rs")); }
+pub mod pg_gen_update { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_update.rs")); }
+pub mod pg_gen_update_where { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_update_where.rs")); }
+pub mod pg_gen_update_returning { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_update_returning.rs")); }
+pub mod pg_gen_delete { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_delete.rs")); }
+pub mod pg_gen_delete_where { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_delete_where.rs")); }
+pub mod pg_gen_delete_returning { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_delete_returning.rs")); }
+pub mod pg_gen_select_join { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_join.rs")); }
+pub mod pg_gen_select_group_by { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_group_by.rs")); }
+pub mod pg_gen_select_order { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_order.rs")); }
+pub mod pg_gen_select_limit { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_limit.rs")); }
+pub mod pg_gen_migrate_add_field { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_add_field.rs")); }
+pub mod pg_gen_migrate_rename_field { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_rename_field.rs")); }
+pub mod pg_gen_migrate_remove_field { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_remove_field.rs")); }
+pub mod pg_gen_migrate_add_table { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_add_table.rs")); }
+pub mod pg_gen_migrate_rename_table { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_rename_table.rs")); }
+pub mod pg_gen_migrate_remove_table { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_remove_table.rs")); }
+pub mod pg_gen_select_cte { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_cte.rs")); }
+pub mod pg_gen_select_window { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_select_window.rs")); }
+pub mod pg_gen_migrate_make_field_optional { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_make_field_optional.rs")); }
+pub mod pg_gen_migrate_pre_migration { include!(concat!(env!("OUT_DIR"), "/good_ormning_pg_pg_gen_migrate_pre_migration.rs")); }
 
 async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error> {
     let server = PgliteServer::temporary_tcp().map_err(|e| loga::err(e))?;
@@ -56,14 +56,14 @@ async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error>
 async fn test_base_insert() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_base_insert::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        text = &str;
+    good_query_pg!("pg_gen_base_insert", 
+        r#"insert into "base_insert_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana""#;
+    assert_eq!(good_query_one_pg!("pg_gen_base_insert", 
+        r#"select "base_insert_bannanana" . "hizat" as "hizat" from "base_insert_bannanana""#;
         ;
         &mut db
     ).await?, "soy");
@@ -74,14 +74,14 @@ async fn test_base_insert() -> Result<(), loga::Error> {
 async fn test_param_i32() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_param_i32::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_base_insert" ( "hizat" ) values ( $1 )"#;
-        val = i32;
+    good_query_pg!("pg_gen_param_i32", 
+        r#"insert into "param_i32_bananna" ( "hizat" ) values ( $1 )"#;
+        p0 = i32;
         &mut db,
         22
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_base_insert" . "hizat" as "hizat" from "bananna_pg_gen_base_insert""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_i32", 
+        r#"select "param_i32_bananna" . "hizat" as "hizat" from "param_i32_bananna""#;
         ;
         &mut db
     ).await?, 22);
@@ -93,14 +93,14 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     pg_gen_param_utctime_chrono::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_i32" ( "hizat" ) values ( $1 )"#;
-        val = chrono:: DateTime < chrono:: Utc >;
+    good_query_pg!("pg_gen_param_utctime_chrono", 
+        r#"insert into "param_utctime_chrono_bananna" ( "hizat" ) values ( $1 )"#;
+        p0 = utctime_s_chrono;
         &mut db,
         ref_date
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_i32" . "hizat" as "hizat" from "bananna_pg_gen_param_i32""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_utctime_chrono", 
+        r#"select "param_utctime_chrono_bananna" . "hizat" as "hizat" from "param_utctime_chrono_bananna""#;
         ;
         &mut db
     ).await?, ref_date);
@@ -117,14 +117,14 @@ async fn test_param_utctime_jiff() -> Result<(), loga::Error> {
             .unwrap()
             .timestamp();
     pg_gen_param_utctime_jiff::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_utctime_chrono" ( "hizat" ) values ( $1 )"#;
-        val = jiff::Timestamp;
+    good_query_pg!("pg_gen_param_utctime_jiff", 
+        r#"insert into "param_utctime_jiff_bananna" ( "hizat" ) values ( $1 )"#;
+        p0 = utctime_s_jiff;
         &mut db,
         ref_date
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_utctime_chrono" . "hizat" as "hizat" from "bananna_pg_gen_param_utctime_chrono""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_utctime_jiff", 
+        r#"select "param_utctime_jiff_bananna" . "hizat" as "hizat" from "param_utctime_jiff_bananna""#;
         ;
         &mut db
     ).await?, ref_date);
@@ -135,14 +135,14 @@ async fn test_param_utctime_jiff() -> Result<(), loga::Error> {
 async fn test_param_opt_i32() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_param_opt_i32::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_utctime_jiff" ( "hizat" ) values ( $1 )"#;
-        val = Option < i32 >;
+    good_query_pg!("pg_gen_param_opt_i32", 
+        r#"insert into "param_opt_i32_bananna" ( "hizat" ) values ( $1 )"#;
+        p0 = opt i32;
         &mut db,
         Some(47)
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_utctime_jiff" . "hizat" as "hizat" from "bananna_pg_gen_param_utctime_jiff""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_opt_i32", 
+        r#"select "param_opt_i32_bananna" . "hizat" as "hizat" from "param_opt_i32_bananna""#;
         ;
         &mut db
     ).await?, Some(47));
@@ -153,13 +153,13 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
 async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_param_opt_i32_null::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_opt_i32" ( "hizat" ) values ( null )"#;
+    good_query_pg!("pg_gen_param_opt_i32_null", 
+        r#"insert into "param_opt_i32_null_bananna" ( "hizat" ) values ( null )"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_opt_i32" . "hizat" as "hizat" from "bananna_pg_gen_param_opt_i32""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_opt_i32_null", 
+        r#"select "param_opt_i32_null_bananna" . "hizat" as "hizat" from "param_opt_i32_null_bananna""#;
         ;
         &mut db
     ).await?, None);
@@ -196,20 +196,20 @@ async fn test_param_custom() -> Result<(), loga::Error> {
                 .unwrap()
                 .timestamp(),
         );
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_opt_i32_null" ( "x_0" , "x_1" , "x_2" , "x_3" , "x_4" , "x_5" , "x_6" , "x_7" , "x_8" , "x_9" , "x_10" , "x_11" ) values ( $1 , $2 , $3 , $4 , $5 , $6 , $7 , $8 , $9 , $10 , $11 , $12 )"#;
-        x_0 = &integration_tests::MyBool,
-        x_1 = &integration_tests::MyI32,
-        x_2 = &integration_tests::MyI64,
-        x_3 = &integration_tests::MyU32,
-        x_4 = &integration_tests::MyF32,
-        x_5 = &integration_tests::MyF64,
-        x_6 = &integration_tests::MyBytes,
-        x_7 = &integration_tests::MyString,
-        x_8 = &integration_tests::MyUtctimeChrono,
-        x_9 = &integration_tests::MyUtctimeChrono,
-        x_10 = &integration_tests::MyUtctimeJiff,
-        x_11 = &integration_tests::MyUtctimeJiff;
+    good_query_pg!("pg_gen_param_custom", 
+        r#"insert into "param_custom_bananna" ( "x_0" , "x_1" , "x_2" , "x_3" , "x_4" , "x_5" , "x_6" , "x_7" , "x_8" , "x_9" , "x_10" , "x_11" ) values ( $1 , $2 , $3 , $4 , $5 , $6 , $7 , $8 , $9 , $10 , $11 , $12 )"#;
+        p0 = MyBool,
+        p1 = MyI32,
+        p2 = MyI64,
+        p3 = MyU32,
+        p4 = MyF32,
+        p5 = MyF64,
+        p6 = MyBytes,
+        p7 = MyString,
+        p8 = MyUtctimeChrono,
+        p9 = MyUtctimeChrono,
+        p10 = MyUtctimeJiff,
+        p11 = MyUtctimeJiff;
         &mut db,
         &x_0,
         &x_1,
@@ -224,8 +224,8 @@ async fn test_param_custom() -> Result<(), loga::Error> {
         &x_10,
         &x_11,
     ).await?;
-    let res = good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_opt_i32_null" . "x_0" as "x_0" , "bananna_pg_gen_param_opt_i32_null" . "x_1" as "x_1" , "bananna_pg_gen_param_opt_i32_null" . "x_2" as "x_2" , "bananna_pg_gen_param_opt_i32_null" . "x_3" as "x_3" , "bananna_pg_gen_param_opt_i32_null" . "x_4" as "x_4" , "bananna_pg_gen_param_opt_i32_null" . "x_5" as "x_5" , "bananna_pg_gen_param_opt_i32_null" . "x_6" as "x_6" , "bananna_pg_gen_param_opt_i32_null" . "x_7" as "x_7" , "bananna_pg_gen_param_opt_i32_null" . "x_8" as "x_8" , "bananna_pg_gen_param_opt_i32_null" . "x_9" as "x_9" , "bananna_pg_gen_param_opt_i32_null" . "x_10" as "x_10" , "bananna_pg_gen_param_opt_i32_null" . "x_11" as "x_11" from "bananna_pg_gen_param_opt_i32_null""#;
+    let res = good_query_one_pg!("pg_gen_param_custom", 
+        r#"select "param_custom_bananna" . "x_0" as "x_0" , "param_custom_bananna" . "x_1" as "x_1" , "param_custom_bananna" . "x_2" as "x_2" , "param_custom_bananna" . "x_3" as "x_3" , "param_custom_bananna" . "x_4" as "x_4" , "param_custom_bananna" . "x_5" as "x_5" , "param_custom_bananna" . "x_6" as "x_6" , "param_custom_bananna" . "x_7" as "x_7" , "param_custom_bananna" . "x_8" as "x_8" , "param_custom_bananna" . "x_9" as "x_9" , "param_custom_bananna" . "x_10" as "x_10" , "param_custom_bananna" . "x_11" as "x_11" from "param_custom_bananna""#;
         ;
         &mut db
     ).await?;
@@ -248,14 +248,14 @@ async fn test_param_custom() -> Result<(), loga::Error> {
 async fn test_param_opt_custom() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_param_opt_custom::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_custom" ( "hizat" ) values ( $1 )"#;
-        text = Option <& integration_tests:: MyString >;
+    good_query_pg!("pg_gen_param_opt_custom", 
+        r#"insert into "param_opt_custom_bananna" ( "hizat" ) values ( $1 )"#;
+        p0 = opt MyString;
         &mut db,
         Some(&MyString("higgins".into()))
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_custom" . "hizat" as "hizat" from "bananna_pg_gen_param_custom""#;
+    assert_eq!(good_query_one_pg!("pg_gen_param_opt_custom", 
+        r#"select "param_opt_custom_bananna" . "hizat" as "hizat" from "param_opt_custom_bananna""#;
         ;
         &mut db
     ).await?, Some(MyString("higgins".into())));
@@ -266,15 +266,15 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
 async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_insert_on_conflict_do_nothing::migrate(&mut db).await?;
-    assert!(good_query_opt_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 ) on conflict do nothing returning 1 as "one""#;
-        text = &str;
+    assert!(good_query_opt_pg!("pg_gen_insert_on_conflict_do_nothing", 
+        r#"insert into "insert_on_conflict_do_nothing_bananna" ( "hizat" ) values ( $1 ) on conflict do nothing returning 1 as "one""#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?.is_some());
-    assert!(good_query_opt_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 ) on conflict do nothing returning 1 as "one""#;
-        text = &str;
+    assert!(good_query_opt_pg!("pg_gen_insert_on_conflict_do_nothing", 
+        r#"insert into "insert_on_conflict_do_nothing_bananna" ( "hizat" ) values ( $1 ) on conflict do nothing returning 1 as "one""#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?.is_none());
@@ -285,26 +285,26 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
 async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_insert_on_conflict_update::migrate(&mut db).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
-        text = &str,
-        two = i32;
+    assert_eq!(good_query_one_pg!("pg_gen_insert_on_conflict_update", 
+        r#"insert into "insert_on_conflict_update_bananna" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "insert_on_conflict_update_bananna" . "two" + 1 returning "insert_on_conflict_update_bananna" . "two" as "two""#;
+        p0 = string,
+        p1 = i32;
         &mut db,
         "soy",
         33
     ).await?, 33);
-    assert_eq!(good_query_one_pg!(
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
-        text = &str,
-        two = i32;
+    assert_eq!(good_query_one_pg!("pg_gen_insert_on_conflict_update", 
+        r#"insert into "insert_on_conflict_update_bananna" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "insert_on_conflict_update_bananna" . "two" + 1 returning "insert_on_conflict_update_bananna" . "two" as "two""#;
+        p0 = string,
+        p1 = i32;
         &mut db,
         "soy",
         7
     ).await?, 34);
-    assert_eq!(good_query_one_pg!(
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
-        text = &str,
-        two = i32;
+    assert_eq!(good_query_one_pg!("pg_gen_insert_on_conflict_update", 
+        r#"insert into "insert_on_conflict_update_bananna" ( "hizat" , "two" ) values ( $1 , $2 ) on conflict ( "hizat" ) do update set "two" = "insert_on_conflict_update_bananna" . "two" + 1 returning "insert_on_conflict_update_bananna" . "two" as "two""#;
+        p0 = string,
+        p1 = i32;
         &mut db,
         "yyyy",
         7
@@ -316,23 +316,23 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
 async fn test_update() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_update::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bananna_pg_gen_param_opt_custom" ( "hizat" ) values ( 'yog' )"#;
+    good_query_pg!("pg_gen_update", 
+        r#"insert into "update_bananna" ( "hizat" ) values ( 'yog' )"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_opt_custom" . "hizat" as "hizat" from "bananna_pg_gen_param_opt_custom""#;
+    assert_eq!(good_query_one_pg!("pg_gen_update", 
+        r#"select "update_bananna" . "hizat" as "hizat" from "update_bananna""#;
         ;
         &mut db
     ).await?, "yog");
-    good_query_pg!(
-        r#"update "bananna_pg_gen_param_opt_custom" set "hizat" = 'tep'"#;
+    good_query_pg!("pg_gen_update", 
+        r#"update "update_bananna" set "hizat" = 'tep'"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "bananna_pg_gen_param_opt_custom" . "hizat" as "hizat" from "bananna_pg_gen_param_opt_custom""#;
+    assert_eq!(good_query_one_pg!("pg_gen_update", 
+        r#"select "update_bananna" . "hizat" as "hizat" from "update_bananna""#;
         ;
         &mut db
     ).await?, "tep");
@@ -343,39 +343,39 @@ async fn test_update() -> Result<(), loga::Error> {
 async fn test_update_where() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_update_where::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "ban" ( "hizat" ) values ( 'yog' )"#;
+    good_query_pg!("pg_gen_update_where", 
+        r#"insert into "update_where_ban" ( "hizat" ) values ( 'yog' )"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+    assert_eq!(good_query_one_pg!("pg_gen_update_where", 
+        r#"select "update_where_ban" . "hizat" as "hizat" from "update_where_ban""#;
         ;
         &mut db
     ).await?, "yog");
-    good_query_pg!(
-        r#"update "ban" set "hizat" = $1 where "ban" . "hizat" = $2"#;
-        val = &str,
-        cond = &str;
+    good_query_pg!("pg_gen_update_where", 
+        r#"update "update_where_ban" set "hizat" = $1 where "update_where_ban" . "hizat" = $2"#;
+        p0 = string,
+        p1 = string;
         &mut db,
         "tep",
         "yog2"
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+    assert_eq!(good_query_one_pg!("pg_gen_update_where", 
+        r#"select "update_where_ban" . "hizat" as "hizat" from "update_where_ban""#;
         ;
         &mut db
     ).await?, "yog");
-    good_query_pg!(
-        r#"update "ban" set "hizat" = $1 where "ban" . "hizat" = $2"#;
-        val = &str,
-        cond = &str;
+    good_query_pg!("pg_gen_update_where", 
+        r#"update "update_where_ban" set "hizat" = $1 where "update_where_ban" . "hizat" = $2"#;
+        p0 = string,
+        p1 = string;
         &mut db,
         "tep",
         "yog"
     ).await?;
-    assert_eq!(good_query_one_pg!(
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+    assert_eq!(good_query_one_pg!("pg_gen_update_where", 
+        r#"select "update_where_ban" . "hizat" as "hizat" from "update_where_ban""#;
         ;
         &mut db
     ).await?, "tep");
@@ -386,13 +386,13 @@ async fn test_update_where() -> Result<(), loga::Error> {
 async fn test_update_returning() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_update_returning::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "b" ( "hizat" ) values ( 'yog' )"#;
+    good_query_pg!("pg_gen_update_returning", 
+        r#"insert into "update_returning_b" ( "hizat" ) values ( 'yog' )"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_opt_pg!(
-        r#"update "b" set "hizat" = 'tep' returning "b" . "hizat" as "hizat""#;
+    assert_eq!(good_query_opt_pg!("pg_gen_update_returning", 
+        r#"update "update_returning_b" set "hizat" = 'tep' returning "update_returning_b" . "hizat" as "hizat""#;
         ;
         &mut db
     ).await?, Some("tep".to_string()));
@@ -403,23 +403,23 @@ async fn test_update_returning() -> Result<(), loga::Error> {
 async fn test_delete() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_delete::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "b" ( "hizat" ) values ( 'seeon' )"#;
+    good_query_pg!("pg_gen_delete", 
+        r#"insert into "delete_b" ( "hizat" ) values ( 'seeon' )"#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_opt_pg!(
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+    assert_eq!(good_query_opt_pg!("pg_gen_delete", 
+        r#"select "delete_b" . "hizat" as "hizat" from "delete_b""#;
         ;
         &mut db
     ).await?, Some("seeon".to_string()));
-    good_query_pg!(
-        r#"delete from "b""#;
+    good_query_pg!("pg_gen_delete", 
+        r#"delete from "delete_b""#;
         ;
         &mut db
     ).await?;
-    assert_eq!(good_query_opt_pg!(
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+    assert_eq!(good_query_opt_pg!("pg_gen_delete", 
+        r#"select "delete_b" . "hizat" as "hizat" from "delete_b""#;
         ;
         &mut db
     ).await?, None);
@@ -430,30 +430,30 @@ async fn test_delete() -> Result<(), loga::Error> {
 async fn test_delete_where() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_delete_where::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "ba" ( "hizat" ) values ( 'seeon' )"#;
+    good_query_pg!("pg_gen_delete_where", 
+        r#"insert into "delete_where_ba" ( "hizat" ) values ( 'seeon' )"#;
         ;
         &mut db
     ).await?;
-    good_query_pg!(
-        r#"delete from "ba" where "ba" . "hizat" = $1"#;
-        hiz = &str;
+    good_query_pg!("pg_gen_delete_where", 
+        r#"delete from "delete_where_ba" where "delete_where_ba" . "hizat" = $1"#;
+        p0 = string;
         &mut db,
         "nozo"
     ).await?;
-    assert_eq!(good_query_opt_pg!(
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+    assert_eq!(good_query_opt_pg!("pg_gen_delete_where", 
+        r#"select "delete_where_ba" . "hizat" as "hizat" from "delete_where_ba""#;
         ;
         &mut db
     ).await?, Some("seeon".to_string()));
-    good_query_pg!(
-        r#"delete from "ba" where "ba" . "hizat" = $1"#;
-        hiz = &str;
+    good_query_pg!("pg_gen_delete_where", 
+        r#"delete from "delete_where_ba" where "delete_where_ba" . "hizat" = $1"#;
+        p0 = string;
         &mut db,
         "seeon"
     ).await?;
-    assert_eq!(good_query_opt_pg!(
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+    assert_eq!(good_query_opt_pg!("pg_gen_delete_where", 
+        r#"select "delete_where_ba" . "hizat" as "hizat" from "delete_where_ba""#;
         ;
         &mut db
     ).await?, None);
@@ -464,24 +464,24 @@ async fn test_delete_where() -> Result<(), loga::Error> {
 async fn test_delete_returning() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_delete_where::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "ba" ( "hizat" ) values ( 'seeon' )"#;
+    good_query_pg!("pg_gen_delete_where", 
+        r#"insert into "delete_where_ba" ( "hizat" ) values ( 'seeon' )"#;
         ;
         &mut db
     ).await?;
-    assert!(good_query_opt_pg!(
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+    assert!(good_query_opt_pg!("pg_gen_delete_where", 
+        r#"select "delete_where_ba" . "hizat" as "hizat" from "delete_where_ba""#;
         ;
         &mut db
     ).await?.is_some());
-    good_query_pg!(
-        r#"delete from "ba" where "ba" . "hizat" = $1"#;
-        hiz = &str;
+    good_query_pg!("pg_gen_delete_where", 
+        r#"delete from "delete_where_ba" where "delete_where_ba" . "hizat" = $1"#;
+        p0 = string;
         &mut db,
         "seeon"
     ).await?;
-    assert!(good_query_opt_pg!(
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+    assert!(good_query_opt_pg!("pg_gen_delete_where", 
+        r#"select "delete_where_ba" . "hizat" as "hizat" from "delete_where_ba""#;
         ;
         &mut db
     ).await?.is_none());
@@ -492,8 +492,8 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
 async fn test_select_join() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_join::migrate(&mut db).await?;
-    let res = good_query_one_pg!(
-        r#"select "b" . "three" as "three" , "two_pg_gen_delete_returning" . "two" as "two" from "b" left join "two_pg_gen_delete_returning" on ( "b" . "hizat" :: text ) = "two_pg_gen_delete_returning" . "hizat""#;
+    let res = good_query_one_pg!("pg_gen_select_join", 
+        r#"select "select_join_b" . "three" as "three" , "select_join_two" . "two" as "two" from "select_join_b" left join "select_join_two" on ( "select_join_b" . "hizat" :: text ) = "select_join_two" . "hizat""#;
         ;
         &mut db
     ).await?;
@@ -506,40 +506,40 @@ async fn test_select_join() -> Result<(), loga::Error> {
 async fn test_select_group_by() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_group_by::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_group_by", 
+        r#"insert into "select_group_by_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         7
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_group_by", 
+        r#"insert into "select_group_by_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         99
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_group_by", 
+        r#"insert into "select_group_by_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         2,
         3
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_group_by", 
+        r#"insert into "select_group_by_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         2,
         10
     ).await?;
-    let mut res = good_query_many_pg!(
-        r#"select sum ( "bannanana" . "hizat2" ) as "hizat2" from "bannanana" group by "bannanana" . "hizat""#;
+    let mut res = good_query_many_pg!("pg_gen_select_group_by", 
+        r#"select sum ( "select_group_by_bannanana" . "hizat2" ) as "hizat2" from "select_group_by_bannanana" group by "select_group_by_bannanana" . "hizat""#;
         ;
         &mut db
     ).await?;
@@ -552,26 +552,26 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
 async fn test_select_limit() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_limit::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        text = &str;
+    good_query_pg!("pg_gen_select_limit", 
+        r#"insert into "select_limit_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        text = &str;
+    good_query_pg!("pg_gen_select_limit", 
+        r#"insert into "select_limit_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        text = &str;
+    good_query_pg!("pg_gen_select_limit", 
+        r#"insert into "select_limit_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "soy"
     ).await?;
-    assert_eq!(good_query_many_pg!(
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" limit 2"#;
+    assert_eq!(good_query_many_pg!("pg_gen_select_limit", 
+        r#"select "select_limit_bannanana" . "hizat" as "hizat" from "select_limit_bannanana" limit 2"#;
         ;
         &mut db
     ).await?.len(), 2);
@@ -582,26 +582,26 @@ async fn test_select_limit() -> Result<(), loga::Error> {
 async fn test_select_order() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_order::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        v = i32;
+    good_query_pg!("pg_gen_select_order", 
+        r#"insert into "select_order_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = i32;
         &mut db,
         0
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        v = i32;
+    good_query_pg!("pg_gen_select_order", 
+        r#"insert into "select_order_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = i32;
         &mut db,
         12
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" ) values ( $1 )"#;
-        v = i32;
+    good_query_pg!("pg_gen_select_order", 
+        r#"insert into "select_order_bannanana" ( "hizat" ) values ( $1 )"#;
+        p0 = i32;
         &mut db,
         9
     ).await?;
-    assert_eq!(good_query_many_pg!(
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" order by "bannanana" . "hizat" asc"#;
+    assert_eq!(good_query_many_pg!("pg_gen_select_order", 
+        r#"select "select_order_bannanana" . "hizat" as "hizat" from "select_order_bannanana" order by "select_order_bannanana" . "hizat" asc"#;
         ;
         &mut db
     ).await?, vec![0, 9, 12]);
@@ -612,8 +612,8 @@ async fn test_select_order() -> Result<(), loga::Error> {
 async fn test_migrate_add_field() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_add_field::migrate(&mut db).await?;
-    match good_query_opt_pg!(
-        r#"select "bannna" . "hizat" as "hizat" , "bannna" . "zomzom" as "zomzom" from "bannna""#;
+    match good_query_opt_pg!("pg_gen_migrate_add_field", 
+        r#"select "migrate_add_field_bannna" . "hizat" as "hizat" , "migrate_add_field_bannna" . "zomzom" as "zomzom" from "migrate_add_field_bannna""#;
         ;
         &mut db
     ).await? {
@@ -630,8 +630,8 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
 async fn test_migrate_rename_field() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_rename_field::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannna" ( "hizat" ) values ( 'nizoot' )"#;
+    good_query_pg!("pg_gen_migrate_rename_field", 
+        r#"insert into "migrate_rename_field_bannna" ( "hizat" ) values ( 'nizoot' )"#;
         ;
         &mut db
     ).await?;
@@ -642,9 +642,9 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
 async fn test_migrate_remove_field() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_remove_field::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bnanaa" ( "hizat" ) values ( $1 )"#;
-        okolor = &str;
+    good_query_pg!("pg_gen_migrate_remove_field", 
+        r#"insert into "migrate_remove_field_bnanaa" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "yordol"
     ).await?;
@@ -655,9 +655,9 @@ async fn test_migrate_remove_field() -> Result<(), loga::Error> {
 async fn test_migrate_add_table() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_add_table::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "two_pg_gen_migrate_remove_field" ( "two" ) values ( $1 )"#;
-        two = i32;
+    good_query_pg!("pg_gen_migrate_add_table", 
+        r#"insert into "migrate_add_table_two" ( "two" ) values ( $1 )"#;
+        p0 = i32;
         &mut db,
         23
     ).await?;
@@ -668,9 +668,9 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
 async fn test_migrate_rename_table() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_migrate_rename_table::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bana" ( "hizat" ) values ( $1 )"#;
-        two = &str;
+    good_query_pg!("pg_gen_migrate_rename_table", 
+        r#"insert into "migrate_rename_table_bana" ( "hizat" ) values ( $1 )"#;
+        p0 = string;
         &mut db,
         "inset"
     ).await?;
@@ -688,24 +688,24 @@ async fn test_migrate_remove_table() -> Result<(), loga::Error> {
 async fn test_select_cte() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_cte::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_cte", 
+        r#"insert into "select_cte_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         7
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_cte", 
+        r#"insert into "select_cte_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         99
     ).await?;
-    let mut res = good_query_many_pg!(
-        r#"with "hibbo" ( "zathi" ) as ( select "bannanana" . "hizat2" as "hizat2" from "bannanana" ) select "hibbo" . "zathi" as "zathi" from "hibbo""#;
+    let mut res = good_query_many_pg!("pg_gen_select_cte", 
+        r#"with "hibbo" ( "zathi" ) as ( select "select_cte_bannanana" . "hizat2" as "hizat2" from "select_cte_bannanana" ) select "hibbo" . "zathi" as "zathi" from "hibbo""#;
         ;
         &mut db
     ).await?;
@@ -718,40 +718,40 @@ async fn test_select_cte() -> Result<(), loga::Error> {
 async fn test_select_window() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     pg_gen_select_window::migrate(&mut db).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_window", 
+        r#"insert into "select_window_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         7
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_window", 
+        r#"insert into "select_window_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         1,
         99
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_window", 
+        r#"insert into "select_window_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         2,
         3
     ).await?;
-    good_query_pg!(
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
-        v = i32,
-        v2 = i32;
+    good_query_pg!("pg_gen_select_window", 
+        r#"insert into "select_window_bannanana" ( "hizat" , "hizat2" ) values ( $1 , $2 )"#;
+        p0 = i32,
+        p1 = i32;
         &mut db,
         2,
         10
     ).await?;
-    let mut res = good_query_many_pg!(
-        r#"select sum ( "bannanana" . "hizat2" ) over ( partition by "bannanana" . "hizat" ) as "hizat2" from "bannanana""#;
+    let mut res = good_query_many_pg!("pg_gen_select_window", 
+        r#"select sum ( "select_window_bannanana" . "hizat2" ) over ( partition by "select_window_bannanana" . "hizat" ) as "hizat2" from "select_window_bannanana""#;
         ;
         &mut db
     ).await?.into_iter().collect::<Vec<_>>();

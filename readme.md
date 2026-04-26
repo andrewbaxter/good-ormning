@@ -97,31 +97,33 @@ use good_ormning::sqlite::{
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    let root = PathBuf::from(&env::var("CARGO_MANIFEST_DIR").unwrap());
-    let mut latest_version = Version::default();
-    let users = latest_version.table("zQLEK3CT0", "users");
-    let id = users.rowid_field(&mut latest_version, None);
-    let name = users.field(&mut latest_version, "zLQI9HQUQ", "name", field_str().build());
-    let points = users.field(&mut latest_version, "zLAPH3H29", "points", field_i64().build());
-    good_ormning::sqlite::generate(&root.join("tests/sqlite_gen_hello_world.rs"), vec![
+    let latest_version = Version::new();
+    let users = latest_version.table("users");
+    let id_t = users.rowid_field(None).r#type();
+    let name_t = field_str().build();
+    let points_t = field_i64().build();
+    let id = users.rowid_field(None);
+    let name = users.field("name", name_t.clone());
+    let points = users.field("points", points_t.clone());
+    good_ormning::sqlite::generate(None, vec![
         // Versions
-        (0usize, latest_version)
+        (0usize, latest_version.build())
     ], vec![
         // Latest version queries
         new_insert(&users, vec![(name.clone(), Expr::Param {
             name: "name".into(),
-            type_: name.type_.type_.clone(),
+            type_: name_t.type_.clone(),
         }), (points.clone(), Expr::Param {
             name: "points".into(),
-            type_: points.type_.type_.clone(),
+            type_: points_t.type_.clone(),
         })]).build_query("create_user", QueryResCount::None),
 
         new_select(&users).where_(Expr::BinOp {
-            left: Box::new(Expr::Field(id.clone())),
+            left: Box::new(Expr::Field(id.to_ref())),
             op: BinOp::Equals,
             right: Box::new(Expr::Param {
                 name: "id".into(),
-                type_: id.type_.type_.clone(),
+                type_: id_t.type_.clone(),
             }),
         }).return_fields(&[&name, &points]).build_query("get_user", QueryResCount::One),
 
@@ -159,13 +161,15 @@ And can be used like:
 
 ```rust,ignore
 fn main() {
-    use sqlite_gen_hello_world as queries;
+    mod queries {
+        include!(concat!(env!("OUT_DIR"), "/good_ormning_sqlite_default.rs"));
+    }
 
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
-    queries::migrate(&db).unwrap();
-    queries::create_user(&db, "rust human", 0).unwrap();
-    for user_id in queries::list_users(&db).unwrap() {
-        let user = queries::get_user(&db, user_id).unwrap();
+    queries::migrate(&mut db).unwrap();
+    queries::create_user(&mut db, "rust human", 0).unwrap();
+    for user_id in queries::list_users(&mut db).unwrap() {
+        let user = queries::get_user(&mut db, user_id).unwrap();
         println!("User {}: {}", user_id, user.name);
     }
     Ok(())
@@ -214,7 +218,8 @@ The type must have methods to convert to/from the native SQL types. There are tr
 ```rust
 pub struct MyString(pub String);
 
-impl good_ormning_runtime::pg::GoodOrmningCustomString<MyString> for MyString {
+use good_ormning::runtime::pg;
+impl pg::GoodOrmningCustomString<MyString> for MyString {
     fn to_sql(value: &MyString) -> &str {
         &value.0
     }

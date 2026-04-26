@@ -11,7 +11,7 @@ use {
     std::borrow::Cow,
 };
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyBool(pub bool);
 
 impl pg::GoodOrmningCustomBool<MyBool> for MyBool {
@@ -34,7 +34,7 @@ impl sqlite::GoodOrmningCustomBool<MyBool> for MyBool {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyAuto(pub i64);
 
 impl pg::GoodOrmningCustomAuto<MyAuto> for MyAuto {
@@ -47,7 +47,7 @@ impl pg::GoodOrmningCustomAuto<MyAuto> for MyAuto {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyI32(pub i32);
 
 impl pg::GoodOrmningCustomI32<MyI32> for MyI32 {
@@ -70,7 +70,7 @@ impl sqlite::GoodOrmningCustomI32<MyI32> for MyI32 {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyI64(pub i64);
 
 impl pg::GoodOrmningCustomI64<MyI64> for MyI64 {
@@ -93,7 +93,7 @@ impl sqlite::GoodOrmningCustomI64<MyI64> for MyI64 {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyU32(pub u32);
 
 impl pg::GoodOrmningCustomU32<MyU32> for MyU32 {
@@ -116,8 +116,15 @@ impl sqlite::GoodOrmningCustomU32<MyU32> for MyU32 {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub struct MyF32(pub f32);
+
+impl Eq for MyF32 {}
+impl Ord for MyF32 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
 
 impl pg::GoodOrmningCustomF32<MyF32> for MyF32 {
     fn to_sql(value: &MyF32) -> f32 {
@@ -139,8 +146,15 @@ impl sqlite::GoodOrmningCustomF32<MyF32> for MyF32 {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub struct MyF64(pub f64);
+
+impl Eq for MyF64 {}
+impl Ord for MyF64 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
 
 impl pg::GoodOrmningCustomF64<MyF64> for MyF64 {
     fn to_sql(value: &MyF64) -> f64 {
@@ -162,7 +176,7 @@ impl sqlite::GoodOrmningCustomF64<MyF64> for MyF64 {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyString(pub String);
 
 impl pg::GoodOrmningCustomString<MyString> for MyString {
@@ -185,7 +199,7 @@ impl sqlite::GoodOrmningCustomString<MyString> for MyString {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyBytes(pub Vec<u8>);
 
 impl pg::GoodOrmningCustomBytes<MyBytes> for MyBytes {
@@ -208,7 +222,7 @@ impl sqlite::GoodOrmningCustomBytes<MyBytes> for MyBytes {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyUtctimeChrono(pub DateTime<Utc>);
 
 impl pg::GoodOrmningCustomUtcTimeChrono<MyUtctimeChrono> for MyUtctimeChrono {
@@ -231,7 +245,7 @@ impl sqlite::GoodOrmningCustomUtcTimeChrono<MyUtctimeChrono> for MyUtctimeChrono
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MyUtctimeJiff(pub Timestamp);
 
 impl pg::GoodOrmningCustomUtcTimeJiff<MyUtctimeJiff> for MyUtctimeJiff {

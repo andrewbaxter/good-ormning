@@ -1,12 +1,4 @@
-use proc_macro2::{
-    TokenStream,
-    Ident,
-};
-use quote::{
-    quote,
-    format_ident,
-    ToTokens,
-};
+use quote::quote;
 use std::{
     collections::{
         HashMap,
@@ -25,17 +17,10 @@ use serde::{
 };
 use crate::{
     pg::{
-        types::{
-            Type,
-            to_rust_types,
-        },
-        query::expr::ExprValName,
+        types::Type,
         graph::utils::PgMigrateCtx,
     },
-    utils::{
-        Errs,
-        sanitize_ident,
-    },
+    utils::Errs,
 };
 pub use crate::pg::types::{
     Type as PgType,
@@ -934,6 +919,9 @@ impl VersionHandle {
 
     pub fn table(&self, id: &str) -> TableHandle {
         self.with(|v| {
+            if v.tables.contains_key(id) {
+                panic!("Table {} already exists", id);
+            }
             v.tables.insert(id.into(), Table {
                 id: id.into(),
                 renamed_from: None,
@@ -1059,7 +1047,11 @@ impl TableHandle {
 
     pub fn field(&self, id: &str, type_: FieldType) -> FieldHandle {
         self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().fields.insert(id.into(), Field {
+            let table = v.tables.get_mut(&self.id).unwrap();
+            if table.fields.contains_key(id) {
+                panic!("Field {} already exists on table {}", id, self.id);
+            }
+            table.fields.insert(id.into(), Field {
                 id: id.into(),
                 renamed_from: None,
                 type_: type_,
@@ -1148,6 +1140,12 @@ impl FieldHandle {
             table_id: self.table.id.clone(),
             field_id: self.id.clone(),
         }
+    }
+
+    pub fn r#type(&self) -> FieldType {
+        self.table.version.with(|v| {
+            v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone()
+        })
     }
 
     pub fn renamed_from(self, old_name: &str) -> Self {
@@ -1270,12 +1268,26 @@ impl Version {
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
-pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Query>) -> Result<(), Vec<String>> {
+pub fn generate(
+    db_name: Option<&str>,
+    versions: Vec<(usize, Version)>,
+    queries: Vec<Query>,
+) -> Result<(), Vec<String>> {
+    let db_name = db_name.unwrap_or("default");
+    let out_dir = env::var("OUT_DIR").map_err(|e| vec![format!("OUT_DIR not set: {:?}", e)])?;
+    let out_dir = Path::new(&out_dir);
+    let output = out_dir.join(format!("good_ormning_pg_{}.rs", db_name));
+    let json_dir = out_dir.join("good_ormning");
+    if let Err(e) = fs::create_dir_all(&json_dir) {
+        return Err(vec![format!("Error creating directory {:?}: {:?}", json_dir, e)]);
+    }
+    let json_path = json_dir.join(format!("pg_{}.json", db_name));
+
     // Serialize versions for proc macro
-    if let Ok(out_dir) = env::var("OUT_DIR") {
-        let path = Path::new(&out_dir).join("good_ormning_pg_versions.json");
-        let mut versions_map: HashMap<usize, Version> = if path.exists() {
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap_or_default()
+    {
+        eprintln!("DEBUG: Writing versions to {:?}", json_path);
+        let mut versions_map: HashMap<usize, Version> = if json_path.exists() {
+            serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap_or_default()
         } else {
             HashMap::new()
         };
@@ -1288,7 +1300,7 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
                 entry.custom_types.insert(k.clone(), v.clone());
             }
         }
-        let _ = fs::write(path, serde_json::to_string(&versions_map).unwrap());
+        let _ = fs::write(json_path, serde_json::to_string(&versions_map).unwrap());
     }
     let mut errs = Errs::new();
     let mut migrations = vec![];
@@ -1483,21 +1495,13 @@ pub fn generate(output: &Path, versions: Vec<(usize, Version)>, queries: Vec<Que
         }
         #(#db_others) *
     };
-    if let Some(p) = output.parent() {
-        if let Err(e) = fs::create_dir_all(&p) {
-            errs.err(
-                &rpds::vector![],
-                format!("Error creating output parent directories {}: {:?}", p.to_string_lossy(), e),
-            );
-        }
-    }
     match genemichaels_lib::format_str(&tokens.to_string(), &genemichaels_lib::FormatConfig::default()) {
         Ok(src) => {
-            match fs::write(output, src.rendered.as_bytes()) {
+            match fs::write(&output, src.rendered.as_bytes()) {
                 Ok(_) => { },
                 Err(e) => errs.err(
                     &rpds::vector![],
-                    format!("Failed to write generated code to {}: {:?}", output.to_string_lossy(), e),
+                    format!("Failed to write generated code to {:?}: {:?}", output, e),
                 ),
             };
         },
@@ -1521,7 +1525,6 @@ mod test {
         new_insert,
         VersionHandle,
         TableHandle,
-        schema::table::SchemaTableId,
     };
     use super::{
         schema::field::{
@@ -1530,24 +1533,28 @@ mod test {
             field_i32,
         },
         generate,
-        query::expr::Expr,
+        query::expr::{
+            Expr,
+            SerialExpr,
+        },
+        Version,
     };
 
     #[test]
     fn test_add_field_serial_bad() {
-        assert!(generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+        assert!(generate(None, vec![
             // Versions (previous)
             (0usize, {
-                let v = VersionHandle::new();
-                v.table("zMOY9YMCK").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                let v = Version::new();
+                v.table("zMOY9YMCK").field("z437INV6D", field_str().build());
+                v.build()
             }),
             (1usize, {
-                let v = VersionHandle::new();
+                let v = Version::new();
                 let bananna = v.table("zMOY9YMCK");
-                bananna.field("z437INV6D", "hizat", field_str().build());
-                bananna.field("zPREUVAOD", "zomzom", field_auto().migrate_fill(Expr::LitAuto(0)).build());
-                v.0.borrow().clone()
+                bananna.field("z437INV6D", field_str().build());
+                bananna.field("zPREUVAOD", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build());
+                v.build()
             })
         ], vec![]).is_err());
     }
@@ -1555,19 +1562,19 @@ mod test {
     #[test]
     #[should_panic]
     fn test_add_field_dup_bad() {
-        generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+        generate(None, vec![
             // Versions (previous)
             (0usize, {
-                let v = VersionHandle::new();
-                v.table("zPAO2PJU4").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                let v = Version::new();
+                v.table("zPAO2PJU4").field("z437INV6D", field_str().build());
+                v.build()
             }),
             (1usize, {
-                let v = VersionHandle::new();
+                let v = Version::new();
                 let bananna = v.table("zQZQ8E2WD");
-                bananna.field("z437INV6D", "hizat", field_str().build());
-                bananna.field("z437INV6D", "zomzom", field_i32().build());
-                v.0.borrow().clone()
+                bananna.field("z437INV6D", field_str().build());
+                bananna.field("z437INV6D", field_i32().build());
+                v.build()
             })
         ], vec![]).unwrap();
     }
@@ -1575,31 +1582,32 @@ mod test {
     #[test]
     #[should_panic]
     fn test_add_table_dup_bad() {
-        generate(&PathBuf::from_str("/dev/null").unwrap(), vec![
+        generate(None, vec![
             // Versions (previous)
             (0usize, {
-                let v = VersionHandle::new();
-                v.table("zSNS34DYI").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                let v = Version::new();
+                v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                v.build()
             }),
             (1usize, {
-                let v = VersionHandle::new();
-                v.table("zSNS34DYI").field("z437INV6D", "hizat", field_str().build());
-                v.table("zSNS34DYI").field("z437INV6D", "hizat", field_str().build());
-                v.0.borrow().clone()
+                let v = Version::new();
+                v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                v.build()
             })
         ], vec![]).unwrap();
     }
 
     #[test]
     fn test_res_count_none_bad() {
-        let v = VersionHandle::new();
+        let v = Version::new();
         let bananna = v.table("z5S18LWQE");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let hizat = bananna.field("z437INV6D", field_str().build());
         assert!(
             generate(
+                None,
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.build())],
                 vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1607,16 +1615,17 @@ mod test {
 
     #[test]
     fn test_select_nothing_bad() {
-        let v = VersionHandle::new();
-        v.table("zOOR88EQ9").field("z437INV6D", "hizat", field_str().build());
+        let v = Version::new();
+        v.table("zOOR88EQ9").field("z437INV6D", field_str().build());
         let bananna = TableHandle {
             version: v.clone(),
             id: "zOOR88EQ9".into(),
         };
         assert!(
             generate(
+                None,
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.build())],
                 vec![new_select(&bananna).build_query("x", QueryResCount::None)],
             ).is_err()
         );
@@ -1624,13 +1633,14 @@ mod test {
 
     #[test]
     fn test_returning_none_bad() {
-        let v = VersionHandle::new();
+        let v = Version::new();
         let bananna = v.table("zZPD1I2EF");
-        let hizat = bananna.field("z437INV6D", "hizat", field_str().build());
+        let hizat = bananna.field("z437INV6D", field_str().build());
         assert!(
             generate(
+                None,
                 &PathBuf::from_str("/dev/null").unwrap(),
-                vec![(0usize, v.0.borrow().clone())],
+                vec![(0usize, v.build())],
                 vec![
                     new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
                         .return_field(&hizat)

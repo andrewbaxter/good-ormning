@@ -12,17 +12,12 @@ use {
         utils::{
             build_returning_values,
             SqliteQueryCtx,
-            SqliteTableInfo,
-            SqliteFieldInfo,
             QueryBody,
         },
     },
     crate::{
         sqlite::{
-            schema::{
-                table::TableRef,
-                field::FieldRef,
-            },
+            schema::table::TableRef,
             types::{
                 type_i64,
                 Type,
@@ -44,6 +39,7 @@ pub enum Order {
 pub enum JoinSource {
     Subsel(Box<SelectBody>),
     Table(TableRef),
+    Func(String, Vec<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +73,29 @@ impl NamedSelectSource {
                 };
                 out.id(&table_info.sql_name);
                 table_info.fields.iter().map(|(id, info)| (Binding::field(id), info.type_.clone())).collect()
+            },
+            JoinSource::Func(name, args) => {
+                out.s(name).s("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        out.s(",");
+                    }
+                    let (_, tokens) = arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                    out.s(&tokens.to_string());
+                }
+                out.s(")");
+                if name == "rarray" {
+                    vec![(Binding::local("value".into()), Type {
+                        type_: crate::sqlite::types::SimpleType {
+                            type_: crate::sqlite::types::SimpleSimpleType::I32,
+                            custom: None,
+                        },
+                        opt: false,
+                        arr: false,
+                    })]
+                } else {
+                    vec![]
+                }
             },
         };
         if let Some(s) = &self.alias {
@@ -251,7 +270,7 @@ pub enum SelectJunctionOperator {
 #[derive(Clone, Debug)]
 pub struct SelectJunction {
     pub op: SelectJunctionOperator,
-    pub body: SelectBody,
+    pub body: Box<dyn QueryBody>,
 }
 
 pub fn build_select_junction(
@@ -277,25 +296,25 @@ pub fn build_select_junction(
                 out.s("except");
             },
         }
-        let j_body: (ExprType, Tokens) = j.body.build_internal(ctx, &HashMap::new(), &path, QueryResCount::Many);
-        if j_body.0.0.len() != base_type.0.len() {
+        let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
+        if j_body_type.0.len() != base_type.0.len() {
             ctx
                 .errs
                 .err(
                     &path,
                     format!(
                         "Select returns {} columns but the base select has {} columns and these must match exactly",
-                        j_body.0.0.len(),
+                        j_body_type.0.len(),
                         base_type.0.len()
                     ),
                 );
             continue;
         }
-        for (i, ((_, got), (_, want))) in Iterator::zip(j_body.0.0.iter(), base_type.0.iter()).enumerate() {
+        for (i, ((_, got), (_, want))) in Iterator::zip(j_body_type.0.iter(), base_type.0.iter()).enumerate() {
             let path = path.push_back(format!("Select return {}", i));
             check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
         }
-        out.s(&j_body.1.to_string());
+        out.s(&j_body_tokens.to_string());
     }
     return out;
 }

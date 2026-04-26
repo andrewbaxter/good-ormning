@@ -16,7 +16,6 @@ use super::{
     utils::{
         SqliteQueryCtx,
         QueryBody,
-        build_returning,
         build_returning_values,
         Returning,
         With,
@@ -58,6 +57,7 @@ pub struct Join {
 pub enum JoinSource {
     Subsel(Box<Select>),
     Table(TableRef),
+    Func(String, Vec<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -88,6 +88,44 @@ impl NamedSelectSource {
                 };
                 out.id(&table_info.sql_name);
                 table_info.fields.iter().map(|(id, info)| (Binding::field(id), info.type_.clone())).collect()
+            },
+            JoinSource::Func(name, args) => {
+                if name == "__good_ormning_rarray" {
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens) =
+                            arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                        out.s(&tokens.to_string());
+                    }
+                } else {
+                    out.s(name).s("(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens) =
+                            arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                        out.s(&tokens.to_string());
+                    }
+                    out.s(")");
+                }
+                if name == "rarray" || name == "__good_ormning_rarray" {
+                    // Find the type of the argument
+                    // For now, default to i32 for simplicity or try to infer?
+                    // Better to just return a dummy i32 if we can't infer.
+                    vec![(Binding::local("value".into()), Type {
+                        type_: crate::sqlite::types::SimpleType {
+                            type_: crate::sqlite::types::SimpleSimpleType::I32,
+                            custom: None,
+                        },
+                        opt: false,
+                        arr: false,
+                    })]
+                } else {
+                    vec![]
+                }
             },
         };
         if let Some(s) = &self.alias {
@@ -128,6 +166,9 @@ impl QueryBody for Select {
             out.s(&build_with(ctx, path, with).to_string());
         }
         out.s("select");
+        if self.returning.is_empty() {
+            ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
+        }
         let (fields, table_tokens): (ExprType, Tokens) = self.table.build(ctx, path);
         for (k, v) in fields.0 {
             scope.insert(k, v);

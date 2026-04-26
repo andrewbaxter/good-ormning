@@ -3,9 +3,6 @@ use crate::{
     pg::{
         types::Type,
         QueryResCount,
-        schema::{
-            table::TableRef,
-        },
         query::{
             utils::{
                 PgQueryCtx,

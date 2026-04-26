@@ -23,7 +23,6 @@ use super::{
         ExprValName,
     },
     utils::{
-        PgQueryCtx,
         QueryBody,
         build_returning,
         build_set,

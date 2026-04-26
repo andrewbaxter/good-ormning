@@ -40,6 +40,7 @@ pub enum Order {
 pub enum JoinSource {
     Subsel(Box<Select>),
     Table(TableRef),
+    Func(String, Vec<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -70,6 +71,18 @@ impl NamedSelectSource {
                 };
                 out.id(&table_info.sql_name);
                 table_info.fields.iter().map(|(id, info)| (ExprValName::field(id), info.type_.clone())).collect()
+            },
+            JoinSource::Func(name, args) => {
+                out.s(name).s("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        out.s(",");
+                    }
+                    let (_, tokens) = arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                    out.s(&tokens.to_string());
+                }
+                out.s(")");
+                vec![]
             },
         };
         if let Some(s) = &self.alias {
@@ -159,7 +172,7 @@ impl QueryBody for Select {
                 },
             }
             out.s("on");
-            let (on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
+            let (_on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
             out.s(&on_tokens.to_string());
             joins.push(out.to_string());
         }

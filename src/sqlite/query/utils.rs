@@ -73,6 +73,12 @@ impl CteBuilder {
         return f;
     }
 
+    pub fn column(mut self, id: impl AsRef<str>, type_: Type) -> Self {
+        let field_id = id.as_ref().to_string();
+        self.columns.push((field_id.clone(), field_id, type_));
+        return self;
+    }
+
     pub fn build(self) -> Cte {
         return Cte {
             table_id: self.table_id,
@@ -80,6 +86,12 @@ impl CteBuilder {
             body: self.body,
             body_junctions: self.body_junctions,
         };
+    }
+}
+
+impl From<CteBuilder> for Cte {
+    fn from(builder: CteBuilder) -> Self {
+        return builder.build();
     }
 }
 
