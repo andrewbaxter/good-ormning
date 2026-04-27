@@ -314,18 +314,6 @@ pub fn build() {
         let one = v.table("select_join_two");
         let hizat1 = one.field("hizat", field_str().build());
         let two = one.field("two", field_str().build());
-        v.post_migration(
-            new_insert(
-                &bananna,
-                vec![(hizat.clone(), Expr::LitString("key".into())), (three.clone(), Expr::LitI32(33))],
-            ).build_migration(&v),
-        );
-        v.post_migration(
-            new_insert(
-                &one,
-                vec![(hizat1.clone(), Expr::LitString("key".into())), (two.clone(), Expr::LitString("no".into()))],
-            ).build_migration(&v),
-        );
         generate(Some("sqlite_gen_select_join"), 
             vec![(1usize, v.build())],
             vec![new_select(&bananna).join(Join {
@@ -383,9 +371,6 @@ pub fn build() {
                 let v = SqliteVersion::new();
                 let bananna = v.table("migrate_add_field_bannna");
                 let hizat = bananna.field("hizat", field_str().build());
-                v.post_migration(
-                    new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("nizoot".into()))]).build_migration(&v),
-                );
                 let x = v.build();
                 x
             }),
@@ -537,7 +522,6 @@ pub fn build() {
         let v1 = SqliteVersion::new();
         let v1_bananna = v1.table("migrate_pre_migration_v0_banana");
         v1_bananna.field("hizat", field_str().build());
-        v1.pre_migration(new_insert(&v0_two, vec![(v0_field_two.clone(), Expr::LitI32(7))]).build_migration(&v0));
         generate(Some("sqlite_gen_migrate_pre_migration"), vec![
             // Versions (previous)
             (0usize, v0.build()),

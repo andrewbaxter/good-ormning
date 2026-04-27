@@ -119,7 +119,8 @@ impl sqlite::GoodOrmningCustomU32<MyU32> for MyU32 {
 #[derive(PartialEq, PartialOrd, Debug)]
 pub struct MyF32(pub f32);
 
-impl Eq for MyF32 {}
+impl Eq for MyF32 { }
+
 impl Ord for MyF32 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
@@ -149,7 +150,8 @@ impl sqlite::GoodOrmningCustomF32<MyF32> for MyF32 {
 #[derive(PartialEq, PartialOrd, Debug)]
 pub struct MyF64(pub f64);
 
-impl Eq for MyF64 {}
+impl Eq for MyF64 { }
+
 impl Ord for MyF64 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)

@@ -3,39 +3,17 @@
 - On [crates.io](https://crates.io/crates/good-ormning)
 - On [docs.rs](https://docs.rs/good-ormning)
 
-Good-ormning is an ORM, probably? In a nutshell:
+Good-ormning is light weight end to end database management with full static type checking! Do all your development in Rust (no live test database), and know that it'll work in production the first time.
 
-1. Define schemas and queries in `build.rs`
-2. Good-ormning generates a function to set up/migrate the database
-3. Good-ormning generates functions for each query
+Here's how it works:
 
-### Why you want it
+1. You use `build.rs` to define your database versions. If you want to make changes, copy the last version and make changes to it. Call `generate` with all your versions. (This generates code to perform database setup and migrations, and saves schema types for query type checking.)
+2. Use `good_module!(pub db);` to create a `db` module containing the generated code.
+3. Use `good_query!("select * from mytable where x = $y;"; y = i32; db, y = 125)` to make queries. `good_query` will return one struct, an `Option<>`, or a list of structs for the query.
 
-- You want end to end type safety, from table definition through queries, across versions
-- You want to do everything in Rust, you don't want to need to spin up a database and run SQL manually
+SQL dialect support is ongoing - if there's a language feature you need let me know and I'll try to prioritize it!
 
-### Features
-
-- No macros
-- No generics
-- No traits (okay, simple traits for custom types to help guide implementations _only_)
-- No boilerplate
-- Automatic migrations, no migration-schema mismatches
-- Query parameter type checking - no runtime errors due to parameter types, counts, or ordering
-- Query logic type checking via a query simulation
-- Query result type checking - no runtime errors due to result types, counts, or ordering
-- Fast to generate, minimum runtime overhead
-
-Like other Rust ORMs, Good-ormning doesn't abstract away from actual database workflows, but instead aims to enhance type checking with normal SQL.
-
-See Comparisons, below, for information on how Good-ormning differs from other Rust ORMs.
-
-### Current status
-
-- Basic features work, this works for my basic uses
-- Moderate test coverage
-- Missing advanced features - let me know if there's something you want
-- Some ergonomics issues, interfaces may change in upcoming releases
+Dynamic queries are not currently supported. If you want to assemble a query programmatically you can run it against your database connection directly.
 
 ### Supported databases
 
@@ -47,31 +25,30 @@ See Comparisons, below, for information on how Good-ormning differs from other R
 ### First time
 
 1. You'll need the following runtime dependencies:
-
-   - `good-ormning-runtime`
    - `tokio-postgres` for PostgreSQL
    - `rusqlite` for Sqlite
 
    And `build.rs` dependencies:
-
    - `good-ormning`
 
    And you _must_ enable one (or more) of the database features:
-
    - `pg`
    - `sqlite`
 
-   plus maybe `chrono` for `DateTime` support.
+   plus maybe `chrono` or `jiff` for `DateTime` support.
 
-2. Create a `build.rs` and define your initial schema version and queries
+2. Create a `build.rs` and define your initial schema version using `Version::new()`.
 3. Call `goodormning::generate()` to output the generated code
 4. In your code, after creating a database connection, call `migrate`
+5. Make queries using `good_query!()`.
 
 ### Schema changes
 
 1. Copy your previous version schema, leaving the old schema version untouched. Modify the new schema and queries as you wish.
 2. Pass both the old and new schema versions to `goodormning::generate()`, which will generate the new migration statements.
 3. At runtime, the `migrate` call will make sure the database is updated to the new schema version.
+
+You can get rid of old schema versions once you know there are no existing databases running that version.
 
 ## Example
 
@@ -188,28 +165,9 @@ User 1: rust human
 - `sqlite` - enables generating code for Sqlite
 - `chrono` - enable datetime field/expression types
 
-### Schema IDs and IDs
+### Queries
 
-"Schema IDs" are internal ids used for matching fields across versions, to identify renames, deletes, etc. Schema IDs must not change once used in a version. I recommend using randomly generated IDs, via a key macro. Changing Schema IDs will result in a delete followed by a create.
-
-"IDs" are used both in SQL (for fields) and Rust (in parameters and returned data structures), so must be valid in both (however, some munging is automatically applied to ids in Rust if they clash with keywords). Depending on the database, you can change IDs arbitrarily between schema versions but swapping IDs in consecutive versions isn't currently supported - if you need to do swaps do it over three different versions (ex: `v0`: `A` and `B`, `v1`: `A_` and `B`, `v2`: `B` and `A`).
-
-### Query, expression and fields types
-
-Use `type_*` `field_*` functions to get type builders for use in expressions/fields.
-
-Use `new_insert/select/update/delete` to create query builders.
-
-There are also some helper functions for building queries, see
-
-- `field_param`, a shortcut for a parameter matching the type and name of a field
-- `set_field`, a shortcut for setting field values in INSERT and UPDATE
-- `eq_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field` are shortcuts for expressions comparing a field and a parameter with the same type
-- `expr_and`, a shortcut for AND expressions
-
-for the database you're using.
-
-### Custom types
+There are 4 proc macros,
 
 When defining a field in the schema, call `.custom("mycrate::MyString", type_str().build())` on the field type builder (or pass it in as `Some("mycreate::MyType".to_string())` if creating the type structure directly).
 

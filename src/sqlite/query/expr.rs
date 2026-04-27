@@ -597,14 +597,16 @@ impl Expr {
                 if x.table_id.is_empty() {
                     out.id(&x.field_id);
                 } else {
-                    let table_info = ctx
-                        .tables
-                        .get(&TableRef(x.table_id.clone()))
-                        .unwrap_or_else(|| panic!("Table {:?} not found in context", x.table_id));
-                    let field_info = table_info
-                        .fields
-                        .get(x)
-                        .unwrap_or_else(|| panic!("Field {:?} not found in table {:?}", x.field_id, x.table_id));
+                    let table_info =
+                        ctx
+                            .tables
+                            .get(&TableRef(x.table_id.clone()))
+                            .unwrap_or_else(|| panic!("Table {:?} not found in context", x.table_id));
+                    let field_info =
+                        table_info
+                            .fields
+                            .get(x)
+                            .unwrap_or_else(|| panic!("Field {:?} not found in table {:?}", x.field_id, x.table_id));
                     out.id(&table_info.sql_name).s(".").id(&field_info.sql_name);
                 }
                 return (ExprType(vec![(name, t.clone())]), out);

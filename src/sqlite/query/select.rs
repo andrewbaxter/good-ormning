@@ -95,8 +95,7 @@ impl NamedSelectSource {
                         if i > 0 {
                             out.s(",");
                         }
-                        let (_, tokens) =
-                            arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                        let (_, tokens) = arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
                         out.s(&tokens.to_string());
                     }
                 } else {
@@ -105,16 +104,14 @@ impl NamedSelectSource {
                         if i > 0 {
                             out.s(",");
                         }
-                        let (_, tokens) =
-                            arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
+                        let (_, tokens) = arg.build(ctx, &path.push_back(format!("Arg {}", i)), &HashMap::new());
                         out.s(&tokens.to_string());
                     }
                     out.s(")");
                 }
                 if name == "rarray" || name == "__good_ormning_rarray" {
-                    // Find the type of the argument
-                    // For now, default to i32 for simplicity or try to infer?
-                    // Better to just return a dummy i32 if we can't infer.
+                    // Find the type of the argument For now, default to i32 for simplicity or try to
+                    // infer? Better to just return a dummy i32 if we can't infer.
                     vec![(Binding::local("value".into()), Type {
                         type_: crate::sqlite::types::SimpleType {
                             type_: crate::sqlite::types::SimpleSimpleType::I32,

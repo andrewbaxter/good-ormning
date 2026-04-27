@@ -1,4 +1,7 @@
-use quote::quote;
+use quote::{
+    quote,
+    format_ident,
+};
 use std::{
     collections::{
         HashMap,
@@ -892,8 +895,6 @@ impl DeleteBuilder {
 pub struct Version {
     pub tables: BTreeMap<String, Table>,
     pub custom_types: BTreeMap<String, CustomType>,
-    pub pre_migration: Vec<String>,
-    pub post_migration: Vec<String>,
 }
 
 impl Version {
@@ -936,18 +937,6 @@ impl VersionHandle {
             version: self.clone(),
             id: id.into(),
         }
-    }
-
-    pub fn pre_migration(&self, statement: impl Into<String>) {
-        self.with(|v| {
-            v.pre_migration.push(statement.into());
-        });
-    }
-
-    pub fn post_migration(&self, statement: impl Into<String>) {
-        self.with(|v| {
-            v.post_migration.push(statement.into());
-        });
     }
 
     pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
@@ -1328,7 +1317,7 @@ pub fn generate(
     let mut prev_version: Option<Version> = None;
     let mut prev_version_i: Option<i64> = None;
     let mut field_lookup: HashMap<TableRef, SqliteTableInfo> = HashMap::new();
-    for (version_i, version) in versions {
+    for (version_i, version) in &versions {
         let path = rpds::vector![format!("Migration to {}", version_i)];
         let mut migration = vec![];
 
@@ -1350,15 +1339,7 @@ pub fn generate(
                 fields: fields,
             });
         }
-        let version_i = version_i as i64;
-        for statement in &version.pre_migration {
-            migration.push(quote!{
-                {
-                    let query = #statement;
-                    db.execute(query, ()).to_good_error_query(query)?;
-                };
-            });
-        }
+        let version_i = *version_i as i64;
         if let Some(i) = prev_version_i {
             if version_i != i as i64 + 1 {
                 errs.err(
@@ -1392,41 +1373,72 @@ pub fn generate(
             }
             errs = state.errs.clone();
         }
-        for statement in &version.post_migration {
-            migration.push(quote!{
-                {
-                    let query = #statement;
-                    db.execute(query, ()).to_good_error_query(query)?;
-                };
-            });
-        }
 
         // Build migration
+        let pascal_db_name: String = db_name.split('_').map(|s| {
+            let mut c = s.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        }).collect();
+        let enum_name = format_ident!("Db{}Versions", pascal_db_name);
+        let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i as usize);
+        let enum_variant = format_ident!("V{}", version_i as usize);
         migrations.push(quote!{
             if version < #version_i {
-                #(#migration) *
+                #(#migration) * {
+                    let query = "update __good_version set version = ?";
+                    db.execute(query, (#version_i,)).to_good_error_query(query) ?;
+                }
+                callback(#enum_name::#enum_variant(#newtype_name(db))) ?;
             }
         });
 
         // Next iter prep
-        prev_version = Some(version);
+        prev_version = Some(version.clone());
         prev_version_i = Some(version_i);
     }
 
-    // Generate queries
+    // Compile, output
+    let last_version_i = prev_version_i.unwrap() as i64;
+    let pascal_db_name: String = db_name.split('_').map(|s| {
+        let mut c = s.chars();
+        match c.next() {
+            None => String::new(),
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        }
+    }).collect();
+    let enum_name = format_ident!("Db{}Versions", pascal_db_name);
+    let mut enum_variants = vec![];
+    let mut db_types = vec![];
+    for (version_i, _) in &versions {
+        let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
+        let enum_variant = format_ident!("V{}", version_i);
+        enum_variants.push(quote!(#enum_variant(#newtype_name <'a, C >)));
+        db_types.push(quote!{
+            pub struct #newtype_name <'a,
+            C: good_ormning:: runtime:: sqlite:: SqliteConnection >(pub &'a mut C);
+        });
+    }
+    let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
+    let db_alias_name = format_ident!("Db{}", pascal_db_name);
     let db_others =
         self::query::generate::generate_query_functions(
             &mut errs,
             field_lookup,
             queries,
             output.file_stem().unwrap().to_str().unwrap(),
+            quote!(#db_alias_name <'_, impl good_ormning:: runtime:: sqlite:: SqliteConnection >),
         );
-
-    // Compile, output
-    let last_version_i = prev_version_i.unwrap() as i64;
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
+        #(#db_types) * pub enum #enum_name <'a,
+        C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
+            #(#enum_variants,) *
+        }
+        pub use #latest_newtype_name as #db_alias_name;
         fn init_db(db: & mut impl good_ormning:: runtime:: sqlite:: SqliteConnection) -> Result <(),
         GoodError > {
             db.load_array_module().to_good_error(|| "Error loading array extension for array values".to_string())?;
@@ -1442,7 +1454,9 @@ pub fn generate(
             }
             Ok(())
         }
-        pub fn migrate(db: & mut impl good_ormning:: runtime:: sqlite:: SqliteConnection) -> Result <(),
+        pub fn migrate < C: good_ormning:: runtime:: sqlite:: SqliteConnection,
+        F >(db: & mut C, callback: F) -> Result <(),
+        GoodError > where F: Fn(#enum_name <'_, C >) -> Result <(),
         GoodError > {
             init_db(db)?;
             loop {
@@ -1469,8 +1483,8 @@ pub fn generate(
                     );
                 }
                 #(#migrations) * {
-                    let query = "update __good_version set version = ?, lock = 0";
-                    db.execute(query, (#last_version_i,)).to_good_error_query(query) ?;
+                    let query = "update __good_version set lock = 0";
+                    db.execute(query, ()).to_good_error_query(query)?;
                 }
                 return Ok(());
             }
@@ -1608,7 +1622,6 @@ mod test {
         assert!(
             generate(
                 None,
-                &PathBuf::from_str("/dev/null").unwrap(),
                 vec![(0usize, v.build())],
                 vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
             ).is_err()
@@ -1626,7 +1639,6 @@ mod test {
         assert!(
             generate(
                 None,
-                &PathBuf::from_str("/dev/null").unwrap(),
                 vec![(0usize, v.build())],
                 vec![new_select(&bananna).build_query("x", QueryResCount::None)],
             ).is_err()
@@ -1641,7 +1653,6 @@ mod test {
         assert!(
             generate(
                 None,
-                &PathBuf::from_str("/dev/null").unwrap(),
                 vec![(0usize, v.build())],
                 vec![
                     new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])

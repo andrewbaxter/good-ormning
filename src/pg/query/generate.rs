@@ -38,6 +38,7 @@ pub fn generate_query_functions(
     field_lookup: HashMap<crate::pg::schema::table::TableRef, PgTableInfo>,
     queries: Vec<Query>,
     mod_name: &str,
+    db_type: TokenStream,
 ) -> Vec<TokenStream> {
     let mut db_others = Vec::new();
     let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
@@ -180,14 +181,14 @@ pub fn generate_query_functions(
                 (res_ident.to_token_stream(), res_def, unforward)
             }
         };
-        let db_arg = quote!(db: & mut impl good_ormning:: runtime:: pg:: PgConnection);
+        let db_arg = quote!(db: & mut #db_type);
         match q.res_count {
             QueryResCount::None => {
                 db_others.push(quote!{
                     pub async fn #ident(#db_arg, #(#args,) *) -> Result <(),
                     GoodError > {
                         let query = #q_text;
-                        db.execute(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                        db.0.execute(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                         Ok(())
                     }
                 });
@@ -200,7 +201,7 @@ pub fn generate_query_functions(
                     pub async fn #ident(#db_arg, #(#args,) *) -> Result < Option < #res_ident >,
                     GoodError > {
                         let query = #q_text;
-                        let res = db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                        let res = db.0.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                         if let Some(r) = res.first() {
                             return Ok(Some(#unforward_res));
                         }
@@ -216,7 +217,7 @@ pub fn generate_query_functions(
                     pub async fn #ident(#db_arg, #(#args,) *) -> Result < #res_ident,
                     GoodError > {
                         let query = #q_text;
-                        let res = db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                        let res = db.0.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
                         if let Some(r) = res.first() {
                             return Ok(#unforward_res);
                         }
@@ -233,7 +234,8 @@ pub fn generate_query_functions(
                     GoodError > {
                         let mut out = vec![];
                         let query = #q_text;
-                        for r in db.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ? {
+                        let res = db.0.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
+                        for r in res {
                             out.push(#unforward_res);
                         }
                         Ok(out)

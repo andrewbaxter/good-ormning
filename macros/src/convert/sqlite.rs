@@ -41,10 +41,101 @@ use good_ormning::sqlite::{
     Query,
 };
 use good_ormning::QueryResCount;
-use super::{
-    param_type_to_sqlite_type,
-    sql_type_to_sqlite_type,
+use std::collections::BTreeMap;
+use good_ormning::pg::schema::custom_type::CustomType as PgCustomType;
+use good_ormning::sqlite::schema::custom_type::CustomType as SqliteCustomType;
+use good_ormning::pg::types::{
+    Type as PgType,
+    SimpleType as PgSimpleType,
+    SimpleSimpleType as PgSimpleSimpleType,
 };
+use good_ormning::sqlite::types::{
+    Type as SqliteType,
+    SimpleType as SqliteSimpleType,
+    SimpleSimpleType as SqliteSimpleSimpleType,
+};
+use crate::ParamType;
+
+pub fn param_type_to_sqlite_type(pt: &ParamType, custom_types: &BTreeMap<String, SqliteCustomType>) -> SqliteType {
+    let (simple_type, custom) = match pt.base.as_str() {
+        "i16" => (SqliteSimpleSimpleType::I16, None),
+        "i32" => (SqliteSimpleSimpleType::I32, None),
+        "i64" => (SqliteSimpleSimpleType::I64, None),
+        "u32" => (SqliteSimpleSimpleType::U32, None),
+        "f32" => (SqliteSimpleSimpleType::F32, None),
+        "f64" => (SqliteSimpleSimpleType::F64, None),
+        "bool" => (SqliteSimpleSimpleType::Bool, None),
+        "string" => (SqliteSimpleSimpleType::String, None),
+        "bytes" => (SqliteSimpleSimpleType::Bytes, None),
+        "utctime_s_chrono" => (SqliteSimpleSimpleType::UtcTimeSChrono, None),
+        "utctime_ms_chrono" => (SqliteSimpleSimpleType::UtcTimeMsChrono, None),
+        "utctime_s_jiff" => (SqliteSimpleSimpleType::UtcTimeSJiff, None),
+        "utctime_ms_jiff" => (SqliteSimpleSimpleType::UtcTimeMsJiff, None),
+        "auto" => (SqliteSimpleSimpleType::Auto, None),
+        _ => {
+            if let Some(ct) = custom_types.get(&pt.base) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (SqliteSimpleSimpleType::I32, Some(pt.base.clone()))
+            }
+        },
+    };
+    SqliteType {
+        type_: SqliteSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: pt.opt,
+        arr: pt.arr,
+    }
+}
+
+pub fn sql_type_to_sqlite_type(
+    t: &sqlparser::ast::DataType,
+    custom_types: &BTreeMap<String, SqliteCustomType>,
+) -> SqliteType {
+    let (simple_type, custom) = match t {
+        sqlparser::ast::DataType::SmallInt(_) => (SqliteSimpleSimpleType::I16, None),
+        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (
+            SqliteSimpleSimpleType::I32,
+            None,
+        ),
+        sqlparser::ast::DataType::BigInt(_) => (SqliteSimpleSimpleType::I64, None),
+        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (SqliteSimpleSimpleType::F32, None),
+        sqlparser::ast::DataType::DoublePrecision => (SqliteSimpleSimpleType::F64, None),
+        sqlparser::ast::DataType::Boolean => (SqliteSimpleSimpleType::Bool, None),
+        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (
+            SqliteSimpleSimpleType::String,
+            None,
+        ),
+        sqlparser::ast::DataType::Binary(_) |
+        sqlparser::ast::DataType::Varbinary(_) |
+        sqlparser::ast::DataType::Blob(_) => (
+            SqliteSimpleSimpleType::Bytes,
+            None,
+        ),
+        sqlparser::ast::DataType::Timestamp(..) => {
+            (SqliteSimpleSimpleType::UtcTimeSChrono, None)
+        },
+        sqlparser::ast::DataType::Custom(name, ..) => {
+            let name_str = name.to_string();
+            if let Some(ct) = custom_types.get(&name_str) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (SqliteSimpleSimpleType::I32, Some(name_str))
+            }
+        },
+        _ => (SqliteSimpleSimpleType::I32, None),
+    };
+    SqliteType {
+        type_: SqliteSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: false,
+        arr: false,
+    }
+}
 
 pub fn convert_query(
     input: &GoodQueryInput,
@@ -54,18 +145,14 @@ pub fn convert_query(
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
         sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types)),
-        sql::Statement::Insert(insert) => Box::new(
-            convert_insert(input, insert, &mut used_params, custom_types),
-        ),
+        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert, &mut used_params, custom_types)),
         sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
             convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types),
         ),
-        sql::Statement::Delete(delete) => Box::new(
-            convert_delete(input, delete, &mut used_params, custom_types),
-        ),
+        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete, &mut used_params, custom_types)),
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
-    for (ident, _) in &input.params {
+    for (ident, _) in &input.param_types {
         if !used_params.contains(&ident.to_string()) {
             panic!("Parameter {} not used in query", ident);
         }
@@ -96,10 +183,8 @@ fn convert_select_query(
                     let mut builder = CteBuilder::new(name, Box::new(query.clone()));
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
-                            builder = builder.column(
-                                col.value.clone(),
-                                good_ormning::sqlite::types::type_i32().build(),
-                            );
+                            builder =
+                                builder.column(col.value.clone(), good_ormning::sqlite::types::type_i32().build());
                         }
                     } else {
                         for r in &query.returning {
@@ -127,7 +212,12 @@ fn convert_select_query(
             };
             let operator = match op {
                 sql::SetOperator::Union => good_ormning::sqlite::query::select_body::SelectJunctionOperator::Union,
-                sql::SetOperator::Intersect => good_ormning::sqlite::query::select_body::SelectJunctionOperator::Intersect,
+                sql::SetOperator::Intersect => good_ormning
+                ::sqlite
+                ::query
+                ::select_body
+                ::SelectJunctionOperator
+                ::Intersect,
                 sql::SetOperator::Except => good_ormning::sqlite::query::select_body::SelectJunctionOperator::Except,
                 _ => unimplemented!("Set operator not supported: {:?}", op),
             };
@@ -212,13 +302,10 @@ fn convert_insert(
                     }
                     let conflict = if let Some(target) = &oc.conflict_target {
                         match target {
-                            sql::ConflictTarget::Columns(idents) => idents
-                                .iter()
-                                .map(|id| FieldRef {
-                                    table_id: table.0.clone(),
-                                    field_id: id.value.clone(),
-                                })
-                                .collect(),
+                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
+                                table_id: table.0.clone(),
+                                field_id: id.value.clone(),
+                            }).collect(),
                             _ => vec![],
                         }
                     } else {
@@ -310,42 +397,47 @@ fn convert_select(
     let table = match &s.from[0].relation {
         sql::TableFactor::Table { name, alias, args, .. } => {
             if let Some(args) = args {
-                 let name_str = name.to_string().to_lowercase();
-                 if name_str == "rarray" {
-                     if !args.args.is_empty() {
-                         if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
-                             let expr = convert_expr(input, e, used_params, custom_types);
-                             return Select {
-                                 with: None,
-                                 table: NamedSelectSource {
-                                     source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
-                                     alias: alias.as_ref().map(|a| a.name.value.clone()),
-                                 },
-                                 returning: convert_returning(input, &Some(s.projection.clone()), used_params, custom_types),
-                                 junction: vec![],
-                                 join: vec![],
-                                 where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
-                                 group: match &s.group_by {
-                                     sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
-                                     sql::GroupByExpr::Expressions(exprs, _) => exprs
-                                         .iter()
-                                         .map(|e| convert_expr(input, e, used_params, custom_types))
-                                         .collect(),
-                                 },
-                                 order: vec![],
-                                 limit: None,
-                             };
-                         }
-                     }
-                 }
+                let name_str = name.to_string().to_lowercase();
+                if name_str == "rarray" {
+                    if !args.args.is_empty() {
+                        if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
+                            let expr = convert_expr(input, e, used_params, custom_types);
+                            return Select {
+                                with: None,
+                                table: NamedSelectSource {
+                                    source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
+                                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                                },
+                                returning: convert_returning(
+                                    input,
+                                    &Some(s.projection.clone()),
+                                    used_params,
+                                    custom_types,
+                                ),
+                                junction: vec![],
+                                join: vec![],
+                                where_: s
+                                    .selection
+                                    .as_ref()
+                                    .map(|e| convert_expr(input, e, used_params, custom_types)),
+                                group: match &s.group_by {
+                                    sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
+                                    sql::GroupByExpr::Expressions(exprs, _) => exprs
+                                        .iter()
+                                        .map(|e| convert_expr(input, e, used_params, custom_types))
+                                        .collect(),
+                                },
+                                order: vec![],
+                                limit: None,
+                            };
+                        }
+                    }
+                }
             }
             NamedSelectSource {
                 source: JoinSource::Table(get_table_ref(name)),
                 alias: Some(
-                    alias
-                        .as_ref()
-                        .map(|a| a.name.value.clone())
-                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
                 ),
             }
         },
@@ -357,10 +449,7 @@ fn convert_select(
             sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
                 source: JoinSource::Table(get_table_ref(name)),
                 alias: Some(
-                    alias
-                        .as_ref()
-                        .map(|a| a.name.value.clone())
-                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
                 ),
             },
             _ => unimplemented!("Join table factor"),
@@ -371,8 +460,7 @@ fn convert_select(
             _ => unimplemented!("Join type: {:?}", j.join_operator),
         };
         let on = match &j.join_operator {
-            sql::JoinOperator::LeftOuter(constraint)
-            | sql::JoinOperator::Inner(constraint) => match constraint {
+            sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
                 sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
                 _ => unimplemented!("Join constraint"),
             },
@@ -456,12 +544,13 @@ fn convert_expr(
                         placeholder_name
                     };
                     used_params.insert(param_name.clone());
-                    let pt = input
-                        .params
-                        .iter()
-                        .find(|(ident, _)| ident.to_string() == param_name)
-                        .map(|(_, pt)| pt)
-                        .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
+                    let pt =
+                        input
+                            .param_types
+                            .iter()
+                            .find(|(ident, _)| ident.to_string() == param_name)
+                            .map(|(_, pt)| pt)
+                            .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
                     Expr::Param {
                         name: param_name,
                         type_: param_type_to_sqlite_type(pt, custom_types),
@@ -519,9 +608,8 @@ fn convert_expr(
         },
         sql::Expr::InList { expr, list, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types);
-            let r = Expr::LitArray(
-                list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect(),
-            );
+            let r =
+                Expr::LitArray(list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect());
             Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -545,12 +633,12 @@ fn convert_expr(
                     }
                 }
             }
-
             if let Some(over) = &f.over {
                 let arg = if args.is_empty() {
-                     Expr::LitI32(0) // DUMMY
+                    // DUMMY
+                    Expr::LitI32(0)
                 } else {
-                     args.pop().unwrap()
+                    args.pop().unwrap()
                 };
                 let e = match name.as_str() {
                     "sum" => fn_sum(arg),
@@ -584,7 +672,6 @@ fn convert_expr(
                     sql::WindowType::NamedWindow(_) => unimplemented!("Named windows not supported"),
                 }
             }
-
             if args.len() != 1 {
                 unimplemented!("Only 1-argument functions supported");
             }

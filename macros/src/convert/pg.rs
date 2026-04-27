@@ -39,10 +39,93 @@ use good_ormning::pg::{
     Query,
 };
 use good_ormning::QueryResCount;
-use super::{
-    param_type_to_pg_type,
-    sql_type_to_pg_type,
+use std::collections::BTreeMap;
+use good_ormning::pg::schema::custom_type::CustomType as PgCustomType;
+use good_ormning::sqlite::schema::custom_type::CustomType as SqliteCustomType;
+use good_ormning::pg::types::{
+    Type as PgType,
+    SimpleType as PgSimpleType,
+    SimpleSimpleType as PgSimpleSimpleType,
 };
+use good_ormning::sqlite::types::{
+    Type as SqliteType,
+    SimpleType as SqliteSimpleType,
+    SimpleSimpleType as SqliteSimpleSimpleType,
+};
+use crate::ParamType;
+
+pub fn param_type_to_pg_type(pt: &ParamType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
+    let (simple_type, custom) = match pt.base.as_str() {
+        "i16" => (PgSimpleSimpleType::I16, None),
+        "i32" => (PgSimpleSimpleType::I32, None),
+        "i64" => (PgSimpleSimpleType::I64, None),
+        "u32" => (PgSimpleSimpleType::U32, None),
+        "f32" => (PgSimpleSimpleType::F32, None),
+        "f64" => (PgSimpleSimpleType::F64, None),
+        "bool" => (PgSimpleSimpleType::Bool, None),
+        "string" => (PgSimpleSimpleType::String, None),
+        "bytes" => (PgSimpleSimpleType::Bytes, None),
+        "utctime_s_chrono" => (PgSimpleSimpleType::UtcTimeSChrono, None),
+        "utctime_ms_chrono" => (PgSimpleSimpleType::UtcTimeMsChrono, None),
+        "utctime_s_jiff" => (PgSimpleSimpleType::UtcTimeSJiff, None),
+        "utctime_ms_jiff" => (PgSimpleSimpleType::UtcTimeMsJiff, None),
+        "auto" => (PgSimpleSimpleType::Auto, None),
+        _ => {
+            if let Some(ct) = custom_types.get(&pt.base) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (PgSimpleSimpleType::I32, Some(pt.base.clone()))
+            }
+        },
+    };
+    PgType {
+        type_: PgSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: pt.opt,
+        arr: pt.arr,
+    }
+}
+
+pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
+    let (simple_type, custom) = match t {
+        sqlparser::ast::DataType::SmallInt(_) => (PgSimpleSimpleType::I16, None),
+        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (PgSimpleSimpleType::I32, None),
+        sqlparser::ast::DataType::BigInt(_) => (PgSimpleSimpleType::I64, None),
+        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (PgSimpleSimpleType::F32, None),
+        sqlparser::ast::DataType::DoublePrecision => (PgSimpleSimpleType::F64, None),
+        sqlparser::ast::DataType::Boolean => (PgSimpleSimpleType::Bool, None),
+        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (PgSimpleSimpleType::String, None),
+        sqlparser::ast::DataType::Bytea |
+        sqlparser::ast::DataType::Binary(_) |
+        sqlparser::ast::DataType::Varbinary(_) => (
+            PgSimpleSimpleType::Bytes,
+            None,
+        ),
+        sqlparser::ast::DataType::Timestamp(precision, tz) => {
+            // Very simplified
+            (PgSimpleSimpleType::UtcTimeSChrono, None)
+        },
+        sqlparser::ast::DataType::Custom(name, ..) => {
+            let name_str = name.to_string();
+            if let Some(ct) = custom_types.get(&name_str) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (PgSimpleSimpleType::I32, Some(name_str))
+            }
+        },
+        _ => (PgSimpleSimpleType::I32, None),
+    };
+    PgType {
+        type_: PgSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: false,
+        arr: false,
+    }
+}
 
 pub fn convert_query(
     input: &GoodQueryInput,
@@ -52,18 +135,14 @@ pub fn convert_query(
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
         sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types)),
-        sql::Statement::Insert(insert) => Box::new(
-            convert_insert(input, insert, &mut used_params, custom_types),
-        ),
+        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert, &mut used_params, custom_types)),
         sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
             convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types),
         ),
-        sql::Statement::Delete(delete) => Box::new(
-            convert_delete(input, delete, &mut used_params, custom_types),
-        ),
+        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete, &mut used_params, custom_types)),
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
-    for (ident, _) in &input.params {
+    for (ident, _) in &input.param_types {
         if !used_params.contains(&ident.to_string()) {
             panic!("Parameter {} not used in query", ident);
         }
@@ -94,10 +173,7 @@ fn convert_select_query(
                     let mut builder = CteBuilder::new(name, Box::new(query.clone()));
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
-                            builder = builder.column(
-                                col.value.clone(),
-                                good_ormning::pg::types::type_i32().build(),
-                            );
+                            builder = builder.column(col.value.clone(), good_ormning::pg::types::type_i32().build());
                         }
                     } else {
                         for r in &query.returning {
@@ -189,13 +265,10 @@ fn convert_insert(
                     }
                     let conflict = if let Some(target) = &oc.conflict_target {
                         match target {
-                            sql::ConflictTarget::Columns(idents) => idents
-                                .iter()
-                                .map(|id| FieldRef {
-                                    table_id: table.0.clone(),
-                                    field_id: id.value.clone(),
-                                })
-                                .collect(),
+                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
+                                table_id: table.0.clone(),
+                                field_id: id.value.clone(),
+                            }).collect(),
                             _ => vec![],
                         }
                     } else {
@@ -285,10 +358,7 @@ fn convert_select(
         sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
             source: JoinSource::Table(get_table_ref(name)),
             alias: Some(
-                alias
-                    .as_ref()
-                    .map(|a| a.name.value.clone())
-                    .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
             ),
         },
         _ => unimplemented!("Select table factor"),
@@ -299,10 +369,7 @@ fn convert_select(
             sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
                 source: JoinSource::Table(get_table_ref(name)),
                 alias: Some(
-                    alias
-                        .as_ref()
-                        .map(|a| a.name.value.clone())
-                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
                 ),
             },
             _ => unimplemented!("Join table factor"),
@@ -315,8 +382,7 @@ fn convert_select(
             _ => unimplemented!("Join type: {:?}", j.join_operator),
         };
         let on = match &j.join_operator {
-            sql::JoinOperator::LeftOuter(constraint)
-            | sql::JoinOperator::Inner(constraint) => match constraint {
+            sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
                 sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
                 _ => unimplemented!("Join constraint"),
             },
@@ -399,12 +465,13 @@ fn convert_expr(
                         placeholder_name
                     };
                     used_params.insert(param_name.clone());
-                    let pt = input
-                        .params
-                        .iter()
-                        .find(|(ident, _)| ident.to_string() == param_name)
-                        .map(|(_, pt)| pt)
-                        .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
+                    let pt =
+                        input
+                            .param_types
+                            .iter()
+                            .find(|(ident, _)| ident.to_string() == param_name)
+                            .map(|(_, pt)| pt)
+                            .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
                     Expr::Param {
                         name: param_name,
                         type_: param_type_to_pg_type(pt, custom_types),
@@ -462,9 +529,8 @@ fn convert_expr(
         },
         sql::Expr::InList { expr, list, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types);
-            let r = Expr::LitArray(
-                list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect(),
-            );
+            let r =
+                Expr::LitArray(list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect());
             Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -488,12 +554,12 @@ fn convert_expr(
                     }
                 }
             }
-
             if let Some(over) = &f.over {
                 let arg = if args.is_empty() {
-                     Expr::LitI32(0) // DUMMY
+                    // DUMMY
+                    Expr::LitI32(0)
                 } else {
-                     args.pop().unwrap()
+                    args.pop().unwrap()
                 };
                 let e = match name.as_str() {
                     "sum" => fn_sum(arg),
@@ -527,7 +593,6 @@ fn convert_expr(
                     sql::WindowType::NamedWindow(_) => unimplemented!("Named windows not supported"),
                 }
             }
-
             if args.len() != 1 {
                 unimplemented!("Only 1-argument functions supported");
             }
