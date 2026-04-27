@@ -1,6 +1,10 @@
 use std::env;
 use std::fs;
 use std::collections::HashMap;
+use convert_case::{
+    Casing,
+    Case,
+};
 use good_ormning_core::pg::Version as PgVersion;
 use good_ormning_core::sqlite::Version as SqliteVersion;
 use proc_macro::TokenStream;
@@ -39,7 +43,7 @@ struct GoodQueryInput {
 
 impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut db_name = "default".to_string();
+        let mut db_name = "".to_string();
         let mut version = None;
         let sql: String;
         if input.peek(LitStr) {
@@ -210,13 +214,7 @@ fn parse_and_generate_pg(
     let query_hash = hasher.finish();
     let query_name = format_ident!("good_query_{}", query_hash);
     query.name = query_name.to_string();
-    let pascal_db_name: String = db_name.split('_').map(|s| {
-        let mut c = s.chars();
-        match c.next() {
-            None => String::new(),
-            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        }
-    }).collect();
+    let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
         quote!(dbm::#name <'_ >)
@@ -327,13 +325,7 @@ fn parse_and_generate_sqlite(
     let query_hash = hasher.finish();
     let query_name = format_ident!("good_query_{}", query_hash);
     query.name = query_name.to_string();
-    let pascal_db_name: String = db_name.split('_').map(|s| {
-        let mut c = s.chars();
-        match c.next() {
-            None => String::new(),
-            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        }
-    }).collect();
+    let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
         quote!(dbm::#name <'_, impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)

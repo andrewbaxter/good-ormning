@@ -16,7 +16,7 @@ pub use good_ormning_core::{
 macro_rules! good_module{
     ($vis: vis $mod_name: ident) => {
         $vis mod $mod_name {
-            include!(concat!(env!("OUT_DIR"), "/good_ormning_default.rs"));
+            include!(concat!(env!("OUT_DIR"), "/good_ormning_.rs"));
         }
     };
     ($vis: vis $mod_name: ident, $db_name: literal) => {

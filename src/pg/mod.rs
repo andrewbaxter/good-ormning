@@ -14,6 +14,10 @@ use {
         utils::Errs,
     },
     proc_macro2::TokenStream,
+    convert_case::{
+        Casing,
+        Case,
+    },
     quote::{
         format_ident,
         quote,
@@ -147,13 +151,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
         }
 
         // Build migration
-        let pascal_db_name: String = db_name.split('_').map(|s| {
-            let mut c = s.chars();
-            match c.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-            }
-        }).collect();
+        let pascal_db_name: String = db_name.to_case(Case::Pascal);
         let enum_name = format_ident!("Db{}Versions", pascal_db_name);
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i as usize);
         let enum_variant = format_ident!("V{}", version_i as usize);
@@ -167,7 +165,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
                         &[& #version_i]
                     ).await.to_good_error_query(query) ?;
                 }
-                if let Some(callback) = &callback {
+                if let Some(callback) = & callback {
                     callback(#enum_name::#enum_variant(#newtype_name(&mut txn))).await ?;
                 }
             }
@@ -180,13 +178,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
 
     // Compile, output
     let last_version_i = prev_version_i.unwrap() as i64;
-    let pascal_db_name: String = db_name.split('_').map(|s| {
-        let mut c = s.chars();
-        match c.next() {
-            None => String::new(),
-            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        }
-    }).collect();
+    let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let enum_name = format_ident!("Db{}Versions", pascal_db_name);
     let mut enum_variants = vec![];
     let mut db_types = vec![];
@@ -222,12 +214,15 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
             }
             Ok(())
         }
-        pub async fn migrate(db: & mut tokio_postgres:: Client, callback: Option <& (
-            dyn for <'b > Fn(
-                #enum_name <'b >
-            ) -> std:: pin:: Pin < Box < dyn std:: future:: Future < Output = Result <(),
-            GoodError >> + Send + 'b >> + Send + Sync
-        )>) -> Result <(),
+        pub async fn migrate(
+            db: & mut tokio_postgres:: Client,
+            callback: Option <&(
+                dyn for <'b > Fn(
+                    #enum_name <'b >
+                ) -> std:: pin:: Pin < Box < dyn std:: future:: Future < Output = Result <(),
+                GoodError >> + Send + 'b >> + Send + Sync
+            ) >
+        ) -> Result <(),
         GoodError > {
             init_db(db).await?;
             loop {
@@ -397,12 +392,7 @@ mod test {
         let v = Version::new();
         let bananna = v.table("z5S18LWQE");
         bananna.field("z437INV6D", field_str().build());
-        assert!(
-            generate(
-                None,
-                vec![(0usize, v.build())],
-            ).is_err()
-        );
+        assert!(generate(None, vec![(0usize, v.build())],).is_err());
     }
 
     #[test]
@@ -413,12 +403,7 @@ mod test {
             version: v.clone(),
             id: "zOOR88EQ9".into(),
         };
-        assert!(
-            generate(
-                None,
-                vec![(0usize, v.build())],
-            ).is_err()
-        );
+        assert!(generate(None, vec![(0usize, v.build())],).is_err());
     }
 
     #[test]
@@ -426,11 +411,6 @@ mod test {
         let v = Version::new();
         let bananna = v.table("zZPD1I2EF");
         bananna.field("z437INV6D", field_str().build());
-        assert!(
-            generate(
-                None,
-                vec![(0usize, v.build())],
-            ).is_err()
-        );
+        assert!(generate(None, vec![(0usize, v.build())],).is_err());
     }
 }
