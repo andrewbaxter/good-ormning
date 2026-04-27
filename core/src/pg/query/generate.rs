@@ -18,7 +18,6 @@ use {
             query::{
                 utils::{
                     PgQueryCtx,
-                    QueryBody,
                     PgTableInfo,
                 },
                 expr::ExprValName,
@@ -37,7 +36,7 @@ pub fn generate_query_functions(
     errs: &mut Errs,
     field_lookup: HashMap<crate::pg::schema::table::TableRef, PgTableInfo>,
     queries: Vec<Query>,
-    mod_name: &str,
+    _mod_name: &str,
     db_type: TokenStream,
 ) -> Vec<TokenStream> {
     let mut db_others = Vec::new();
@@ -53,19 +52,6 @@ pub fn generate_query_functions(
         *errs = ctx.errs.clone();
         drop(ctx);
 
-        // DUMP TO TEXT FILE
-        use std::io::Write;
-
-        let mut f = std::fs::OpenOptions::new().create(true).append(true).open("test_queries_pg.txt").unwrap();
-        writeln!(
-            f,
-            "{}|{}|{}|{}|{:?}",
-            mod_name,
-            q.name,
-            q_text,
-            args.iter().map(|a| quote!(#a).to_string()).collect::<Vec<_>>().join(","),
-            q.res_count
-        ).unwrap();
         let (res_ident, res_def, unforward_res) = {
             fn convert_one_res(
                 errs: &mut Errs,

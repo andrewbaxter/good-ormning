@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::{
-    pg::{
+    sqlite::{
         schema::{
             index::{
                 Index,
@@ -15,11 +15,11 @@ use super::{
     NodeDataDispatch,
     NodeData,
     Node,
-    utils::PgMigrateCtx,
+    utils::SqliteMigrateCtx,
 };
 
 #[derive(Clone)]
-pub(crate) struct NodeIndex_ {
+pub struct NodeIndex_ {
     pub table_id: String,
     pub table_renamed_from: Option<String>,
     pub def: Index,
@@ -38,11 +38,11 @@ impl NodeIndex_ {
 }
 
 impl NodeData for NodeIndex_ {
-    fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) { }
+    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) { }
 }
 
 impl NodeDataDispatch for NodeIndex_ {
-    fn create(&self, ctx: &mut PgMigrateCtx) {
+    fn create(&self, ctx: &mut SqliteMigrateCtx) {
         let mut stmt = Tokens::new();
         stmt.s("create");
         if self.def.unique {
@@ -59,7 +59,7 @@ impl NodeDataDispatch for NodeIndex_ {
         ctx.statements.push(stmt.to_string());
     }
 
-    fn delete(&self, ctx: &mut PgMigrateCtx) {
+    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
         ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
     }
 

@@ -820,7 +820,7 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
-                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::pg::QueryResCount::Many);
+                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (t, out);
             },
@@ -839,7 +839,7 @@ impl Expr {
             Expr::Exists(s) => {
                 let mut out = Tokens::new();
                 out.s("exists (");
-                let (_, tokens) = s.build(ctx, &path.push_back("Exists".into()), crate::pg::QueryResCount::Many);
+                let (_, tokens) = s.build(ctx, &path.push_back("Exists".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (ExprType(vec![(ExprValName::empty(), Type {
                     type_: SimpleType {

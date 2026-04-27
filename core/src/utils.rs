@@ -141,3 +141,13 @@ pub struct RustTypes {
     pub ret_type: TokenStream,
     pub arg_type: TokenStream,
 }
+
+pub const DEFAULT_DB_NAME: &str = "default";
+
+pub fn rs_file_name(db_name: &str) -> String {
+    format!("good_ormning_{}.rs", db_name)
+}
+
+pub fn json_file_name(db_name: &str) -> String {
+    format!("good_ormning_{}.json", db_name)
+}

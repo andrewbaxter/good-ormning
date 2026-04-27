@@ -5,23 +5,14 @@ pub mod pg;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 pub mod runtime;
-
-pub use good_ormning_core::{
-    utils,
-    graphmigrate,
-    QueryResCount,
-};
+mod graphmigrate;
+pub mod utils;
 
 #[macro_export]
 macro_rules! good_module {
     () => {
         pub mod dbm {
             include!(concat!(env!("OUT_DIR"), "/good_ormning_default.rs"));
-        }
-    };
-    ($db_name:literal) => {
-        pub mod dbm {
-            include!(concat!(env!("OUT_DIR"), "/good_ormning_", $db_name, ".rs"));
         }
     };
     ($db_name:ident) => {
@@ -31,8 +22,6 @@ macro_rules! good_module {
     };
 }
 
-
-#[cfg(feature = "pg")]
 pub use crate::pg::{
     PgType,
     PgFieldTypeBuilder,
@@ -47,8 +36,6 @@ pub use crate::pg::{
     pg_type_utctime_s_chrono,
     pg_type_utctime_s_jiff,
 };
-
-#[cfg(feature = "sqlite")]
 pub use crate::sqlite::{
     SqliteType,
     SqliteFieldTypeBuilder,
@@ -63,3 +50,14 @@ pub use crate::sqlite::{
     sqlite_type_utctime_s_chrono,
     sqlite_type_utctime_s_jiff,
 };
+
+/// The number of results this query returns. This determines if the return type is
+/// void, `Option`, the value directly, or a `Vec`. It must be a valid value per
+/// the query body (e.g. select can't have `None` res count).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum QueryResCount {
+    None,
+    MaybeOne,
+    One,
+    Many,
+}

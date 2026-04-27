@@ -1,7 +1,7 @@
 use sqlparser::ast as sql;
 use std::collections::HashSet;
 use crate::GoodQueryInput;
-use good_ormning::sqlite::{
+use good_ormning_core::sqlite::{
     query::{
         expr::{
             Expr,
@@ -36,20 +36,13 @@ use good_ormning::sqlite::{
     types::{
         SimpleType,
         SimpleSimpleType,
-        Type,
     },
     Query,
 };
-use good_ormning::QueryResCount;
+use good_ormning_core::QueryResCount;
 use std::collections::BTreeMap;
-use good_ormning::pg::schema::custom_type::CustomType as PgCustomType;
-use good_ormning::sqlite::schema::custom_type::CustomType as SqliteCustomType;
-use good_ormning::pg::types::{
-    Type as PgType,
-    SimpleType as PgSimpleType,
-    SimpleSimpleType as PgSimpleSimpleType,
-};
-use good_ormning::sqlite::types::{
+use good_ormning_core::sqlite::schema::custom_type::CustomType as SqliteCustomType;
+use good_ormning_core::sqlite::types::{
     Type as SqliteType,
     SimpleType as SqliteSimpleType,
     SimpleSimpleType as SqliteSimpleSimpleType,
@@ -140,7 +133,7 @@ pub fn sql_type_to_sqlite_type(
 pub fn convert_query(
     input: &GoodQueryInput,
     statement: &sql::Statement,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Query {
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
@@ -170,7 +163,7 @@ fn convert_select_query(
     input: &GoodQueryInput,
     q: &sql::Query,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Select {
     match &*q.body {
         sql::SetExpr::Select(s) => {
@@ -184,15 +177,15 @@ fn convert_select_query(
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
                             builder =
-                                builder.column(col.value.clone(), good_ormning::sqlite::types::type_i32().build());
+                                builder.column(col.value.clone(), good_ormning_core::sqlite::types::type_i32().build());
                         }
                     } else {
                         for r in &query.returning {
                             let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
-                            builder = builder.column(r_name, good_ormning::sqlite::types::type_i32().build());
+                            builder = builder.column(r_name, good_ormning_core::sqlite::types::type_i32().build());
                         }
                     }
-                    ctes.push(good_ormning::sqlite::query::utils::Cte::from(builder));
+                    ctes.push(good_ormning_core::sqlite::query::utils::Cte::from(builder));
                 }
                 sel.with = Some(With {
                     recursive: with.recursive,
@@ -211,17 +204,11 @@ fn convert_select_query(
                 _ => unimplemented!("Nested set operations on right"),
             };
             let operator = match op {
-                sql::SetOperator::Union => good_ormning::sqlite::query::select_body::SelectJunctionOperator::Union,
-                sql::SetOperator::Intersect => good_ormning
-                ::sqlite
-                ::query
-                ::select_body
-                ::SelectJunctionOperator
-                ::Intersect,
-                sql::SetOperator::Except => good_ormning::sqlite::query::select_body::SelectJunctionOperator::Except,
-                _ => unimplemented!("Set operator not supported: {:?}", op),
+                sql::SetOperator::Union => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Union,
+                sql::SetOperator::Intersect => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect,
+                sql::SetOperator::Except => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except,
             };
-            l.junction.push(good_ormning::sqlite::query::select_body::SelectJunction {
+            l.junction.push(good_ormning_core::sqlite::query::select_body::SelectJunction {
                 op: operator,
                 body: Box::new(r),
             });
@@ -239,7 +226,7 @@ fn convert_returning(
     input: &GoodQueryInput,
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Vec<Returning> {
     let mut out = vec![];
     if let Some(items) = returning {
@@ -264,7 +251,7 @@ fn convert_insert(
     input: &GoodQueryInput,
     insert: &sql::Insert,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Insert {
     let table = get_table_ref(&insert.table_name);
     let mut values = vec![];
@@ -340,7 +327,7 @@ fn convert_update(
     selection: &Option<sql::Expr>,
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Update {
     let table_ref = match &table.relation {
         sql::TableFactor::Table { name, .. } => get_table_ref(name),
@@ -370,7 +357,7 @@ fn convert_delete(
     input: &GoodQueryInput,
     delete: &sql::Delete,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Delete {
     let relation = match &delete.from {
         sql::FromTable::WithFromKeyword(f) => &f[0].relation,
@@ -392,7 +379,7 @@ fn convert_select(
     q: &sql::Query,
     s: &sql::Select,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Select {
     let table = match &s.from[0].relation {
         sql::TableFactor::Table { name, alias, args, .. } => {
@@ -506,7 +493,7 @@ fn convert_expr(
     input: &GoodQueryInput,
     e: &sql::Expr,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::sqlite::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Expr {
     match e {
         sql::Expr::Identifier(ident) => {
@@ -539,7 +526,7 @@ fn convert_expr(
                 sql::Value::Placeholder(p) => {
                     let placeholder_name = p.replace("$", "").replace("?", "");
                     let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
-                        format!("p{}", idx - 1)
+                        format!("p{}", idx)
                     } else {
                         placeholder_name
                     };

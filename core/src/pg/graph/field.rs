@@ -40,7 +40,7 @@ use super::{
 };
 
 #[derive(Clone)]
-pub(crate) struct NodeField_ {
+pub struct NodeField_ {
     pub table_id: String,
     pub table_renamed_from: Option<String>,
     pub def: Field,

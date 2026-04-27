@@ -1,7 +1,7 @@
 use sqlparser::ast as sql;
 use std::collections::HashSet;
 use crate::GoodQueryInput;
-use good_ormning::pg::{
+use good_ormning_core::pg::{
     query::{
         expr::{
             Expr,
@@ -34,23 +34,16 @@ use good_ormning::pg::{
     types::{
         SimpleType,
         SimpleSimpleType,
-        Type,
     },
     Query,
 };
-use good_ormning::QueryResCount;
+use good_ormning_core::QueryResCount;
 use std::collections::BTreeMap;
-use good_ormning::pg::schema::custom_type::CustomType as PgCustomType;
-use good_ormning::sqlite::schema::custom_type::CustomType as SqliteCustomType;
-use good_ormning::pg::types::{
+use good_ormning_core::pg::schema::custom_type::CustomType as PgCustomType;
+use good_ormning_core::pg::types::{
     Type as PgType,
     SimpleType as PgSimpleType,
     SimpleSimpleType as PgSimpleSimpleType,
-};
-use good_ormning::sqlite::types::{
-    Type as SqliteType,
-    SimpleType as SqliteSimpleType,
-    SimpleSimpleType as SqliteSimpleSimpleType,
 };
 use crate::ParamType;
 
@@ -103,7 +96,7 @@ pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap
             PgSimpleSimpleType::Bytes,
             None,
         ),
-        sqlparser::ast::DataType::Timestamp(precision, tz) => {
+        sqlparser::ast::DataType::Timestamp(_precision, _tz) => {
             // Very simplified
             (PgSimpleSimpleType::UtcTimeSChrono, None)
         },
@@ -130,7 +123,7 @@ pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap
 pub fn convert_query(
     input: &GoodQueryInput,
     statement: &sql::Statement,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Query {
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
@@ -160,7 +153,7 @@ fn convert_select_query(
     input: &GoodQueryInput,
     q: &sql::Query,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Select {
     match &*q.body {
         sql::SetExpr::Select(s) => {
@@ -173,15 +166,15 @@ fn convert_select_query(
                     let mut builder = CteBuilder::new(name, Box::new(query.clone()));
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
-                            builder = builder.column(col.value.clone(), good_ormning::pg::types::type_i32().build());
+                            builder = builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
                         }
                     } else {
                         for r in &query.returning {
                             let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
-                            builder = builder.column(r_name, good_ormning::pg::types::type_i32().build());
+                            builder = builder.column(r_name, good_ormning_core::pg::types::type_i32().build());
                         }
                     }
-                    ctes.push(good_ormning::pg::query::utils::Cte::from(builder));
+                    ctes.push(good_ormning_core::pg::query::utils::Cte::from(builder));
                 }
                 sel.with = Some(With {
                     recursive: with.recursive,
@@ -202,7 +195,7 @@ fn convert_returning(
     input: &GoodQueryInput,
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Vec<Returning> {
     let mut out = vec![];
     if let Some(items) = returning {
@@ -227,7 +220,7 @@ fn convert_insert(
     input: &GoodQueryInput,
     insert: &sql::Insert,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Insert {
     let table = get_table_ref(&insert.table_name);
     let mut values = vec![];
@@ -300,7 +293,7 @@ fn convert_update(
     selection: &Option<sql::Expr>,
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Update {
     let table_ref = match &table.relation {
         sql::TableFactor::Table { name, .. } => get_table_ref(name),
@@ -330,7 +323,7 @@ fn convert_delete(
     input: &GoodQueryInput,
     delete: &sql::Delete,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Delete {
     let relation = match &delete.from {
         sql::FromTable::WithFromKeyword(f) => &f[0].relation,
@@ -352,7 +345,7 @@ fn convert_select(
     q: &sql::Query,
     s: &sql::Select,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Select {
     let table = match &s.from[0].relation {
         sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
@@ -376,9 +369,9 @@ fn convert_select(
         };
         let type_ = match j.join_operator {
             sql::JoinOperator::LeftOuter(_) => {
-                good_ormning::pg::query::select::JoinType::Left
+                good_ormning_core::pg::query::select::JoinType::Left
             },
-            sql::JoinOperator::Inner(_) => good_ormning::pg::query::select::JoinType::Inner,
+            sql::JoinOperator::Inner(_) => good_ormning_core::pg::query::select::JoinType::Inner,
             _ => unimplemented!("Join type: {:?}", j.join_operator),
         };
         let on = match &j.join_operator {
@@ -388,7 +381,7 @@ fn convert_select(
             },
             _ => unreachable!(),
         };
-        join.push(good_ormning::pg::query::select::Join {
+        join.push(good_ormning_core::pg::query::select::Join {
             source: Box::new(source),
             type_,
             on,
@@ -427,7 +420,7 @@ fn convert_expr(
     input: &GoodQueryInput,
     e: &sql::Expr,
     used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning::pg::schema::custom_type::CustomType>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
 ) -> Expr {
     match e {
         sql::Expr::Identifier(ident) => {
@@ -460,7 +453,7 @@ fn convert_expr(
                 sql::Value::Placeholder(p) => {
                     let placeholder_name = p.replace("$", "").replace("?", "");
                     let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
-                        format!("p{}", idx - 1)
+                        format!("p{}", idx)
                     } else {
                         placeholder_name
                     };

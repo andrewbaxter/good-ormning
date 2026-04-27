@@ -690,7 +690,7 @@ impl Expr {
                 let mut out = Tokens::new();
                 out.s("(");
                 let (t, tokens) =
-                    s.build(ctx, &path.push_back("Subselect".into()), crate::sqlite::QueryResCount::Many);
+                    s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (t, out);
             },
@@ -710,7 +710,7 @@ impl Expr {
                 let mut out = Tokens::new();
                 out.s("exists (");
                 let (_, tokens) =
-                    s.build(ctx, &path.push_back("Exists".into()), crate::sqlite::QueryResCount::Many);
+                    s.build(ctx, &path.push_back("Exists".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (ExprType(vec![(Binding::empty(), Type {
                     type_: SimpleType {

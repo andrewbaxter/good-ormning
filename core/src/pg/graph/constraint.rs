@@ -19,7 +19,7 @@ use super::{
 };
 
 #[derive(Clone)]
-pub(crate) struct NodeConstraint_ {
+pub struct NodeConstraint_ {
     pub table_id: String,
     pub table_renamed_from: Option<String>,
     pub def: Constraint,

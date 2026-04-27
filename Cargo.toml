@@ -10,8 +10,8 @@ readme = "readme.md"
 
 [features]
 default = []
-chrono = ["dep:chrono"]
-jiff = ["dep:jiff"]
+chrono = ["dep:chrono", "good-ormning-core/chrono"]
+jiff = ["dep:jiff", "good-ormning-core/jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
 
@@ -39,6 +39,8 @@ tokio-postgres = { version = "0.7", optional = true }
 async-trait = "0.1"
 loga = "0.4"
 sqlparser = "0.52"
+good-ormning-core = { path = "core" }
+good-ormning-macros = { path = "macros" }
 
 [workspace]
 members = ["integration_tests", "macros"]

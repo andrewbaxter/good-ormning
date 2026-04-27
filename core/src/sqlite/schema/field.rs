@@ -3,14 +3,12 @@ use serde::{
     Deserialize,
 };
 use crate::{
-    pg::{
+    sqlite::{
         types::{
             Type,
         },
-        query::{
-            expr::{
-                SerialExpr,
-            },
+        query::expr::{
+            SerialExpr,
         },
     },
 };
@@ -55,59 +53,59 @@ impl FieldTypeBuilder {
 }
 
 pub fn field_str() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_str().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_str().build())
 }
 
 pub fn field_i16() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_i16().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_i16().build())
 }
 
 pub fn field_i32() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_i32().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_i32().build())
 }
 
 pub fn field_i64() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_i64().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_i64().build())
 }
 
 pub fn field_u32() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_u32().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_u32().build())
 }
 
 pub fn field_f32() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_f32().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_f32().build())
 }
 
 pub fn field_f64() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_f64().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_f64().build())
 }
 
 pub fn field_bool() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_bool().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_bool().build())
 }
 
 pub fn field_bytes() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_bytes().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_bytes().build())
 }
 
 pub fn field_auto() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_auto().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_auto().build())
 }
 
 pub fn field_utctime_s_chrono() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_utctime_s_chrono().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_utctime_s_chrono().build())
 }
 
 pub fn field_utctime_ms_chrono() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_utctime_ms_chrono().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_utctime_ms_chrono().build())
 }
 
 pub fn field_utctime_s_jiff() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_utctime_s_jiff().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_utctime_s_jiff().build())
 }
 
 pub fn field_utctime_ms_jiff() -> FieldTypeBuilder {
-    FieldTypeBuilder::new(crate::pg::types::type_utctime_ms_jiff().build())
+    FieldTypeBuilder::new(crate::sqlite::types::type_utctime_ms_jiff().build())
 }
 
 impl FieldTypeBuilder {
@@ -116,8 +114,4 @@ impl FieldTypeBuilder {
         self
     }
 
-    pub(crate) fn custom(mut self, s: impl ToString) -> Self {
-        self.0.type_.type_.custom = Some(s.to_string());
-        self
-    }
 }

@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use crate::{
     utils::Errs,
-    pg::{
+    sqlite::{
         Version,
     },
 };
 use super::Node;
 
-pub struct PgMigrateCtx {
-    pub(crate) errs: Errs,
+pub struct SqliteMigrateCtx {
+    pub errs: Errs,
     pub statements: Vec<String>,
     pub(crate) table_sql_names: HashMap<String, String>,
     pub(crate) version: Version,
 }
 
-impl PgMigrateCtx {
+impl SqliteMigrateCtx {
     pub fn new(errs: Errs, table_sql_names: HashMap<String, String>, version: Version) -> Self {
         Self {
             errs: errs,
