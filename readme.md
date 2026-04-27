@@ -8,8 +8,8 @@ Good-ormning is light weight end to end database management with full static typ
 Here's how it works:
 
 1. You use `build.rs` to define your database versions. If you want to make changes, copy the last version and make changes to it. Call `generate` with all your versions. (This generates code to perform database setup and migrations, and saves schema types for query type checking.)
-2. Use `good_module!("dbname");` to create a `dbm` module containing the generated code.
-3. Use `good_query!("dbname", dbm::DbNameVersion(&mut db), "select * from mytable where x = $1;"; p1 = i32; 125)` to make queries. `good_query` will return one struct, an `Option<>`, or a list of structs for the query.
+2. Use `good_module!(dbm);` to create a `dbm` module containing the generated code.
+3. Use `good_query!("select * from mytable where x = $1;", dbm::DbDefault1(&mut db), p1: i32 = 125)` to make queries. `good_query` will return one struct, an `Option<>`, or a list of structs for the query.
 
 SQL dialect support is ongoing - if there's a language feature you need let me know and I'll try to prioritize it!
 
@@ -39,7 +39,7 @@ Dynamic queries are not currently supported. If you want to assemble a query pro
 
 2. Create a `build.rs` and define your initial schema version using `Version::new()`.
 3. Call `goodormning::generate()` to output the generated code
-4. In your code, call `good_module!("dbname")` to include the generated code.
+4. In your code, call `good_module!(dbm)` to include the generated code.
 5. After creating a database connection, call `dbm::migrate(&mut db, None)`
 6. Make queries using `good_query!()`.
 
@@ -83,14 +83,14 @@ use good_ormning::good_module;
 use good_ormning::sqlite::good_query;
 
 fn main() {
-    good_module!("default");
+    good_module!(dbm);
 
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
     dbm::migrate(&mut db, None).unwrap();
     
-    good_query!("default", dbm::DbDefault1(&mut db), "insert into users (name, points) values ($1, $2)"; p1 = string, p2 = i64; "rust human", 0).unwrap();
+    good_query!("insert into users (name, points) values ($1, $2)", dbm::DbDefault1(&mut db), p1: string = "rust human", p2: i64 = 0).unwrap();
     
-    let users = good_ormning::sqlite::good_query_many!("default", dbm::DbDefault1(&mut db), "select name, points from users").unwrap();
+    let users = good_ormning::sqlite::good_query_many!("select name, points from users", dbm::DbDefault1(&mut db)).unwrap();
     for user in users {
         println!("User: {}, Points: {}", user.name, user.points);
     }

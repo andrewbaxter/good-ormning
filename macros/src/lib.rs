@@ -39,31 +39,55 @@ struct GoodQueryInput {
 
 impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let db_name_lit: LitStr = input.parse()?;
-        let db_name = db_name_lit.value();
+        let mut db_name = "default".to_string();
         let mut version = None;
-        input.parse::<Token![,]>()?;
-
-        if input.peek(syn::LitInt) {
+        let sql: String;
+        if input.peek(LitStr) {
+            let s1: LitStr = input.parse()?;
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+                if input.peek(LitStr) {
+                    db_name = s1.value();
+                    let s2: LitStr = input.parse()?;
+                    sql = s2.value();
+                } else if input.peek(syn::LitInt) {
+                    db_name = s1.value();
+                    let v: syn::LitInt = input.parse()?;
+                    version = Some(v.base10_parse()?);
+                    input.parse::<Token![,]>()?;
+                    let s2: LitStr = input.parse()?;
+                    sql = s2.value();
+                } else {
+                    sql = s1.value();
+                }
+            } else {
+                sql = s1.value();
+            }
+        } else if input.peek(syn::LitInt) {
             let v: syn::LitInt = input.parse()?;
             version = Some(v.base10_parse()?);
             input.parse::<Token![,]>()?;
+            let s: LitStr = input.parse()?;
+            sql = s.value();
+        } else {
+            return Err(input.error("Expected database name, version, or SQL query"));
         }
-
-        let conn: syn::Expr = input.parse()?;
-        input.parse::<Token![,]>()?;
-        let sql_lit: LitStr = input.parse()?;
-        let sql = sql_lit.value();
-
         let mut param_types = Vec::new();
         let mut params = Vec::new();
-        if input.peek(Token![;]) {
-            input.parse::<Token![;]>()?;
-            while !input.is_empty() && !input.peek(Token![;]) {
+        let mut conn = None;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+            conn = Some(input.parse::<syn::Expr>()?);
+            while input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+                if input.is_empty() {
+                    break;
+                }
                 let name: Ident = input.parse()?;
-                input.parse::<Token![=]>()?;
+                input.parse::<Token![:]>()?;
                 let mut arr = false;
                 let mut opt = false;
+                let mut base = String::new();
                 while input.peek(Ident) {
                     let id: Ident = input.parse()?;
                     if id == "arr" {
@@ -71,31 +95,24 @@ impl Parse for GoodQueryInput {
                     } else if id == "opt" {
                         opt = true;
                     } else {
-                        param_types.push((name, ParamType {
-                            arr,
-                            opt,
-                            base: id.to_string(),
-                        }));
+                        base = id.to_string();
                         break;
                     }
                 }
-                if input.peek(Token![,]) {
-                    input.parse::<Token![,]>()?;
+                if base.is_empty() {
+                    return Err(input.error("Expected parameter type"));
                 }
-            }
-
-            if input.peek(Token![;]) {
-                input.parse::<Token![;]>()?;
-                while !input.is_empty() {
-                    let arg: syn::Expr = input.parse()?;
-                    params.push(arg);
-                    if input.peek(Token![,]) {
-                        input.parse::<Token![,]>()?;
-                    }
-                }
+                input.parse::<Token![=]>()?;
+                let val: syn::Expr = input.parse()?;
+                param_types.push((name, ParamType {
+                    arr,
+                    opt,
+                    base,
+                }));
+                params.push(val);
             }
         }
-
+        let conn = conn.ok_or_else(|| input.error("Missing database connection"))?;
         Ok(GoodQueryInput {
             version: version,
             db_name: db_name,
@@ -130,7 +147,10 @@ fn parse_and_generate_pg(
     let statement = &ast[0];
     let mut errs = Errs::new();
     let out_dir = env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string());
-    let path = std::path::Path::new(&out_dir).join("good_ormning").join(good_ormning_core::utils::json_file_name(&db_name));
+    let path =
+        std::path::Path::new(&out_dir)
+            .join("good_ormning")
+            .join(good_ormning_core::utils::json_file_name(&db_name));
     if !path.exists() {
         let e = format!("Schema file not found at {:?}. Did you run the build script?", path.to_string_lossy());
         return quote!(compile_error!(#e));
@@ -153,21 +173,20 @@ fn parse_and_generate_pg(
     };
     let custom_types = version.custom_types.clone();
     for (table_id, table) in &version.tables {
-        let mut fields: HashMap<
-            good_ormning_core::pg::schema::field::FieldRef,
-            good_ormning_core::pg::query::utils::PgFieldInfo,
-        > = HashMap::new();
+        let mut fields:
+            HashMap<
+                good_ormning_core::pg::schema::field::FieldRef,
+                good_ormning_core::pg::query::utils::PgFieldInfo,
+            > =
+            HashMap::new();
         for (field_id, field) in &table.fields {
-            fields.insert(
-                good_ormning_core::pg::schema::field::FieldRef {
-                    table_id: table_id.clone(),
-                    field_id: field_id.clone(),
-                },
-                good_ormning_core::pg::query::utils::PgFieldInfo {
-                    sql_name: field.id.clone(),
-                    type_: field.type_.type_.clone(),
-                },
-            );
+            fields.insert(good_ormning_core::pg::schema::field::FieldRef {
+                table_id: table_id.clone(),
+                field_id: field_id.clone(),
+            }, good_ormning_core::pg::query::utils::PgFieldInfo {
+                sql_name: field.id.clone(),
+                type_: field.type_.type_.clone(),
+            });
         }
         field_lookup.insert(
             good_ormning_core::pg::schema::table::TableRef(table_id.clone()),
@@ -198,7 +217,6 @@ fn parse_and_generate_pg(
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         }
     }).collect();
-    
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
         quote!(dbm::#name <'_ >)
@@ -206,7 +224,6 @@ fn parse_and_generate_pg(
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
         quote!(dbm::#name <'_ >)
     };
-    
     let generated =
         good_ormning_core::pg::query::generate::generate_query_functions(
             &mut errs,
@@ -246,18 +263,22 @@ fn parse_and_generate_sqlite(
     let statement = &ast[0];
     let mut errs = Errs::new();
     let out_dir = env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string());
-    let path = std::path::Path::new(&out_dir).join("good_ormning").join(good_ormning_core::utils::json_file_name(&db_name));
+    let path =
+        std::path::Path::new(&out_dir)
+            .join("good_ormning")
+            .join(good_ormning_core::utils::json_file_name(&db_name));
     if !path.exists() {
         let e = format!("Schema file not found at {:?}. Did you run the build script?", path.to_string_lossy());
         return quote!(compile_error!(#e));
     }
-    let versions_map: HashMap<usize, SqliteVersion> = match serde_json::from_str(&fs::read_to_string(&path).unwrap()) {
-        Ok(m) => m,
-        Err(e) => {
-            let e = e.to_string();
-            return quote!(compile_error!(#e));
-        },
-    };
+    let versions_map: HashMap<usize, SqliteVersion> =
+        match serde_json::from_str(&fs::read_to_string(&path).unwrap()) {
+            Ok(m) => m,
+            Err(e) => {
+                let e = e.to_string();
+                return quote!(compile_error!(#e));
+            },
+        };
     let mut field_lookup = HashMap::new();
     let version_i = input.version.unwrap_or_else(|| versions_map.keys().max().copied().unwrap_or(0));
     let version = match versions_map.get(&version_i) {
@@ -269,21 +290,20 @@ fn parse_and_generate_sqlite(
     };
     let custom_types = version.custom_types.clone();
     for (table_id, table) in &version.tables {
-        let mut fields: HashMap<
-            good_ormning_core::sqlite::schema::field::FieldRef,
-            good_ormning_core::sqlite::query::utils::SqliteFieldInfo,
-        > = HashMap::new();
+        let mut fields:
+            HashMap<
+                good_ormning_core::sqlite::schema::field::FieldRef,
+                good_ormning_core::sqlite::query::utils::SqliteFieldInfo,
+            > =
+            HashMap::new();
         for (field_id, field) in &table.fields {
-            fields.insert(
-                good_ormning_core::sqlite::schema::field::FieldRef {
-                    table_id: table_id.clone(),
-                    field_id: field_id.clone(),
-                },
-                good_ormning_core::sqlite::query::utils::SqliteFieldInfo {
-                    sql_name: field.id.clone(),
-                    type_: field.type_.type_.clone(),
-                },
-            );
+            fields.insert(good_ormning_core::sqlite::schema::field::FieldRef {
+                table_id: table_id.clone(),
+                field_id: field_id.clone(),
+            }, good_ormning_core::sqlite::query::utils::SqliteFieldInfo {
+                sql_name: field.id.clone(),
+                type_: field.type_.type_.clone(),
+            });
         }
         field_lookup.insert(
             good_ormning_core::sqlite::schema::table::TableRef(table_id.clone()),
@@ -314,15 +334,13 @@ fn parse_and_generate_sqlite(
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         }
     }).collect();
-    
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name <'_, impl :: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(dbm::#name <'_, impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name <'_, impl :: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(dbm::#name <'_, impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     };
-    
     let generated =
         good_ormning_core::sqlite::query::generate::generate_query_functions(
             &mut errs,

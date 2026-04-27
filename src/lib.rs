@@ -13,24 +13,18 @@ pub use good_ormning_core::{
 };
 
 #[macro_export]
-macro_rules! good_module {
-    () => {
-        pub mod dbm {
+macro_rules! good_module{
+    ($vis: vis $mod_name: ident) => {
+        $vis mod $mod_name {
             include!(concat!(env!("OUT_DIR"), "/good_ormning_default.rs"));
         }
     };
-    ($db_name:literal) => {
-        pub mod dbm {
+    ($vis: vis $mod_name: ident, $db_name: literal) => {
+        $vis mod $mod_name {
             include!(concat!(env!("OUT_DIR"), "/good_ormning_", $db_name, ".rs"));
         }
     };
-    ($db_name:ident) => {
-        pub mod dbm {
-            include!(concat!(env!("OUT_DIR"), "/good_ormning_", stringify!($db_name), ".rs"));
-        }
-    };
 }
-
 
 #[cfg(feature = "pg")]
 pub use crate::pg::{
@@ -47,7 +41,6 @@ pub use crate::pg::{
     pg_type_utctime_s_chrono,
     pg_type_utctime_s_jiff,
 };
-
 #[cfg(feature = "sqlite")]
 pub use crate::sqlite::{
     SqliteType,
