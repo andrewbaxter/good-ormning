@@ -166,7 +166,8 @@ fn convert_select_query(
                     let mut builder = CteBuilder::new(name, Box::new(query.clone()));
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
-                            builder = builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
+                            builder =
+                                builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
                         }
                     } else {
                         for r in &query.returning {

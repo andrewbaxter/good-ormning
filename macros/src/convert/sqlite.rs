@@ -177,7 +177,10 @@ fn convert_select_query(
                     if !cte.alias.columns.is_empty() {
                         for col in &cte.alias.columns {
                             builder =
-                                builder.column(col.value.clone(), good_ormning_core::sqlite::types::type_i32().build());
+                                builder.column(
+                                    col.value.clone(),
+                                    good_ormning_core::sqlite::types::type_i32().build(),
+                                );
                         }
                     } else {
                         for r in &query.returning {
@@ -204,9 +207,24 @@ fn convert_select_query(
                 _ => unimplemented!("Nested set operations on right"),
             };
             let operator = match op {
-                sql::SetOperator::Union => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Union,
-                sql::SetOperator::Intersect => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect,
-                sql::SetOperator::Except => good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except,
+                sql::SetOperator::Union => good_ormning_core
+                ::sqlite
+                ::query
+                ::select_body
+                ::SelectJunctionOperator
+                ::Union,
+                sql::SetOperator::Intersect => good_ormning_core
+                ::sqlite
+                ::query
+                ::select_body
+                ::SelectJunctionOperator
+                ::Intersect,
+                sql::SetOperator::Except => good_ormning_core
+                ::sqlite
+                ::query
+                ::select_body
+                ::SelectJunctionOperator
+                ::Except,
             };
             l.junction.push(good_ormning_core::sqlite::query::select_body::SelectJunction {
                 op: operator,

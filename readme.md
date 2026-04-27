@@ -9,7 +9,7 @@ Here's how it works:
 
 1. You use `build.rs` to define your database versions. If you want to make changes, copy the last version and make changes to it. Call `generate` with all your versions. (This generates code to perform database setup and migrations, and saves schema types for query type checking.)
 2. Use `good_module!(dbm);` to create a `dbm` module containing the generated code.
-3. Use `good_query!("select * from mytable where x = $1;", dbm::Db(&mut db), p1: i32 = 125)` to make queries. `good_query` will return one struct, an `Option<>`, or a list of structs for the query.
+3. Use `good_query!("select * from mytable where x = $1;"; dbm::Db(&mut db), p1: i32 = 125)` to make queries. `good_query` will return one struct, an `Option<>`, or a list of structs for the query.
 
 SQL dialect support is ongoing - if there's a language feature you need let me know and I'll try to prioritize it!
 
@@ -88,9 +88,9 @@ fn main() {
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
     dbm::migrate(&mut db, None).unwrap();
     
-    good_query!("insert into users (name, points) values ($1, $2)", dbm::Db(&mut db), p1: string = "rust human", p2: i64 = 0).unwrap();
+    good_query!("insert into users (name, points) values ($1, $2)"; dbm::Db(&mut db), p1: string = "rust human", p2: i64 = 0).unwrap();
     
-    let users = good_ormning::sqlite::good_query_many!("select name, points from users", dbm::Db(&mut db)).unwrap();
+    let users = good_ormning::sqlite::good_query_many!("select name, points from users"; dbm::Db(&mut db)).unwrap();
     for user in users {
         println!("User: {}, Points: {}", user.name, user.points);
     }

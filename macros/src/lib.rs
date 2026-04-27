@@ -43,87 +43,77 @@ struct GoodQueryInput {
 
 impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut db_name = "".to_string();
-        let mut version = None;
-        let sql: String;
-        if input.peek(LitStr) {
-            let s1: LitStr = input.parse()?;
+        let mut literals = Vec::new();
+        while !input.peek(Token![;]) && !input.is_empty() {
+            literals.push(input.parse::<LitStr>()?);
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;
-                if input.peek(LitStr) {
-                    db_name = s1.value();
-                    let s2: LitStr = input.parse()?;
-                    sql = s2.value();
-                } else if input.peek(syn::LitInt) {
-                    db_name = s1.value();
-                    let v: syn::LitInt = input.parse()?;
-                    version = Some(v.base10_parse()?);
-                    input.parse::<Token![,]>()?;
-                    let s2: LitStr = input.parse()?;
-                    sql = s2.value();
-                } else {
-                    sql = s1.value();
-                }
-            } else {
-                sql = s1.value();
+            } else if !input.peek(Token![;]) {
+                return Err(input.error("Expected , or ; after literal"));
             }
-        } else if input.peek(syn::LitInt) {
-            let v: syn::LitInt = input.parse()?;
-            version = Some(v.base10_parse()?);
-            input.parse::<Token![,]>()?;
-            let s: LitStr = input.parse()?;
-            sql = s.value();
-        } else {
-            return Err(input.error("Expected database name, version, or SQL query"));
         }
+        input.parse::<Token![;]>()?;
+        let (db_name, version, sql) = match literals.len() {
+            1 => ("".to_string(), None, literals[0].value()),
+            2 => (literals[0].value(), None, literals[1].value()),
+            3 => {
+                let v_str = literals[1].value();
+                let v = v_str.parse::<usize>().map_err(|_| {
+                    syn::Error::new(literals[1].span(), "Version must be a positive integer")
+                })?;
+                (literals[0].value(), Some(v), literals[2].value())
+            },
+            _ => {
+                return Err(
+                    input.error(
+                        "Expected 1, 2, or 3 literals before semicolon (sql, [db_name, sql], or [db_name, version, sql])",
+                    ),
+                );
+            },
+        };
+        let conn: syn::Expr = input.parse()?;
         let mut param_types = Vec::new();
         let mut params = Vec::new();
-        let mut conn = None;
-        if input.peek(Token![,]) {
+        while input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
-            conn = Some(input.parse::<syn::Expr>()?);
-            while input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-                if input.is_empty() {
+            if input.is_empty() {
+                break;
+            }
+            let name: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
+            let mut arr = false;
+            let mut opt = false;
+            let mut base = String::new();
+            while input.peek(Ident) {
+                let id: Ident = input.parse()?;
+                if id == "arr" {
+                    arr = true;
+                } else if id == "opt" {
+                    opt = true;
+                } else {
+                    base = id.to_string();
                     break;
                 }
-                let name: Ident = input.parse()?;
-                input.parse::<Token![:]>()?;
-                let mut arr = false;
-                let mut opt = false;
-                let mut base = String::new();
-                while input.peek(Ident) {
-                    let id: Ident = input.parse()?;
-                    if id == "arr" {
-                        arr = true;
-                    } else if id == "opt" {
-                        opt = true;
-                    } else {
-                        base = id.to_string();
-                        break;
-                    }
-                }
-                if base.is_empty() {
-                    return Err(input.error("Expected parameter type"));
-                }
-                input.parse::<Token![=]>()?;
-                let val: syn::Expr = input.parse()?;
-                param_types.push((name, ParamType {
-                    arr,
-                    opt,
-                    base,
-                }));
-                params.push(val);
             }
+            if base.is_empty() {
+                return Err(input.error("Expected parameter type"));
+            }
+            input.parse::<Token![=]>()?;
+            let val: syn::Expr = input.parse()?;
+            param_types.push((name, ParamType {
+                arr,
+                opt,
+                base,
+            }));
+            params.push(val);
         }
-        let conn = conn.ok_or_else(|| input.error("Missing database connection"))?;
         Ok(GoodQueryInput {
-            version: version,
-            db_name: db_name,
-            sql: sql,
-            param_types: param_types,
-            conn: conn,
-            params: params,
+            version,
+            db_name,
+            sql,
+            param_types,
+            conn,
+            params,
         })
     }
 }
