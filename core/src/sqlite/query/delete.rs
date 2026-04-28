@@ -19,6 +19,7 @@ use super::{
         QueryBody,
         build_returning,
     },
+    select::IndexHint,
 };
 
 #[derive(Clone, Debug)]
@@ -26,6 +27,7 @@ pub struct Delete {
     pub table: TableRef,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
+    pub index_hint: Option<IndexHint>,
 }
 
 impl QueryBody for Delete {
@@ -51,6 +53,16 @@ impl QueryBody for Delete {
         // Build query
         let mut out = Tokens::new();
         out.s("delete from").id(&table_info.sql_name);
+        if let Some(hint) = &self.index_hint {
+            match hint {
+                IndexHint::IndexedBy(name) => {
+                    out.s("indexed by").id(name);
+                },
+                IndexHint::NotIndexed => {
+                    out.s("not indexed");
+                },
+            }
+        }
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

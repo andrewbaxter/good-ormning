@@ -643,7 +643,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
         dbm::DbSqliteGenSelectGroupBy1(&mut db)
     )?;
     res.sort();
-    assert_eq!(res, vec![13, 106]);
+    assert_eq!(res, vec![Some(13i32), Some(106i32)]);
     Ok(())
 }
 
@@ -893,8 +893,195 @@ fn test_select_window() -> Result<(), loga::Error> {
         dbm::DbSqliteGenSelectWindow1(&mut db)
     )?.into_iter().collect::<Vec<_>>();
     res.sort();
-    assert_eq!(res, vec![13, 13, 106, 106]);
+    assert_eq!(res, vec![Some(13i32), Some(13i32), Some(106i32), Some(106i32)]);
     Ok(())
+}
+
+#[test]
+fn test_query_filter() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_filter");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_filter",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( ?1 , ?2 )"#;
+        dbm::DbSqliteGenQueryFilter1(&mut db),
+        p1: string = "a",
+        p2: i32 = 10
+    )?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_filter",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( ?1 , ?2 )"#;
+        dbm::DbSqliteGenQueryFilter1(&mut db),
+        p1: string = "b",
+        p2: i32 = 20
+    )?;
+    let res = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_filter",
+        r#"select sum ( "two" ) filter ( where "hizat" = 'a' ) as "x" from "bananna""#;
+        dbm::DbSqliteGenQueryFilter1(&mut db)
+    )?;
+    assert_eq!(res, Some(10i32));
+    return Ok(());
+}
+
+#[test]
+fn test_query_window_frame() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_window_frame");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    for i in 1i32..=3 {
+        good_ormning::sqlite::good_query!(
+            "sqlite_gen_query_window_frame",
+            r#"insert into "bananna" ( "hizat" , "two" ) values ( 'key' , ?1 )"#;
+            dbm::DbSqliteGenQueryWindowFrame1(&mut db),
+            p1: i32 = i
+        )?;
+    }
+    let res = good_ormning::sqlite::good_query_many!(
+        "sqlite_gen_query_window_frame",
+        r#"select sum ( "two" ) over ( order by "two" rows between unbounded preceding and current row ) as "x" from "bananna""#;
+        dbm::DbSqliteGenQueryWindowFrame1(&mut db)
+    )?;
+    assert_eq!(res, vec![Some(1i32), Some(3i32), Some(6i32)]);
+    return Ok(());
+}
+
+#[test]
+fn test_query_collate() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_collate");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_collate",
+        r#"insert into "bananna" ( "hizat" ) values ( 'abc' )"#;
+        dbm::DbSqliteGenQueryCollate1(&mut db)
+    )?;
+    let res = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_collate",
+        r#"select "hizat" as "x" from "bananna" where "hizat" collate nocase = 'ABC'"#;
+        dbm::DbSqliteGenQueryCollate1(&mut db)
+    )?;
+    assert_eq!(res, "abc");
+    return Ok(());
+}
+
+#[test]
+fn test_query_is_distinct_from() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_is_distinct_from");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_is_distinct_from",
+        r#"insert into "bananna" ( "hizat" ) values ( null )"#;
+        dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
+    )?;
+    let res = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_is_distinct_from",
+        r#"select count ( * ) as "x" from "bananna" where "hizat" is distinct from 'abc'"#;
+        dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
+    )?;
+    assert_eq!(res, 1i64);
+    let res2 = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_is_distinct_from",
+        r#"select count ( * ) as "x" from "bananna" where "hizat" is not distinct from null"#;
+        dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
+    )?;
+    assert_eq!(res2, 1i64);
+    return Ok(());
+}
+
+#[test]
+fn test_query_having() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_having");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_having",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'a' , 10 )"#;
+        dbm::DbSqliteGenQueryHaving1(&mut db)
+    )?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_having",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'b' , 20 )"#;
+        dbm::DbSqliteGenQueryHaving1(&mut db)
+    )?;
+    let res = good_ormning::sqlite::good_query_many!(
+        "sqlite_gen_query_having",
+        r#"select "hizat" as "x" from "bananna" group by "hizat" having sum ( "two" ) > 15"#;
+        dbm::DbSqliteGenQueryHaving1(&mut db)
+    )?;
+    assert_eq!(res, vec!["b".to_string()]);
+    return Ok(());
+}
+
+#[test]
+fn test_query_glob() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_glob");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
+    db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'world' )"#, [])?;
+    let count: i64 = db.query_row(
+        r#"select count(*) from "bananna" where "hizat" glob 'hel*'"#,
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(count, 1);
+    return Ok(());
+}
+
+#[test]
+fn test_query_indexed_by() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_indexed_by");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
+    let res: String = db.query_row(
+        r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(res, "hello");
+    return Ok(());
+}
+
+#[test]
+fn test_query_cte_subquery() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_cte_subquery");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_cte_subquery",
+        r#"insert into "bananna" ( "hizat" ) values ( 'a' )"#;
+        dbm::DbSqliteGenQueryCteSubquery1(&mut db)
+    )?;
+    let res = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_cte_subquery",
+        r#"select ( with "t" as ( select 1 as "v" ) select "v" from "t" ) as "x""#;
+        dbm::DbSqliteGenQueryCteSubquery1(&mut db)
+    )?;
+    assert_eq!(res, 1i32);
+    return Ok(());
+}
+
+#[test]
+fn test_query_like_escape() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_like_escape");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_like_escape",
+        r#"insert into "bananna" ( "hizat" ) values ( 'a%b' )"#;
+        dbm::DbSqliteGenQueryLikeEscape1(&mut db)
+    )?;
+    let res = good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_query_like_escape",
+        r#"select count ( * ) as "x" from "bananna" where "hizat" like 'a!%b' escape '!'"#;
+        dbm::DbSqliteGenQueryLikeEscape1(&mut db)
+    )?;
+    assert_eq!(res, 1i64);
+    return Ok(());
 }
 
 #[test]

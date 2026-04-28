@@ -106,6 +106,34 @@ pub fn build() {
         generate(Some("pg_gen_param_utctime_jiff"), vec![(1usize, v.build())]).unwrap();
     }
 
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_like"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_is_null"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_concat"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_row_number"), vec![(1usize, v.build())]).unwrap();
+    }
+
     // # (insert) Param: Opt`<i32>`
     {
         let v = PgVersion::new();
@@ -459,5 +487,57 @@ pub fn build() {
             }),
             (1usize, v.build())
         ]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("pg_gen_query_filter"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("pg_gen_query_window_frame"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_collate"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().opt().build());
+        generate(Some("pg_gen_query_is_distinct_from"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("pg_gen_query_having"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_cte_subquery"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("pg_gen_query_like_escape"), vec![(1usize, v.build())]).unwrap();
     }
 }

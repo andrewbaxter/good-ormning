@@ -699,31 +699,35 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         with: None,
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
-            alias: None,
+            alias: Some(table.id.clone()),
         },
         returning: vec![],
         join: vec![],
         where_: None,
         group: vec![],
+        having: None,
         order: vec![],
         limit: None,
     } }
+
 }
 
 pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
     SelectBodyBuilder { q: SelectBody {
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
-            alias: None,
+            alias: Some(table.id.clone()),
         },
         returning: vec![],
         join: vec![],
         where_: None,
         group: vec![],
+        having: None,
         order: vec![],
         limit: None,
         distinct: false,
     } }
+
 }
 
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
@@ -734,6 +738,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         join: vec![],
         where_: None,
         group: vec![],
+        having: None,
         order: vec![],
         limit: None,
     } }

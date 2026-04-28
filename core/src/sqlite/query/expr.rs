@@ -78,6 +78,38 @@ impl std::fmt::Debug for ComputeType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameType {
+    Rows,
+    Range,
+    Groups,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameBound {
+    UnboundedPreceding,
+    Preceding(Box<SerialExpr>),
+    CurrentRow,
+    Following(Box<SerialExpr>),
+    UnboundedFollowing,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameExclude {
+    CurrentRow,
+    Group,
+    Ties,
+    NoOthers,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SerialWindowFrame {
+    pub type_: SerialWindowFrameType,
+    pub start: SerialWindowFrameBound,
+    pub end: Option<SerialWindowFrameBound>,
+    pub exclude: Option<SerialWindowFrameExclude>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SerialExpr {
     LitArray(Vec<SerialExpr>),
     LitNull(SimpleType),
@@ -115,6 +147,56 @@ pub enum SerialExpr {
         right: Box<SerialExpr>,
     },
     Cast(Box<SerialExpr>, Type),
+    Collate(Box<SerialExpr>, String),
+    Like {
+        expr: Box<SerialExpr>,
+        pattern: Box<SerialExpr>,
+        escape: Option<Box<SerialExpr>>,
+    },
+}
+
+impl From<SerialWindowFrameType> for WindowFrameType {
+    fn from(s: SerialWindowFrameType) -> Self {
+        match s {
+            SerialWindowFrameType::Rows => WindowFrameType::Rows,
+            SerialWindowFrameType::Range => WindowFrameType::Range,
+            SerialWindowFrameType::Groups => WindowFrameType::Groups,
+        }
+    }
+}
+
+impl From<SerialWindowFrameBound> for WindowFrameBound {
+    fn from(s: SerialWindowFrameBound) -> Self {
+        match s {
+            SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
+            SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
+            SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
+        }
+    }
+}
+
+impl From<SerialWindowFrameExclude> for WindowFrameExclude {
+    fn from(s: SerialWindowFrameExclude) -> Self {
+        match s {
+            SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
+            SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
+            SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
+            SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
+        }
+    }
+}
+
+impl From<SerialWindowFrame> for WindowFrame {
+    fn from(s: SerialWindowFrame) -> Self {
+        WindowFrame {
+            type_: WindowFrameType::from(s.type_),
+            start: WindowFrameBound::from(s.start),
+            end: s.end.map(WindowFrameBound::from),
+            exclude: s.exclude.map(WindowFrameExclude::from),
+        }
+    }
 }
 
 impl From<SerialExpr> for Expr {
@@ -156,8 +238,46 @@ impl From<SerialExpr> for Expr {
                 right: Box::new(Expr::from(*right)),
             },
             SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
+            SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
+            SerialExpr::Like { expr, pattern, escape } => Expr::Like {
+                expr: Box::new(Expr::from(*expr)),
+                pattern: Box::new(Expr::from(*pattern)),
+                escape: escape.map(|e| Box::new(Expr::from(*e))),
+            },
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameType {
+    Rows,
+    Range,
+    Groups,
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameBound {
+    UnboundedPreceding,
+    Preceding(Box<Expr>),
+    CurrentRow,
+    Following(Box<Expr>),
+    UnboundedFollowing,
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameExclude {
+    CurrentRow,
+    Group,
+    Ties,
+    NoOthers,
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowFrame {
+    pub type_: WindowFrameType,
+    pub start: WindowFrameBound,
+    pub end: Option<WindowFrameBound>,
+    pub exclude: Option<WindowFrameExclude>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,11 +334,13 @@ pub enum Expr {
         func: String,
         args: Vec<Expr>,
         compute_type: ComputeType,
+        filter: Option<Box<Expr>>,
     },
     Window {
         expr: Box<Expr>,
         partition_by: Vec<Expr>,
         order_by: Vec<(Expr, Order)>,
+        frame: Option<WindowFrame>,
     },
     /// A sub SELECT query.
     Select(Box<Select>),
@@ -227,7 +349,14 @@ pub enum Expr {
     /// Rust new-types for instance.
     Cast(Box<Expr>, Type),
     Exists(Box<super::select::Select>),
+    Collate(Box<Expr>, String),
+    Like {
+        expr: Box<Expr>,
+        pattern: Box<Expr>,
+        escape: Option<Box<Expr>>,
+    },
 }
+
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Binding {
@@ -294,11 +423,24 @@ pub enum BinOp {
     Like,
     In,
     NotIn,
+    StringConcat,
+    Mod,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShiftLeft,
+    BitwiseShiftRight,
+    IsDistinctFrom,
+    IsNotDistinctFrom,
+    Glob,
+    Regexp,
+    Match,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PrefixOp {
     Not,
+    BitwiseNot,
 }
 
 macro_rules! empty_type{
@@ -313,6 +455,86 @@ macro_rules! empty_type{
         })]), $out)
     };
 }
+
+impl WindowFrame {
+    pub fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<Binding, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self.type_ {
+            WindowFrameType::Rows => {
+                out.s("rows");
+            },
+            WindowFrameType::Range => {
+                out.s("range");
+            },
+            WindowFrameType::Groups => {
+                out.s("groups");
+            },
+        }
+        if let Some(end) = &self.end {
+            out.s("between");
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
+            out.s("and");
+            out.s(&end.build(ctx, &path.push_back("End".into()), scope).to_string());
+        } else {
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
+        }
+        if let Some(exclude) = &self.exclude {
+            out.s("exclude");
+            match exclude {
+                WindowFrameExclude::CurrentRow => {
+                    out.s("current row");
+                },
+                WindowFrameExclude::Group => {
+                    out.s("group");
+                },
+                WindowFrameExclude::Ties => {
+                    out.s("ties");
+                },
+                WindowFrameExclude::NoOthers => {
+                    out.s("no others");
+                },
+            }
+        }
+        out
+    }
+}
+
+impl WindowFrameBound {
+    pub fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<Binding, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self {
+            WindowFrameBound::UnboundedPreceding => {
+                out.s("unbounded preceding");
+            },
+            WindowFrameBound::Preceding(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("preceding");
+            },
+            WindowFrameBound::CurrentRow => {
+                out.s("current row");
+            },
+            WindowFrameBound::Following(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("following");
+            },
+            WindowFrameBound::UnboundedFollowing => {
+                out.s("unbounded following");
+            },
+        }
+        out
+    }
+}
+
 
 impl Expr {
     pub fn build(
@@ -580,17 +802,35 @@ impl Expr {
                 let t = match scope.get(&name) {
                     Some(t) => t.clone(),
                     None => {
-                        ctx
-                            .errs
-                            .err(
-                                path,
-                                format!(
-                                    "Expression references {:?} but this field isn't available here (available fields: {:?})",
-                                    x,
-                                    scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
-                                ),
-                            );
-                        return (ExprType(vec![]), Tokens::new());
+                        if x.table_id.is_empty() {
+                            let mut found = vec![];
+                            for (k, v) in scope {
+                                if k.id == x.field_id {
+                                    found.push(v.clone());
+                                }
+                            }
+                            if found.len() == 1 {
+                                found[0].clone()
+                            } else if found.len() > 1 {
+                                ctx.errs.err(path, format!("Field {:?} is ambiguous (found in multiple tables)", x.field_id));
+                                return (ExprType(vec![]), Tokens::new());
+                            } else {
+                                ctx.errs.err(path, format!("Field {:?} not found in any table", x.field_id));
+                                return (ExprType(vec![]), Tokens::new());
+                            }
+                        } else {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!(
+                                        "Expression references {:?} but this field isn't available here (available fields: {:?})",
+                                        x,
+                                        scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
+                                    ),
+                                );
+                            return (ExprType(vec![]), Tokens::new());
+                        }
                     },
                 };
                 let mut out = Tokens::new();
@@ -629,13 +869,18 @@ impl Expr {
                     PrefixOp::Not => {
                         out.s("not");
                     },
+                    PrefixOp::BitwiseNot => {
+                        out.s("~");
+                    },
                 }
                 let (t, tokens) = right.build(ctx, &path.push_back(format!("Prefix op {:?}", op)), scope);
-                check_bool(ctx, path, &t);
+                if matches!(op, PrefixOp::Not) {
+                    check_bool(ctx, path, &t);
+                }
                 out.s(&tokens.to_string());
                 return (t, out);
             },
-            Expr::Call { func, args, compute_type } => {
+            Expr::Call { func, args, compute_type, filter } => {
                 let mut out = Tokens::new();
                 out.s(func).s("(");
                 let mut arg_types = vec![];
@@ -648,12 +893,19 @@ impl Expr {
                     arg_types.push(t);
                 }
                 out.s(")");
+                if let Some(filter) = filter {
+                    out.s("filter (where");
+                    let (t, tokens) = filter.build(ctx, &path.push_back("Filter".into()), scope);
+                    check_bool(ctx, &path.push_back("Filter".into()), &t);
+                    out.s(&tokens.to_string()).s(")");
+                }
                 return (compute_type.0(ctx, path, &arg_types), out);
             },
-            Expr::Window { expr, partition_by, order_by } => {
+            Expr::Window { expr, partition_by, order_by, frame } => {
                 let mut out = Tokens::new();
                 let (t, tokens) = expr.build(ctx, &path.push_back("Window expr".into()), scope);
                 out.s(&tokens.to_string()).s("over (");
+                let mut first = true;
                 if !partition_by.is_empty() {
                     out.s("partition by");
                     for (i, p) in partition_by.iter().enumerate() {
@@ -663,8 +915,12 @@ impl Expr {
                         let (_, tokens) = p.build(ctx, &path.push_back(format!("Partition by {}", i)), scope);
                         out.s(&tokens.to_string());
                     }
+                    first = false;
                 }
                 if !order_by.is_empty() {
+                    if !first {
+                        out.s(" ");
+                    }
                     out.s("order by");
                     for (i, (e, o)) in order_by.iter().enumerate() {
                         if i > 0 {
@@ -682,6 +938,13 @@ impl Expr {
                             },
                         }
                     }
+                    first = false;
+                }
+                if let Some(frame) = frame {
+                    if !first {
+                        out.s(" ");
+                    }
+                    out.s(&frame.build(ctx, &path.push_back("Frame".into()), scope).to_string());
                 }
                 out.s(")");
                 return (t, out);
@@ -721,9 +984,51 @@ impl Expr {
                     arr: false,
                 })]), out);
             },
+            Expr::Collate(e, s) => {
+                let mut out = Tokens::new();
+                let (t, tokens) = e.build(ctx, &path.push_back("Collate".into()), scope);
+                out.s(&tokens.to_string()).s("collate").s(&format!("\"{}\"", s.replace("\"", "\"\"")));
+                return (t, out);
+            },
+            Expr::Like { expr, pattern, escape } => {
+                let mut out = Tokens::new();
+                let (t_expr, tokens_expr) = expr.build(ctx, &path.push_back("Like expr".into()), scope);
+                let (t_pattern, tokens_pattern) = pattern.build(ctx, &path.push_back("Like pattern".into()), scope);
+                let want_t = Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::String,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                };
+                if let Some(got_t) = t_expr.assert_scalar(&mut ctx.errs, &path.push_back("Like expr".into())) {
+                    check_general_same_type(ctx, &path.push_back("Like expr".into()), &got_t, &want_t);
+                }
+                if let Some(got_t) = t_pattern.assert_scalar(&mut ctx.errs, &path.push_back("Like pattern".into())) {
+                    check_general_same_type(ctx, &path.push_back("Like pattern".into()), &got_t, &want_t);
+                }
+                out.s(&tokens_expr.to_string()).s("like").s(&tokens_pattern.to_string());
+                if let Some(escape) = escape {
+                    let (t_escape, tokens_escape) = escape.build(ctx, &path.push_back("Like escape".into()), scope);
+                    if let Some(got_t) = t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
+                        check_general_same_type(ctx, &path.push_back("Like escape".into()), &got_t, &want_t);
+                    }
+                    out.s("escape").s(&tokens_escape.to_string());
+                }
+                return (ExprType(vec![(Binding::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
+            },
         }
     }
 }
+
 
 pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
@@ -825,6 +1130,18 @@ fn do_bin_op(
         BinOp::Like => "like",
         BinOp::In => "in",
         BinOp::NotIn => "not in",
+        BinOp::StringConcat => "||",
+        BinOp::Mod => "%",
+        BinOp::BitwiseAnd => "&",
+        BinOp::BitwiseOr => "|",
+        BinOp::BitwiseXor => "~",
+        BinOp::BitwiseShiftLeft => "<<",
+        BinOp::BitwiseShiftRight => ">>",
+        BinOp::IsDistinctFrom => "is distinct from",
+        BinOp::IsNotDistinctFrom => "is not distinct from",
+        BinOp::Glob => "glob",
+        BinOp::Regexp => "regexp",
+        BinOp::Match => "match",
     };
     for (i, res) in exprs.iter().enumerate() {
         if i > 0 {
@@ -838,8 +1155,13 @@ fn do_bin_op(
             },
         };
         match op {
-            BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide => {
+            BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide | BinOp::Mod | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor | BinOp::BitwiseShiftLeft | BinOp::BitwiseShiftRight => {
                 if !matches!(
+                    got_t.type_.type_,
+                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto
+                ) && !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
+                     // arithmetic allows floats, bitwise only ints
+                } else if !matches!(
                     got_t.type_.type_,
                     SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
                         SimpleSimpleType::Auto
@@ -848,7 +1170,7 @@ fn do_bin_op(
                         .errs
                         .err(
                             &path.push_back(format!("Operand {}", i)),
-                            format!("Arithmetic operator {:?} not supported for type {:?}", op, got_t.type_.type_),
+                            format!("Arithmetic/Bitwise operator {:?} not supported for type {:?}", op, got_t.type_.type_),
                         );
                 }
             },
@@ -872,7 +1194,13 @@ fn do_bin_op(
             BinOp::GreaterThanEqualTo |
             BinOp::Like |
             BinOp::In |
-            BinOp::NotIn => {
+            BinOp::NotIn |
+            BinOp::StringConcat |
+            BinOp::IsDistinctFrom |
+            BinOp::IsNotDistinctFrom |
+            BinOp::Glob |
+            BinOp::Regexp |
+            BinOp::Match => {
 
             },
         }
@@ -894,9 +1222,22 @@ fn do_bin_op(
         BinOp::GreaterThanEqualTo |
         BinOp::Like |
         BinOp::In |
-        BinOp::NotIn => Type {
+        BinOp::NotIn |
+        BinOp::IsDistinctFrom |
+        BinOp::IsNotDistinctFrom |
+        BinOp::Glob |
+        BinOp::Regexp |
+        BinOp::Match => Type {
             type_: SimpleType {
                 type_: SimpleSimpleType::Bool,
+                custom: None,
+            },
+            opt: false,
+            arr: false,
+        },
+        BinOp::StringConcat => Type {
+            type_: SimpleType {
+                type_: SimpleSimpleType::String,
                 custom: None,
             },
             opt: false,

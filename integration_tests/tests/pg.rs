@@ -79,27 +79,90 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
-async fn test_param_utctime_jiff() -> Result<(), loga::Error> {
-    good_module!(dbm, "pg_gen_param_utctime_jiff");
+async fn test_query_like() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_like");
     let (mut db, _cont) = db().await?;
-    let ref_date =
-        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
-            .unwrap()
-            .to_zoned(jiff::tz::TimeZone::UTC)
-            .unwrap()
-            .timestamp();
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
-        "pg_gen_param_utctime_jiff",
+        "pg_gen_query_like",
         r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
-        dbm::DbPgGenParamUtctimeJiff1(&mut db),
-        p1: utctime_s_jiff = ref_date
+        dbm::DbPgGenQueryLike1(&mut db),
+        p1: string = "apple pie"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
-        "pg_gen_param_utctime_jiff",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
-        dbm::DbPgGenParamUtctimeJiff1(&mut db)
-    ).await?, ref_date);
+        "pg_gen_query_like",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" like $1"#;
+        dbm::DbPgGenQueryLike1(&mut db),
+        p1: string = "apple%"
+    ).await?, "apple pie");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_is_null() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_is_null");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_is_null",
+        r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
+        dbm::DbPgGenQueryIsNull1(&mut db),
+        p1: string = "not null"
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        "pg_gen_query_is_null",
+        r#"select count(*) as "count" from "bananna" where "bananna" . "hizat" is not null"#;
+        dbm::DbPgGenQueryIsNull1(&mut db)
+    ).await?, 1i64);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_concat() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_concat");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_concat",
+        r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
+        dbm::DbPgGenQueryConcat1(&mut db),
+        p1: string = "hello"
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        "pg_gen_query_concat",
+        r#"select "bananna" . "hizat" || ' world' as "out" from "bananna""#;
+        dbm::DbPgGenQueryConcat1(&mut db)
+    ).await?, "hello world");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_row_number() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_row_number");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_row_number",
+        r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
+        dbm::DbPgGenQueryRowNumber1(&mut db),
+        p1: string = "a"
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_row_number",
+        r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
+        dbm::DbPgGenQueryRowNumber1(&mut db),
+        p1: string = "b"
+    ).await?;
+    let res = good_ormning::pg::good_query_many!(
+        "pg_gen_query_row_number",
+        r#"select "bananna" . "hizat" as "hizat", row_number() over (order by "bananna" . "hizat" asc) as "row_num" from "bananna""#;
+        dbm::DbPgGenQueryRowNumber1(&mut db)
+    ).await?;
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0].hizat, "a");
+    assert_eq!(res[0].row_num, 1i64);
+    assert_eq!(res[1].hizat, "b");
+    assert_eq!(res[1].row_num, 2i64);
     Ok(())
 }
 
@@ -538,7 +601,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
         dbm::DbPgGenSelectGroupBy1(&mut db)
     ).await?;
     res.sort();
-    assert_eq!(res, vec![13i64, 106i64]);
+    assert_eq!(res, vec![Some(13i64), Some(106i64)]);
     Ok(())
 }
 
@@ -767,7 +830,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
         dbm::DbPgGenSelectWindow1(&mut db)
     ).await?.into_iter().collect::<Vec<_>>();
     res.sort();
-    assert_eq!(res, vec![13i64, 13i64, 106i64, 106i64]);
+    assert_eq!(res, vec![Some(13i64), Some(13i64), Some(106i64), Some(106i64)]);
     Ok(())
 }
 
@@ -780,22 +843,157 @@ async fn test_migrate_make_field_optional() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
-async fn test_migrate_pre_migration() -> Result<(), loga::Error> {
-    good_module!(dbm, "pg_gen_migrate_pre_migration");
+async fn test_query_filter() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_filter");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, Some(&|v| Box::pin(async move {
-        match v {
-            dbm::DbPgGenMigratePreMigrationVersions::V0(mut db) => {
-                good_ormning::pg::good_query!(
-                    "pg_gen_migrate_pre_migration",
-                    "0",
-                    r#"insert into "migrate_pre_migration_v0_two" ( "two" ) values ( 7 )"#;
-                    dbm::DbPgGenMigratePreMigration0(&mut *db.0)
-                ).await?;
-            },
-            _ => { },
-        }
-        Ok(())
-    }))).await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_filter",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( $1 , $2 )"#;
+        dbm::DbPgGenQueryFilter1(&mut db),
+        p1: string = "a",
+        p2: i32 = 10
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_filter",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( $1 , $2 )"#;
+        dbm::DbPgGenQueryFilter1(&mut db),
+        p1: string = "b",
+        p2: i32 = 20
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_query_filter",
+        r#"select sum("two") filter (where "hizat" = 'a') as "x" from "bananna""#;
+        dbm::DbPgGenQueryFilter1(&mut db)
+    ).await?;
+    assert_eq!(res, Some(10i64));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_window_frame() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_window_frame");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    for i in 1..=3 {
+        good_ormning::pg::good_query!(
+            "pg_gen_query_window_frame",
+            r#"insert into "bananna" ( "hizat" , "two" ) values ( 'key' , $1 )"#;
+            dbm::DbPgGenQueryWindowFrame1(&mut db),
+            p1: i32 = i
+        ).await?;
+    }
+    let res = good_ormning::pg::good_query_many!(
+        "pg_gen_query_window_frame",
+        r#"select sum("two") over (order by "two" rows between unbounded preceding and current row) as "x" from "bananna""#;
+        dbm::DbPgGenQueryWindowFrame1(&mut db)
+    ).await?;
+    assert_eq!(res, vec![Some(1i64), Some(3i64), Some(6i64)]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_collate() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_collate");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_collate",
+        r#"insert into "bananna" ( "hizat" ) values ( 'abc' )"#;
+        dbm::DbPgGenQueryCollate1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_query_collate",
+        r#"select "hizat" as "x" from "bananna" where "hizat" collate "C" = 'abc'"#;
+        dbm::DbPgGenQueryCollate1(&mut db)
+    ).await?;
+    assert_eq!(res, "abc");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_is_distinct_from");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_is_distinct_from",
+        r#"insert into "bananna" ( "hizat" ) values ( null )"#;
+        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_query_is_distinct_from",
+        r#"select count(*) as "x" from "bananna" where "hizat" is distinct from 'abc'"#;
+        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+    ).await?;
+    assert_eq!(res, 1i64);
+    let res2 = good_ormning::pg::good_query_one!(
+        "pg_gen_query_is_distinct_from",
+        r#"select count(*) as "x" from "bananna" where "hizat" is not distinct from null"#;
+        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+    ).await?;
+    assert_eq!(res2, 1i64);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_having() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_having");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_having",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'a' , 10 )"#;
+        dbm::DbPgGenQueryHaving1(&mut db)
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_having",
+        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'b' , 20 )"#;
+        dbm::DbPgGenQueryHaving1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_many!(
+        "pg_gen_query_having",
+        r#"select "hizat" as "x" from "bananna" group by "hizat" having sum("two") > 15"#;
+        dbm::DbPgGenQueryHaving1(&mut db)
+    ).await?;
+    assert_eq!(res, vec!["b".to_string()]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_cte_subquery() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_cte_subquery");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_cte_subquery",
+        r#"insert into "bananna" ( "hizat" ) values ( 'a' )"#;
+        dbm::DbPgGenQueryCteSubquery1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_query_cte_subquery",
+        r#"select (with "t" as (select 1 as "v") select "v" from "t") as "x""#;
+        dbm::DbPgGenQueryCteSubquery1(&mut db)
+    ).await?;
+    assert_eq!(res, 1i32);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_like_escape() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_like_escape");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_like_escape",
+        r#"insert into "bananna" ( "hizat" ) values ( 'a%b' )"#;
+        dbm::DbPgGenQueryLikeEscape1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_query_like_escape",
+        r#"select count(*) as "x" from "bananna" where "hizat" like 'a!%b' escape '!'"#;
+        dbm::DbPgGenQueryLikeEscape1(&mut db)
+    ).await?;
+    assert_eq!(res, 1i64);
     Ok(())
 }

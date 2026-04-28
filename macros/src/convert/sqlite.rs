@@ -6,6 +6,7 @@ use good_ormning_core::sqlite::{
         expr::{
             Expr,
             BinOp,
+            PrefixOp,
         },
         select::{
             Select,
@@ -348,7 +349,9 @@ fn convert_update(
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Update {
     let table_ref = match &table.relation {
-        sql::TableFactor::Table { name, .. } => get_table_ref(name),
+        sql::TableFactor::Table { name, .. } => {
+            get_table_ref(name)
+        },
         _ => unimplemented!("Update table factor"),
     };
     let mut values = vec![];
@@ -368,6 +371,7 @@ fn convert_update(
         values,
         where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
         returning: convert_returning(input, returning, used_params, custom_types),
+        index_hint: None,
     }
 }
 
@@ -382,13 +386,16 @@ fn convert_delete(
         sql::FromTable::WithoutKeyword(f) => &f[0].relation,
     };
     let table_ref = match relation {
-        sql::TableFactor::Table { name, .. } => get_table_ref(name),
+        sql::TableFactor::Table { name, .. } => {
+            get_table_ref(name)
+        },
         _ => unimplemented!("Delete table factor"),
     };
     Delete {
         table: table_ref,
         where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
         returning: convert_returning(input, &delete.returning, used_params, custom_types),
+        index_hint: None,
     }
 }
 
@@ -399,83 +406,99 @@ fn convert_select(
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
 ) -> Select {
-    let table = match &s.from[0].relation {
-        sql::TableFactor::Table { name, alias, args, .. } => {
-            if let Some(args) = args {
-                let name_str = name.to_string().to_lowercase();
-                if name_str == "rarray" {
-                    if !args.args.is_empty() {
-                        if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
-                            let expr = convert_expr(input, e, used_params, custom_types);
-                            return Select {
-                                with: None,
-                                table: NamedSelectSource {
-                                    source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
-                                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                                },
-                                returning: convert_returning(
-                                    input,
-                                    &Some(s.projection.clone()),
-                                    used_params,
-                                    custom_types,
-                                ),
-                                junction: vec![],
-                                join: vec![],
-                                where_: s
-                                    .selection
-                                    .as_ref()
-                                    .map(|e| convert_expr(input, e, used_params, custom_types)),
-                                group: match &s.group_by {
-                                    sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
-                                    sql::GroupByExpr::Expressions(exprs, _) => exprs
-                                        .iter()
-                                        .map(|e| convert_expr(input, e, used_params, custom_types))
-                                        .collect(),
-                                },
-                                order: vec![],
-                                limit: None,
-                            };
+    let table = if s.from.is_empty() {
+        NamedSelectSource {
+            source: JoinSource::Empty,
+            alias: None,
+            index_hint: None,
+        }
+    } else {
+        match &s.from[0].relation {
+            sql::TableFactor::Table { name, alias, args, .. } => {
+                if let Some(args) = args {
+                    let name_str = name.to_string().to_lowercase();
+                    if name_str == "rarray" {
+                        if !args.args.is_empty() {
+                            if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
+                                let expr = convert_expr(input, e, used_params, custom_types);
+                                return Select {
+                                    with: None,
+                                    table: NamedSelectSource {
+                                        source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
+                                        alias: alias.as_ref().map(|a| a.name.value.clone()),
+                                        index_hint: None,
+                                    },
+                                    returning: convert_returning(
+                                        input,
+                                        &Some(s.projection.clone()),
+                                        used_params,
+                                        custom_types,
+                                    ),
+                                    junction: vec![],
+                                    join: vec![],
+                                    where_: s
+                                        .selection
+                                        .as_ref()
+                                        .map(|e| convert_expr(input, e, used_params, custom_types)),
+                                    group: match &s.group_by {
+                                        sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
+                                        sql::GroupByExpr::Expressions(exprs, _) => exprs
+                                            .iter()
+                                            .map(|e| convert_expr(input, e, used_params, custom_types))
+                                            .collect(),
+                                    },
+                                    having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+                                    order: vec![],
+                                    limit: None,
+                                };
+                            }
                         }
                     }
                 }
-            }
-            NamedSelectSource {
-                source: JoinSource::Table(get_table_ref(name)),
-                alias: Some(
-                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
-                ),
-            }
-        },
-        _ => unimplemented!("Select table factor"),
+                NamedSelectSource {
+                    source: JoinSource::Table(get_table_ref(name)),
+                    alias: Some(
+                        alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                    ),
+                    index_hint: None,
+                }
+            },
+            _ => unimplemented!("Select table factor"),
+        }
     };
     let mut join = vec![];
-    for j in &s.from[0].joins {
-        let source = match &j.relation {
-            sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
-                source: JoinSource::Table(get_table_ref(name)),
-                alias: Some(
-                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
-                ),
-            },
-            _ => unimplemented!("Join table factor"),
-        };
-        let type_ = match j.join_operator {
-            sql::JoinOperator::LeftOuter(_) => JoinType::Left,
-            sql::JoinOperator::Inner(_) => JoinType::Inner,
-            _ => unimplemented!("Join type: {:?}", j.join_operator),
-        };
-        let on = match &j.join_operator {
-            sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
-                sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
-                _ => unimplemented!("Join constraint"),
-            },
-            _ => unreachable!(),
-        };
-        join.push(Join {
-            source: source,
-            type_,
-            on,
-        });
+    if !s.from.is_empty() {
+        for j in &s.from[0].joins {
+            let source = match &j.relation {
+                sql::TableFactor::Table { name, alias, .. } => {
+                    NamedSelectSource {
+                        source: JoinSource::Table(get_table_ref(name)),
+                        alias: Some(
+                            alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                        ),
+                        index_hint: None,
+                    }
+                },
+                _ => unimplemented!("Join table factor"),
+            };
+            let type_ = match j.join_operator {
+                sql::JoinOperator::LeftOuter(_) => JoinType::Left,
+                sql::JoinOperator::Inner(_) => JoinType::Inner,
+                _ => unimplemented!("Join type: {:?}", j.join_operator),
+            };
+            let on = match &j.join_operator {
+                sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
+                    sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
+                    _ => unimplemented!("Join constraint"),
+                },
+                _ => unreachable!(),
+            };
+            join.push(Join {
+                source: source,
+                type_,
+                on,
+            });
+        }
     }
     let mut order = vec![];
     if let Some(order_by) = &q.order_by {
@@ -502,6 +525,7 @@ fn convert_select(
                 .map(|e| convert_expr(input, e, used_params, custom_types))
                 .collect(),
         },
+        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
         order,
         limit: q.limit.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
     }
@@ -584,6 +608,13 @@ fn convert_expr(
                 sql::BinaryOperator::Minus => BinOp::Minus,
                 sql::BinaryOperator::Multiply => BinOp::Multiply,
                 sql::BinaryOperator::Divide => BinOp::Divide,
+                sql::BinaryOperator::StringConcat => BinOp::StringConcat,
+                sql::BinaryOperator::Modulo => BinOp::Mod,
+                sql::BinaryOperator::BitwiseAnd => BinOp::BitwiseAnd,
+                sql::BinaryOperator::BitwiseOr => BinOp::BitwiseOr,
+                sql::BinaryOperator::BitwiseXor => BinOp::BitwiseXor,
+                sql::BinaryOperator::PGBitwiseShiftLeft => BinOp::BitwiseShiftLeft,
+                sql::BinaryOperator::PGBitwiseShiftRight => BinOp::BitwiseShiftRight,
                 _ => unimplemented!("Binary operator: {:?}", op),
             };
             Expr::BinOp {
@@ -592,11 +623,69 @@ fn convert_expr(
                 right: Box::new(r),
             }
         },
+        sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
+            let l = convert_expr(input, expr, used_params, custom_types);
+            let r = convert_expr(input, pattern, used_params, custom_types);
+            let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
+            let res = Expr::Like {
+                expr: Box::new(l),
+                pattern: Box::new(r),
+                escape,
+            };
+            if *negated {
+                Expr::PrefixOp {
+                    op: PrefixOp::Not,
+                    right: Box::new(res),
+                }
+            } else {
+                res
+            }
+        },
+        sql::Expr::IsNull(expr) => {
+            Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types)),
+                op: BinOp::Is,
+                right: Box::new(Expr::LitNull(SimpleType {
+                    type_: SimpleSimpleType::I32,
+                    custom: None,
+                })),
+            }
+        },
+        sql::Expr::IsNotNull(expr) => {
+            Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types)),
+                op: BinOp::IsNot,
+                right: Box::new(Expr::LitNull(SimpleType {
+                    type_: SimpleSimpleType::I32,
+                    custom: None,
+                })),
+            }
+        },
+        sql::Expr::IsDistinctFrom(left, right) => {
+            Expr::BinOp {
+                left: Box::new(convert_expr(input, left, used_params, custom_types)),
+                op: BinOp::IsDistinctFrom,
+                right: Box::new(convert_expr(input, right, used_params, custom_types)),
+            }
+        },
+        sql::Expr::IsNotDistinctFrom(left, right) => {
+            Expr::BinOp {
+                left: Box::new(convert_expr(input, left, used_params, custom_types)),
+                op: BinOp::IsNotDistinctFrom,
+                right: Box::new(convert_expr(input, right, used_params, custom_types)),
+            }
+        },
         sql::Expr::Nested(expr) => convert_expr(input, expr, used_params, custom_types),
         sql::Expr::Cast { expr, data_type, .. } => {
             let e = convert_expr(input, expr, used_params, custom_types);
             let t = sql_type_to_sqlite_type(data_type, custom_types);
             Expr::Cast(Box::new(e), t)
+        },
+        sql::Expr::Collate { expr, collation } => {
+            Expr::Collate(
+                Box::new(convert_expr(input, expr, used_params, custom_types)),
+                collation.0.iter().map(|i| i.value.clone()).collect::<Vec<_>>().join("."),
+            )
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types);
@@ -625,6 +714,20 @@ fn convert_expr(
                 right: Box::new(r),
             }
         },
+        sql::Expr::Subquery(q) => {
+            Expr::Select(Box::new(convert_select_query(input, q, used_params, custom_types)))
+        },
+        sql::Expr::Exists { subquery, negated } => {
+            let res = Expr::Exists(Box::new(convert_select_query(input, subquery, used_params, custom_types)));
+            if *negated {
+                Expr::PrefixOp {
+                    op: PrefixOp::Not,
+                    right: Box::new(res),
+                }
+            } else {
+                res
+            }
+        },
         sql::Expr::Function(f) => {
             let name = f.name.to_string().to_lowercase();
             let mut args = vec![];
@@ -634,25 +737,29 @@ fn convert_expr(
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => args.push(
                             convert_expr(input, e, used_params, custom_types),
                         ),
+                        sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Wildcard) => {
+                            args.push(Expr::LitI32(1));
+                        },
                         _ => unimplemented!("Function argument type not supported"),
                     }
                 }
             }
+            let filter = f.filter.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types)));
             if let Some(over) = &f.over {
-                let arg = if args.is_empty() {
-                    // DUMMY
-                    Expr::LitI32(0)
-                } else {
-                    args.pop().unwrap()
-                };
-                let e = match name.as_str() {
-                    "sum" => fn_sum(arg),
-                    "count" => fn_count(arg),
-                    "min" => fn_min(arg),
-                    "max" => fn_max(arg),
-                    "avg" => fn_avg(arg),
+                let mut e = match name.as_str() {
+                    "sum" => fn_sum(args.pop().expect("sum requires 1 arg")),
+                    "count" => fn_count(args.pop().expect("count requires 1 arg")),
+                    "min" => fn_min(args.pop().expect("min requires 1 arg")),
+                    "max" => fn_max(args.pop().expect("max requires 1 arg")),
+                    "avg" => fn_avg(args.pop().expect("avg requires 1 arg")),
+                    "row_number" => fn_row_number(),
+                    "rank" => fn_rank(),
+                    "dense_rank" => fn_dense_rank(),
                     _ => unimplemented!("Function {} not supported in window", name),
                 };
+                if let Expr::Call { filter: ref mut f_opt, .. } = e {
+                    *f_opt = filter;
+                }
                 match over {
                     sql::WindowType::WindowSpec(spec) => {
                         let mut partition_by = vec![];
@@ -668,28 +775,73 @@ fn convert_expr(
                             };
                             order_by.push((expr, dir));
                         }
+                        let frame = if let Some(sql_frame) = &spec.window_frame {
+                            let start = convert_window_frame_bound(input, &sql_frame.start_bound, used_params, custom_types);
+                            let end = sql_frame.end_bound.as_ref().map(|b| convert_window_frame_bound(input, b, used_params, custom_types));
+                            Some(good_ormning_core::sqlite::query::expr::WindowFrame {
+                                type_: match sql_frame.units {
+                                    sql::WindowFrameUnits::Rows => good_ormning_core::sqlite::query::expr::WindowFrameType::Rows,
+                                    sql::WindowFrameUnits::Range => good_ormning_core::sqlite::query::expr::WindowFrameType::Range,
+                                    sql::WindowFrameUnits::Groups => good_ormning_core::sqlite::query::expr::WindowFrameType::Groups,
+                                },
+                                start,
+                                end,
+                                exclude: None,
+                            })
+                        } else {
+                            None
+                        };
                         return Expr::Window {
                             expr: Box::new(e),
                             partition_by,
                             order_by,
+                            frame,
                         };
                     },
                     sql::WindowType::NamedWindow(_) => unimplemented!("Named windows not supported"),
                 }
             }
-            if args.len() != 1 {
-                unimplemented!("Only 1-argument functions supported");
-            }
-            let expr = args.pop().expect("args should have exactly 1 element");
-            match name.as_str() {
-                "sum" => fn_sum(expr),
-                "count" => fn_count(expr),
-                "min" => fn_min(expr),
-                "max" => fn_max(expr),
-                "avg" => fn_avg(expr),
+            let mut e = match name.as_str() {
+                "sum" => fn_sum(args.pop().expect("sum requires 1 arg")),
+                "count" => fn_count(args.pop().expect("count requires 1 arg")),
+                "min" => fn_min(args.pop().expect("min requires 1 arg")),
+                "max" => fn_max(args.pop().expect("max requires 1 arg")),
+                "avg" => fn_avg(args.pop().expect("avg requires 1 arg")),
                 _ => unimplemented!("Function {} not supported", name),
+            };
+            if let Expr::Call { filter: ref mut f_opt, .. } = e {
+                *f_opt = filter;
             }
+            e
         },
         _ => unimplemented!("Expression type not supported: {:?}", e),
     }
 }
+
+fn convert_window_frame_bound(
+    input: &GoodQueryInput,
+    b: &sql::WindowFrameBound,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+) -> good_ormning_core::sqlite::query::expr::WindowFrameBound {
+    match b {
+        sql::WindowFrameBound::Preceding(e) => match e {
+            Some(e) => {
+                good_ormning_core::sqlite::query::expr::WindowFrameBound::Preceding(Box::new(convert_expr(input, e, used_params, custom_types)))
+            },
+            None => {
+                good_ormning_core::sqlite::query::expr::WindowFrameBound::UnboundedPreceding
+            },
+        },
+        sql::WindowFrameBound::CurrentRow => good_ormning_core::sqlite::query::expr::WindowFrameBound::CurrentRow,
+        sql::WindowFrameBound::Following(e) => match e {
+            Some(e) => {
+                good_ormning_core::sqlite::query::expr::WindowFrameBound::Following(Box::new(convert_expr(input, e, used_params, custom_types)))
+            },
+            None => {
+                good_ormning_core::sqlite::query::expr::WindowFrameBound::UnboundedFollowing
+            },
+        },
+    }
+}
+

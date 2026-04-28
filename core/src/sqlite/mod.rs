@@ -718,12 +718,14 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
             alias: None,
+            index_hint: None,
         },
         returning: vec![],
         junction: vec![],
         join: vec![],
         where_: None,
         group: vec![],
+        having: None,
         order: vec![],
         limit: None,
     } }
@@ -738,6 +740,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         join: vec![],
         where_: None,
         group: vec![],
+        having: None,
         order: vec![],
         limit: None,
     } }
@@ -755,6 +758,7 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
         values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
         where_: None,
         returning: vec![],
+        index_hint: None,
     } }
 }
 
@@ -788,6 +792,7 @@ pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
         table: table.to_ref(),
         returning: vec![],
         where_: None,
+        index_hint: None,
     } }
 }
 

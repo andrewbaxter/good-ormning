@@ -47,6 +47,7 @@ pub struct SelectBody {
     pub join: Vec<Join>,
     pub where_: Option<Expr>,
     pub group: Vec<Expr>,
+    pub having: Option<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
     pub distinct: bool,
@@ -145,6 +146,13 @@ impl SelectBody {
                 let (_, g_tokens): (ExprType, Tokens) = g.build(ctx, &path, &scope);
                 out.s(&g_tokens.to_string());
             }
+        }
+        if let Some(having) = &self.having {
+            out.s("having");
+            let path = path.push_back("Having".into());
+            let (having_t, having_tokens): (ExprType, Tokens) = having.build(ctx, &path, &scope);
+            check_bool(ctx, &path, &having_t);
+            out.s(&having_tokens.to_string());
         }
         if !self.order.is_empty() {
             out.s("order by");

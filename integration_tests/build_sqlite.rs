@@ -148,6 +148,34 @@ pub fn build() {
         generate(Some("sqlite_gen_param_utctime_ms_jiff"), vec![(1usize, v.build())]).unwrap();
     }
 
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_like"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_is_null"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_concat"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_row_number"), vec![(1usize, v.build())]).unwrap();
+    }
+
     // # (insert) Param: Opt`<i32>`
     {
         let v = SqliteVersion::new();
@@ -507,5 +535,72 @@ pub fn build() {
         let bananna = v.table("bananna");
         let hizat = bananna.field("hizat", field_i32().build());
         generate(Some("sqlite_gen_param_arr_i32"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("sqlite_gen_query_filter"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("sqlite_gen_query_window_frame"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_collate"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().opt().build());
+        generate(Some("sqlite_gen_query_is_distinct_from"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _two = bananna.field("two", field_i32().build());
+        generate(Some("sqlite_gen_query_having"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_glob"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _ = bananna.index("bananna_hizat", &[&_hizat]);
+        generate(Some("sqlite_gen_query_indexed_by"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_cte_subquery"), vec![(1usize, v.build())]).unwrap();
+    }
+
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let _hizat = bananna.field("hizat", field_str().build());
+        generate(Some("sqlite_gen_query_like_escape"), vec![(1usize, v.build())]).unwrap();
     }
 }

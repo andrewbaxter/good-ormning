@@ -23,6 +23,7 @@ use super::{
         build_returning,
         build_set,
     },
+    select::IndexHint,
 };
 
 #[derive(Clone, Debug)]
@@ -31,6 +32,7 @@ pub struct Update {
     pub values: Vec<(FieldRef, Expr)>,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
+    pub index_hint: Option<IndexHint>,
 }
 
 impl QueryBody for Update {
@@ -56,6 +58,16 @@ impl QueryBody for Update {
         // Build query
         let mut out = Tokens::new();
         out.s("update").id(&table_info.sql_name);
+        if let Some(hint) = &self.index_hint {
+            match hint {
+                IndexHint::IndexedBy(name) => {
+                    out.s("indexed by").id(name);
+                },
+                IndexHint::NotIndexed => {
+                    out.s("not indexed");
+                },
+            }
+        }
         build_set(ctx, path, &scope, &mut out, &self.values);
         if let Some(where_) = &self.where_ {
             out.s("where");

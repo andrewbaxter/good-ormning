@@ -41,6 +41,7 @@ pub enum JoinSource {
     Subsel(Box<Select>),
     Table(TableRef),
     Func(String, Vec<Expr>),
+    Empty,
 }
 
 #[derive(Clone, Debug)]
@@ -73,7 +74,7 @@ impl NamedSelectSource {
                 table_info.fields.iter().map(|(id, info)| (ExprValName::field(id), info.type_.clone())).collect()
             },
             JoinSource::Func(name, args) => {
-                out.s(name).s("(");
+                out.id(name).s("(");
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         out.s(",");
@@ -84,7 +85,11 @@ impl NamedSelectSource {
                 out.s(")");
                 vec![]
             },
-        };
+            JoinSource::Empty => {
+                vec![]
+            },
+            };
+
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];
@@ -118,6 +123,7 @@ pub struct Select {
     pub join: Vec<Join>,
     pub where_: Option<Expr>,
     pub group: Vec<Expr>,
+    pub having: Option<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
 }
@@ -183,10 +189,12 @@ impl QueryBody for Select {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
         }
         let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.returning, res_count);
-        out.s("from");
-        out.s(&source.1.to_string());
-        for join in joins {
-            out.s(&join);
+        if !matches!(self.table.source, JoinSource::Empty) {
+            out.s("from");
+            out.s(&source.1.to_string());
+            for join in joins {
+                out.s(&join);
+            }
         }
         if let Some(where_) = &self.where_ {
             out.s("where");
@@ -205,6 +213,13 @@ impl QueryBody for Select {
                 let (_, g_tokens): (ExprType, Tokens) = g.build(ctx, &path, &scope);
                 out.s(&g_tokens.to_string());
             }
+        }
+        if let Some(having) = &self.having {
+            out.s("having");
+            let path = path.push_back("Having".into());
+            let (having_t, having_tokens): (ExprType, Tokens) = having.build(ctx, &path, &scope);
+            check_bool(ctx, &path, &having_t);
+            out.s(&having_tokens.to_string());
         }
         if !self.order.is_empty() {
             out.s("order by");

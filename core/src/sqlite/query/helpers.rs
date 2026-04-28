@@ -133,6 +133,7 @@ pub fn as_utc_chrono(expr: Expr) -> Expr {
                 arr: false,
             })]);
         })),
+        filter: None,
     }
 }
 
@@ -141,11 +142,17 @@ pub fn fn_min(expr: Expr) -> Expr {
         func: "min".to_string(),
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return ExprType(vec![]);
+            let t = match args.get(0).and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
             };
-            return ExprType(vec![(Binding::empty(), t)]);
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(Binding::empty(), out_t)]);
         })),
+        filter: None,
     }
 }
 
@@ -154,11 +161,17 @@ pub fn fn_max(expr: Expr) -> Expr {
         func: "max".to_string(),
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return ExprType(vec![]);
+            let t = match args.get(0).and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
             };
-            return ExprType(vec![(Binding::empty(), t)]);
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(Binding::empty(), out_t)]);
         })),
+        filter: None,
     }
 }
 
@@ -167,11 +180,17 @@ pub fn fn_avg(expr: Expr) -> Expr {
         func: "avg".to_string(),
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return ExprType(vec![]);
+            let t = match args.get(0).and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
             };
-            return ExprType(vec![(Binding::empty(), t)]);
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(Binding::empty(), out_t)]);
         })),
+        filter: None,
     }
 }
 
@@ -180,11 +199,17 @@ pub fn fn_sum(expr: Expr) -> Expr {
         func: "sum".to_string(),
         args: vec![expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let Some(t) = args.get(0).unwrap().assert_scalar(&mut ctx.errs, path) else {
-                return ExprType(vec![]);
+            let t = match args.get(0).and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
             };
-            return ExprType(vec![(Binding::empty(), t)]);
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(Binding::empty(), out_t)]);
         })),
+        filter: None,
     }
 }
 
@@ -202,5 +227,60 @@ pub fn fn_count(expr: Expr) -> Expr {
                 arr: false,
             })]);
         })),
+        filter: None,
+    }
+}
+
+pub fn fn_row_number() -> Expr {
+    return Expr::Call {
+        func: "row_number".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+            return ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_rank() -> Expr {
+    return Expr::Call {
+        func: "rank".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+            return ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_dense_rank() -> Expr {
+    return Expr::Call {
+        func: "dense_rank".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+            return ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
     }
 }
