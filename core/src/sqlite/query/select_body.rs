@@ -133,6 +133,7 @@ pub struct SelectBody {
     pub group: Vec<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
+    pub junctions: Vec<SelectJunction>,
 }
 
 impl QueryBody for SelectBody {
@@ -254,6 +255,10 @@ impl SelectBody {
             let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
             check_general_same(ctx, &path, &limit_t, &ExprType(vec![(Binding::empty(), type_i64().build())]));
             out.s(&limit_tokens.to_string());
+        }
+        if !self.junctions.is_empty() {
+            let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junctions);
+            out.s(&junction_tokens.to_string());
         }
         (out_type, out)
     }

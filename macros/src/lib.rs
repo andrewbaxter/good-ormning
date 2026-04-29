@@ -190,7 +190,7 @@ fn parse_and_generate_pg(
             },
         );
     }
-    let mut query = crate::convert::pg::convert_query(&input, statement, &custom_types);
+    let mut query = crate::convert::pg::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
 
     use std::collections::hash_map::DefaultHasher;
@@ -301,7 +301,7 @@ fn parse_and_generate_sqlite(
             },
         );
     }
-    let mut query = crate::convert::sqlite::convert_query(&input, statement, &custom_types);
+    let mut query = crate::convert::sqlite::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
 
     use std::collections::hash_map::DefaultHasher;

@@ -152,6 +152,13 @@ pub enum SerialExpr {
         expr: Box<SerialExpr>,
         pattern: Box<SerialExpr>,
         escape: Option<Box<SerialExpr>>,
+        glob: bool,
+    },
+    Between {
+        e: Box<SerialExpr>,
+        negated: bool,
+        low: Box<SerialExpr>,
+        high: Box<SerialExpr>,
     },
 }
 
@@ -239,10 +246,17 @@ impl From<SerialExpr> for Expr {
             },
             SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
             SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
-            SerialExpr::Like { expr, pattern, escape } => Expr::Like {
+            SerialExpr::Like { expr, pattern, escape, glob } => Expr::Like {
                 expr: Box::new(Expr::from(*expr)),
                 pattern: Box::new(Expr::from(*pattern)),
                 escape: escape.map(|e| Box::new(Expr::from(*e))),
+                glob,
+            },
+            SerialExpr::Between { e, negated, low, high } => Expr::Between {
+                e: Box::new(Expr::from(*e)),
+                negated,
+                low: Box::new(Expr::from(*low)),
+                high: Box::new(Expr::from(*high)),
             },
         }
     }
@@ -354,6 +368,18 @@ pub enum Expr {
         expr: Box<Expr>,
         pattern: Box<Expr>,
         escape: Option<Box<Expr>>,
+        glob: bool,
+    },
+    Between {
+        e: Box<Expr>,
+        negated: bool,
+        low: Box<Expr>,
+        high: Box<Expr>,
+    },
+    Case {
+        operand: Option<Box<Expr>>,
+        conditions: Vec<(Expr, Expr)>,
+        else_: Option<Box<Expr>>,
     },
 }
 
@@ -441,6 +467,7 @@ pub enum BinOp {
 pub enum PrefixOp {
     Not,
     BitwiseNot,
+    Minus,
 }
 
 macro_rules! empty_type{
@@ -872,6 +899,9 @@ impl Expr {
                     PrefixOp::BitwiseNot => {
                         out.s("~");
                     },
+                    PrefixOp::Minus => {
+                        out.s("-");
+                    },
                 }
                 let (t, tokens) = right.build(ctx, &path.push_back(format!("Prefix op {:?}", op)), scope);
                 if matches!(op, PrefixOp::Not) {
@@ -990,7 +1020,7 @@ impl Expr {
                 out.s(&tokens.to_string()).s("collate").s(&format!("\"{}\"", s.replace("\"", "\"\"")));
                 return (t, out);
             },
-            Expr::Like { expr, pattern, escape } => {
+            Expr::Like { expr, pattern, escape, glob } => {
                 let mut out = Tokens::new();
                 let (t_expr, tokens_expr) = expr.build(ctx, &path.push_back("Like expr".into()), scope);
                 let (t_pattern, tokens_pattern) = pattern.build(ctx, &path.push_back("Like pattern".into()), scope);
@@ -1008,7 +1038,13 @@ impl Expr {
                 if let Some(got_t) = t_pattern.assert_scalar(&mut ctx.errs, &path.push_back("Like pattern".into())) {
                     check_general_same_type(ctx, &path.push_back("Like pattern".into()), &got_t, &want_t);
                 }
-                out.s(&tokens_expr.to_string()).s("like").s(&tokens_pattern.to_string());
+                out.s(&tokens_expr.to_string());
+                if *glob {
+                    out.s("glob");
+                } else {
+                    out.s("like");
+                }
+                out.s(&tokens_pattern.to_string());
                 if let Some(escape) = escape {
                     let (t_escape, tokens_escape) = escape.build(ctx, &path.push_back("Like escape".into()), scope);
                     if let Some(got_t) = t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
@@ -1024,6 +1060,68 @@ impl Expr {
                     opt: false,
                     arr: false,
                 })]), out);
+            },
+            Expr::Between { e, negated, low, high } => {
+                let mut out = Tokens::new();
+                let (t, e_tokens) = e.build(ctx, &path.push_back("Between expr".into()), scope);
+                let (t_low, low_tokens) = low.build(ctx, &path.push_back("Between low".into()), scope);
+                let (t_high, high_tokens) = high.build(ctx, &path.push_back("Between high".into()), scope);
+                check_general_same(ctx, path, &t, &t_low);
+                check_general_same(ctx, path, &t, &t_high);
+                out.s(&e_tokens.to_string());
+                if *negated {
+                    out.s("not");
+                }
+                out.s("between").s(&low_tokens.to_string()).s("and").s(&high_tokens.to_string());
+                return (ExprType(vec![(Binding::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
+            },
+            Expr::Case { operand, conditions, else_ } => {
+                let mut out = Tokens::new();
+                out.s("case");
+                let op_type = if let Some(operand) = operand {
+                    let (t, op_tokens) = operand.build(ctx, &path.push_back("Case operand".into()), scope);
+                    out.s(&op_tokens.to_string());
+                    Some(t)
+                } else {
+                    None
+                };
+                let mut res_type = None;
+                for (i, (cond, res)) in conditions.iter().enumerate() {
+                    out.s("when");
+                    let (cond_t, cond_tokens) = cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
+                    if let Some(op_t) = &op_type {
+                        check_general_same(ctx, &path.push_back(format!("Case condition {}", i)), op_t, &cond_t);
+                    } else {
+                        check_bool(ctx, &path.push_back(format!("Case condition {}", i)), &cond_t);
+                    }
+                    out.s(&cond_tokens.to_string()).s("then");
+                    let (r_t, res_tokens) = res.build(ctx, &path.push_back(format!("Case result {}", i)), scope);
+                    if let Some(res_t) = &res_type {
+                        check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t);
+                    } else {
+                        res_type = Some(r_t);
+                    }
+                    out.s(&res_tokens.to_string());
+                }
+                if let Some(else_) = else_ {
+                    out.s("else");
+                    let (else_t, else_tokens) = else_.build(ctx, &path.push_back("Case else".into()), scope);
+                    if let Some(res_t) = &res_type {
+                        check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t);
+                    } else {
+                        res_type = Some(else_t);
+                    }
+                    out.s(&else_tokens.to_string());
+                }
+                out.s("end");
+                (res_type.expect("Case must have at least one branch"), out)
             },
         }
     }

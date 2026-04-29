@@ -25,6 +25,7 @@ use good_ormning_core::pg::{
             QueryBody,
             With,
             CteBuilder,
+            PgTableInfo,
         },
         helpers::*,
     },
@@ -72,14 +73,14 @@ pub fn param_type_to_pg_type(pt: &ParamType, custom_types: &BTreeMap<String, PgC
             }
         },
     };
-    PgType {
+    return PgType {
         type_: PgSimpleType {
             type_: simple_type,
             custom,
         },
         opt: pt.opt,
         arr: pt.arr,
-    }
+    };
 }
 
 pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
@@ -111,29 +112,30 @@ pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap
         },
         _ => (PgSimpleSimpleType::I32, None),
     };
-    PgType {
+    return PgType {
         type_: PgSimpleType {
             type_: simple_type,
             custom,
         },
         opt: false,
         arr: false,
-    }
+    };
 }
 
 pub fn convert_query(
     input: &GoodQueryInput,
     statement: &sql::Statement,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Query {
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types)),
-        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert, &mut used_params, custom_types)),
+        sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup)),
+        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert, &mut used_params, custom_types, field_lookup)),
         sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
-            convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types),
+            convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types, field_lookup),
         ),
-        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete, &mut used_params, custom_types)),
+        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete, &mut used_params, custom_types, field_lookup)),
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
     for (ident, _) in &input.param_types {
@@ -141,13 +143,13 @@ pub fn convert_query(
             panic!("Parameter {} not used in query", ident);
         }
     }
-    Query {
+    return Query {
         name: "unnamed".to_string(),
         body,
         // Dummy
         res_count: QueryResCount::Many,
         res_name: None,
-    }
+    };
 }
 
 fn convert_select_query(
@@ -155,42 +157,84 @@ fn convert_select_query(
     q: &sql::Query,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Select {
-    match &*q.body {
-        sql::SetExpr::Select(s) => {
-            let mut sel = convert_select(input, q, s, used_params, custom_types);
-            if let Some(with) = &q.with {
-                let mut ctes = vec![];
-                for cte in &with.cte_tables {
-                    let name = cte.alias.name.value.clone();
-                    let query = convert_select_query(input, &cte.query, used_params, custom_types);
-                    let mut builder = CteBuilder::new(name, Box::new(query.clone()));
-                    if !cte.alias.columns.is_empty() {
-                        for col in &cte.alias.columns {
-                            builder =
-                                builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
-                        }
-                    } else {
-                        for r in &query.returning {
-                            let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
-                            builder = builder.column(r_name, good_ormning_core::pg::types::type_i32().build());
-                        }
-                    }
-                    ctes.push(good_ormning_core::pg::query::utils::Cte::from(builder));
+    let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
+    if let Some(with) = &q.with {
+        let mut ctes = vec![];
+        for cte in &with.cte_tables {
+            let name = cte.alias.name.value.clone();
+            let query = convert_select_query(input, &cte.query, used_params, custom_types, field_lookup);
+            let mut builder = CteBuilder::new(name, Box::new(query.clone()));
+            if !cte.alias.columns.is_empty() {
+                for col in &cte.alias.columns {
+                    builder =
+                        builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
                 }
-                sel.with = Some(With {
-                    recursive: with.recursive,
-                    ctes,
-                });
+            } else {
+                for r in &query.returning {
+                    let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
+                    builder = builder.column(r_name, good_ormning_core::pg::types::type_i32().build());
+                }
             }
-            sel
+            ctes.push(good_ormning_core::pg::query::utils::Cte::from(builder));
+        }
+        sel.with = Some(With {
+            recursive: with.recursive,
+            ctes,
+        });
+    }
+    return sel;
+}
+
+fn convert_select_query_expr(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    expr: &sql::SetExpr,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Select {
+    match expr {
+        sql::SetExpr::Select(s) => return convert_select(input, q, s, used_params, custom_types, field_lookup),
+        sql::SetExpr::SetOperation { op, left, right, set_quantifier } => {
+            let mut l = convert_select_query_expr(input, q, left, used_params, custom_types, field_lookup);
+            let r = convert_select_query_expr(input, q, right, used_params, custom_types, field_lookup);
+            let junction_op = match op {
+                sql::SetOperator::Union => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::UnionAll
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Union
+                    }
+                },
+                sql::SetOperator::Intersect => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        unimplemented!("INTERSECT ALL not supported")
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Intersect
+                    }
+                },
+                sql::SetOperator::Except => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        unimplemented!("EXCEPT ALL not supported")
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
+            };
+            l.junctions.push(good_ormning_core::pg::query::select_body::SelectJunction {
+                op: junction_op,
+                body: Box::new(r),
+            });
+            return l;
         },
-        _ => unimplemented!("Only simple Select queries supported in macro for now"),
+        _ => unimplemented!("Unsupported SetExpr type: {:?}", expr),
     }
 }
 
 fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    TableRef(name.0.last().expect("ObjectName should not be empty").value.clone())
+    return TableRef(name.0.last().expect("ObjectName should not be empty").value.clone());
 }
 
 fn convert_returning(
@@ -198,24 +242,45 @@ fn convert_returning(
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+    default_table: Option<&TableRef>,
 ) -> Vec<Returning> {
     let mut out = vec![];
     if let Some(items) = returning {
         for item in items {
             match item {
                 sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
-                    e: convert_expr(input, e, used_params, custom_types),
+                    e: convert_expr(input, e, used_params, custom_types, field_lookup),
                     rename: None,
                 }),
                 sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
-                    e: convert_expr(input, expr, used_params, custom_types),
+                    e: convert_expr(input, expr, used_params, custom_types, field_lookup),
                     rename: Some(alias.value.clone()),
                 }),
-                _ => unimplemented!("Unsupported returning item"),
+                sql::SelectItem::Wildcard(_) => {
+                    let table_ref = default_table.expect("Wildcard returning without default table");
+                    let table_info = field_lookup.get(table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
+                sql::SelectItem::QualifiedWildcard(name, _) => {
+                    let table_ref = TableRef(name.0.last().unwrap().value.clone());
+                    let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
             }
         }
     }
-    out
+    return out;
 }
 
 fn convert_insert(
@@ -223,6 +288,7 @@ fn convert_insert(
     insert: &sql::Insert,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Insert {
     let table = get_table_ref(&insert.table_name);
     let mut values = vec![];
@@ -234,7 +300,7 @@ fn convert_insert(
                         table_id: table.0.clone(),
                         field_id: insert.columns[i].value.clone(),
                     };
-                    values.push((field, convert_expr(input, expr, used_params, custom_types)));
+                    values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
                 }
             }
         } else {
@@ -256,7 +322,7 @@ fn convert_insert(
                             table_id: table.0.clone(),
                             field_id: target_name,
                         };
-                        updates.push((field, convert_expr(input, &a.value, used_params, custom_types)));
+                        updates.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
                     }
                     let conflict = if let Some(target) = &oc.conflict_target {
                         match target {
@@ -280,12 +346,12 @@ fn convert_insert(
     } else {
         None
     };
-    Insert {
-        table,
+    return Insert {
+        table: table.clone(),
         values,
         on_conflict,
-        returning: convert_returning(input, &insert.returning, used_params, custom_types),
-    }
+        returning: convert_returning(input, &insert.returning, used_params, custom_types, field_lookup, Some(&table)),
+    };
 }
 
 fn convert_update(
@@ -296,12 +362,13 @@ fn convert_update(
     returning: &Option<Vec<sql::SelectItem>>,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Update {
     let table_ref = match &table.relation {
         sql::TableFactor::Table { name, .. } => get_table_ref(name),
         _ => unimplemented!("Update table factor"),
     };
-    let mut values = vec![];
+    let mut sets = vec![];
     for a in assignments {
         let target_name = match &a.target {
             sql::AssignmentTarget::ColumnName(name) => name.0.last().unwrap().value.clone(),
@@ -311,14 +378,14 @@ fn convert_update(
             table_id: table_ref.0.clone(),
             field_id: target_name,
         };
-        values.push((field, convert_expr(input, &a.value, used_params, custom_types)));
+        sets.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
     }
-    Update {
-        table: table_ref,
-        values,
-        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
-        returning: convert_returning(input, returning, used_params, custom_types),
-    }
+    return Update {
+        table: table_ref.clone(),
+        values: sets,
+        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        returning: convert_returning(input, returning, used_params, custom_types, field_lookup, Some(&table_ref)),
+    };
 }
 
 fn convert_delete(
@@ -326,6 +393,7 @@ fn convert_delete(
     delete: &sql::Delete,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Delete {
     let relation = match &delete.from {
         sql::FromTable::WithFromKeyword(f) => &f[0].relation,
@@ -335,11 +403,11 @@ fn convert_delete(
         sql::TableFactor::Table { name, .. } => get_table_ref(name),
         _ => unimplemented!("Delete table factor"),
     };
-    Delete {
-        table: table_ref,
-        where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
-        returning: convert_returning(input, &delete.returning, used_params, custom_types),
-    }
+    return Delete {
+        table: table_ref.clone(),
+        where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        returning: convert_returning(input, &delete.returning, used_params, custom_types, field_lookup, Some(&table_ref)),
+    };
 }
 
 fn convert_select(
@@ -348,6 +416,7 @@ fn convert_select(
     s: &sql::Select,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Select {
     let table = if s.from.is_empty() {
         NamedSelectSource {
@@ -386,7 +455,7 @@ fn convert_select(
             };
             let on = match &j.join_operator {
                 sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
-                    sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types),
+                    sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types, field_lookup),
                     _ => unimplemented!("Join constraint"),
                 },
                 _ => unreachable!(),
@@ -401,7 +470,7 @@ fn convert_select(
     let mut order = vec![];
     if let Some(order_by) = &q.order_by {
         for o in &order_by.exprs {
-            let e = convert_expr(input, &o.expr, used_params, custom_types);
+            let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
             let dir = match o.asc {
                 Some(true) | None => Order::Asc,
                 Some(false) => Order::Desc,
@@ -409,23 +478,28 @@ fn convert_select(
             order.push((e, dir));
         }
     }
-    Select {
+    return Select {
         with: None,
-        table,
-        returning: convert_returning(input, &Some(s.projection.clone()), used_params, custom_types),
+        table: table.clone(),
+        returning: convert_returning(input, &Some(s.projection.clone()), used_params, custom_types, field_lookup, Some(&match &table.source {
+            JoinSource::Table(tr) => tr.clone(),
+            _ => TableRef("".into()),
+        })),
         join,
-        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         group: match &s.group_by {
             sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
             sql::GroupByExpr::Expressions(exprs, _) => exprs
                 .iter()
-                .map(|e| convert_expr(input, e, used_params, custom_types))
+                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
                 .collect(),
         },
-        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
+        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         order,
-        limit: q.limit.as_ref().map(|e| convert_expr(input, e, used_params, custom_types)),
-    }
+        limit: q.limit.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        distinct: s.distinct.is_some(),
+        junctions: vec![],
+    };
 }
 
 fn convert_expr(
@@ -433,35 +507,36 @@ fn convert_expr(
     e: &sql::Expr,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Expr {
     match e {
         sql::Expr::Identifier(ident) => {
-            Expr::Field(FieldRef {
+            return Expr::Field(FieldRef {
                 table_id: "".into(),
                 field_id: ident.value.clone(),
-            })
+            });
         },
         sql::Expr::CompoundIdentifier(idents) => {
             let table_id = idents[0].value.clone();
             let id = idents[1].value.clone();
-            Expr::Field(FieldRef {
+            return Expr::Field(FieldRef {
                 table_id,
                 field_id: id,
-            })
+            });
         },
         sql::Expr::Value(v) => {
             match v {
                 sql::Value::Number(n, _) => {
                     if let Ok(i) = n.parse::<i32>() {
-                        Expr::LitI32(i)
+                        return Expr::LitI32(i);
                     } else if let Ok(i) = n.parse::<i64>() {
-                        Expr::LitI64(i)
+                        return Expr::LitI64(i);
                     } else {
                         unimplemented!("Number parsing")
                     }
                 },
-                sql::Value::SingleQuotedString(s) => Expr::LitString(s.clone()),
-                sql::Value::Boolean(b) => Expr::LitBool(*b),
+                sql::Value::SingleQuotedString(s) => return Expr::LitString(s.clone()),
+                sql::Value::Boolean(b) => return Expr::LitBool(*b),
                 sql::Value::Placeholder(p) => {
                     let placeholder_name = p.replace("$", "").replace("?", "");
                     let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
@@ -477,12 +552,12 @@ fn convert_expr(
                             .find(|(ident, _)| ident.to_string() == param_name)
                             .map(|(_, pt)| pt)
                             .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
-                    Expr::Param {
+                    return Expr::Param {
                         name: param_name,
                         type_: param_type_to_pg_type(pt, custom_types),
-                    }
+                    };
                 },
-                sql::Value::Null => Expr::LitNull(SimpleType {
+                sql::Value::Null => return Expr::LitNull(SimpleType {
                     type_: SimpleSimpleType::I32,
                     custom: None,
                 }),
@@ -490,8 +565,8 @@ fn convert_expr(
             }
         },
         sql::Expr::BinaryOp { left, op, right } => {
-            let l = convert_expr(input, left, used_params, custom_types);
-            let r = convert_expr(input, right, used_params, custom_types);
+            let l = convert_expr(input, left, used_params, custom_types, field_lookup);
+            let r = convert_expr(input, right, used_params, custom_types, field_lookup);
             let o = match op {
                 sql::BinaryOperator::Eq => BinOp::Equals,
                 sql::BinaryOperator::NotEq => BinOp::NotEquals,
@@ -516,15 +591,46 @@ fn convert_expr(
                 sql::BinaryOperator::PGBitwiseShiftRight => BinOp::BitwiseShiftRight,
                 _ => unimplemented!("Binary operator: {:?}", op),
             };
-            Expr::BinOp {
+            return Expr::BinOp {
                 left: Box::new(l),
                 op: o,
                 right: Box::new(r),
-            }
+            };
+        },
+        sql::Expr::UnaryOp { op, expr } => {
+            let op = match op {
+                sql::UnaryOperator::Plus => return convert_expr(input, expr, used_params, custom_types, field_lookup),
+                sql::UnaryOperator::Minus => PrefixOp::Minus,
+                sql::UnaryOperator::Not => PrefixOp::Not,
+                sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
+                _ => unimplemented!("Unary operator: {:?}", op),
+            };
+            return Expr::PrefixOp {
+                op,
+                right: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+            };
+        },
+        sql::Expr::Between { expr, negated, low, high } => {
+            return Expr::Between {
+                e: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                negated: *negated,
+                low: Box::new(convert_expr(input, low, used_params, custom_types, field_lookup)),
+                high: Box::new(convert_expr(input, high, used_params, custom_types, field_lookup)),
+            };
+        },
+        sql::Expr::Case { operand, conditions, results, else_result } => {
+            return Expr::Case {
+                operand: operand.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
+                conditions: conditions.iter().zip(results.iter()).map(|(c, r)| (
+                    convert_expr(input, c, used_params, custom_types, field_lookup),
+                    convert_expr(input, r, used_params, custom_types, field_lookup),
+                )).collect(),
+                else_: else_result.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
+            };
         },
         sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
-            let l = convert_expr(input, expr, used_params, custom_types);
-            let r = convert_expr(input, pattern, used_params, custom_types);
+            let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
+            let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
             let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
             let res = Expr::Like {
                 expr: Box::new(l),
@@ -533,17 +639,17 @@ fn convert_expr(
                 ilike: false,
             };
             if *negated {
-                Expr::PrefixOp {
+                return Expr::PrefixOp {
                     op: PrefixOp::Not,
                     right: Box::new(res),
-                }
+                };
             } else {
-                res
+                return res;
             }
         },
         sql::Expr::ILike { expr, negated, pattern, escape_char, .. } => {
-            let l = convert_expr(input, expr, used_params, custom_types);
-            let r = convert_expr(input, pattern, used_params, custom_types);
+            let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
+            let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
             let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
             let res = Expr::Like {
                 expr: Box::new(l),
@@ -552,64 +658,64 @@ fn convert_expr(
                 ilike: true,
             };
             if *negated {
-                Expr::PrefixOp {
+                return Expr::PrefixOp {
                     op: PrefixOp::Not,
                     right: Box::new(res),
-                }
+                };
             } else {
-                res
+                return res;
             }
         },
         sql::Expr::IsNull(expr) => {
-            Expr::BinOp {
-                left: Box::new(convert_expr(input, expr, used_params, custom_types)),
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::Is,
                 right: Box::new(Expr::LitNull(SimpleType {
                     type_: SimpleSimpleType::I32,
                     custom: None,
                 })),
-            }
+            };
         },
         sql::Expr::IsNotNull(expr) => {
-            Expr::BinOp {
-                left: Box::new(convert_expr(input, expr, used_params, custom_types)),
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::IsNot,
                 right: Box::new(Expr::LitNull(SimpleType {
                     type_: SimpleSimpleType::I32,
                     custom: None,
                 })),
-            }
+            };
         },
         sql::Expr::IsDistinctFrom(left, right) => {
-            Expr::BinOp {
-                left: Box::new(convert_expr(input, left, used_params, custom_types)),
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, left, used_params, custom_types, field_lookup)),
                 op: BinOp::IsDistinctFrom,
-                right: Box::new(convert_expr(input, right, used_params, custom_types)),
-            }
+                right: Box::new(convert_expr(input, right, used_params, custom_types, field_lookup)),
+            };
         },
         sql::Expr::IsNotDistinctFrom(left, right) => {
-            Expr::BinOp {
-                left: Box::new(convert_expr(input, left, used_params, custom_types)),
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, left, used_params, custom_types, field_lookup)),
                 op: BinOp::IsNotDistinctFrom,
-                right: Box::new(convert_expr(input, right, used_params, custom_types)),
-            }
+                right: Box::new(convert_expr(input, right, used_params, custom_types, field_lookup)),
+            };
         },
-        sql::Expr::Nested(expr) => convert_expr(input, expr, used_params, custom_types),
+        sql::Expr::Nested(expr) => return convert_expr(input, expr, used_params, custom_types, field_lookup),
         sql::Expr::Cast { expr, data_type, .. } => {
-            let e = convert_expr(input, expr, used_params, custom_types);
+            let e = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let t = sql_type_to_pg_type(data_type, custom_types);
-            Expr::Cast(Box::new(e), t)
+            return Expr::Cast(Box::new(e), t);
         },
         sql::Expr::Collate { expr, collation } => {
-            Expr::Collate(
-                Box::new(convert_expr(input, expr, used_params, custom_types)),
+            return Expr::Collate(
+                Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 collation.0.iter().map(|i| i.value.clone()).collect::<Vec<_>>().join("."),
-            )
+            );
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
-            let l = convert_expr(input, expr, used_params, custom_types);
-            let r = convert_select_query(input, subquery, used_params, custom_types);
-            Expr::BinOp {
+            let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
+            let r = convert_select_query(input, subquery, used_params, custom_types, field_lookup);
+            return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
                     BinOp::NotIn
@@ -617,13 +723,13 @@ fn convert_expr(
                     BinOp::In
                 },
                 right: Box::new(Expr::Select(Box::new(r))),
-            }
+            };
         },
         sql::Expr::InList { expr, list, negated } => {
-            let l = convert_expr(input, expr, used_params, custom_types);
+            let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r =
-                Expr::LitArray(list.iter().map(|e| convert_expr(input, e, used_params, custom_types)).collect());
-            Expr::BinOp {
+                Expr::LitArray(list.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect());
+            return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
                     BinOp::NotIn
@@ -631,20 +737,20 @@ fn convert_expr(
                     BinOp::In
                 },
                 right: Box::new(r),
-            }
+            };
         },
         sql::Expr::Subquery(q) => {
-            Expr::Select(Box::new(convert_select_query(input, q, used_params, custom_types)))
+            return Expr::Select(Box::new(convert_select_query(input, q, used_params, custom_types, field_lookup)));
         },
         sql::Expr::Exists { subquery, negated } => {
-            let res = Expr::Exists(Box::new(convert_select_query(input, subquery, used_params, custom_types)));
+            let res = Expr::Exists(Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)));
             if *negated {
-                Expr::PrefixOp {
+                return Expr::PrefixOp {
                     op: PrefixOp::Not,
                     right: Box::new(res),
-                }
+                };
             } else {
-                res
+                return res;
             }
         },
         sql::Expr::Function(f) => {
@@ -654,7 +760,7 @@ fn convert_expr(
                 for arg in &list.args {
                     match arg {
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => args.push(
-                            convert_expr(input, e, used_params, custom_types),
+                            convert_expr(input, e, used_params, custom_types, field_lookup),
                         ),
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Wildcard) => {
                             args.push(Expr::LitI32(1));
@@ -663,7 +769,7 @@ fn convert_expr(
                     }
                 }
             }
-            let filter = f.filter.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types)));
+            let filter = f.filter.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             if let Some(over) = &f.over {
                 let mut e = match name.as_str() {
                     "sum" => fn_sum(args.pop().expect("sum requires 1 arg")),
@@ -683,11 +789,11 @@ fn convert_expr(
                     sql::WindowType::WindowSpec(spec) => {
                         let mut partition_by = vec![];
                         for p in &spec.partition_by {
-                            partition_by.push(convert_expr(input, p, used_params, custom_types));
+                            partition_by.push(convert_expr(input, p, used_params, custom_types, field_lookup));
                         }
                         let mut order_by = vec![];
                         for o in &spec.order_by {
-                            let expr = convert_expr(input, &o.expr, used_params, custom_types);
+                            let expr = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
                             let dir = match o.asc {
                                 Some(true) | None => Order::Asc,
                                 Some(false) => Order::Desc,
@@ -695,8 +801,8 @@ fn convert_expr(
                             order_by.push((expr, dir));
                         }
                         let frame = if let Some(sql_frame) = &spec.window_frame {
-                            let start = convert_window_frame_bound(input, &sql_frame.start_bound, used_params, custom_types);
-                            let end = sql_frame.end_bound.as_ref().map(|b| convert_window_frame_bound(input, b, used_params, custom_types));
+                            let start = convert_window_frame_bound(input, &sql_frame.start_bound, used_params, custom_types, field_lookup);
+                            let end = sql_frame.end_bound.as_ref().map(|b| convert_window_frame_bound(input, b, used_params, custom_types, field_lookup));
                             Some(good_ormning_core::pg::query::expr::WindowFrame {
                                 type_: match sql_frame.units {
                                     sql::WindowFrameUnits::Rows => good_ormning_core::pg::query::expr::WindowFrameType::Rows,
@@ -731,7 +837,7 @@ fn convert_expr(
             if let Expr::Call { filter: ref mut f_opt, .. } = e {
                 *f_opt = filter;
             }
-            e
+            return e;
         },
         _ => unimplemented!("Expression type not supported: {:?}", e),
     }
@@ -742,25 +848,25 @@ fn convert_window_frame_bound(
     b: &sql::WindowFrameBound,
     used_params: &mut HashSet<String>,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> good_ormning_core::pg::query::expr::WindowFrameBound {
     match b {
         sql::WindowFrameBound::Preceding(e) => match e {
             Some(e) => {
-                good_ormning_core::pg::query::expr::WindowFrameBound::Preceding(Box::new(convert_expr(input, e, used_params, custom_types)))
+                return good_ormning_core::pg::query::expr::WindowFrameBound::Preceding(Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             },
             None => {
-                good_ormning_core::pg::query::expr::WindowFrameBound::UnboundedPreceding
+                return good_ormning_core::pg::query::expr::WindowFrameBound::UnboundedPreceding;
             },
         },
-        sql::WindowFrameBound::CurrentRow => good_ormning_core::pg::query::expr::WindowFrameBound::CurrentRow,
+        sql::WindowFrameBound::CurrentRow => return good_ormning_core::pg::query::expr::WindowFrameBound::CurrentRow,
         sql::WindowFrameBound::Following(e) => match e {
             Some(e) => {
-                good_ormning_core::pg::query::expr::WindowFrameBound::Following(Box::new(convert_expr(input, e, used_params, custom_types)))
+                return good_ormning_core::pg::query::expr::WindowFrameBound::Following(Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             },
             None => {
-                good_ormning_core::pg::query::expr::WindowFrameBound::UnboundedFollowing
+                return good_ormning_core::pg::query::expr::WindowFrameBound::UnboundedFollowing;
             },
         },
     }
 }
-

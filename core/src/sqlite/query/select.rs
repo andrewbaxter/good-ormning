@@ -127,7 +127,20 @@ impl NamedSelectSource {
                     }
                     out.s(")");
                 }
-                vec![]
+                if name == "rarray" || name == "__good_ormning_rarray" {
+                    // Find the type of the argument For now, default to i32 for simplicity or try to
+                    // infer? Better to just return a dummy i32 if we can't infer.
+                    vec![(Binding::local("value".into()), Type {
+                        type_: crate::sqlite::types::SimpleType {
+                            type_: crate::sqlite::types::SimpleSimpleType::I32,
+                            custom: None,
+                        },
+                        opt: false,
+                        arr: false,
+                    })]
+                } else {
+                    vec![]
+                }
             },
             JoinSource::Empty => {
                 vec![]
@@ -157,6 +170,7 @@ pub struct Select {
     pub having: Option<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
+    pub distinct: bool,
 }
 
 impl QueryBody for Select {
@@ -172,6 +186,9 @@ impl QueryBody for Select {
             out.s(&build_with(ctx, path, with).to_string());
         }
         out.s("select");
+        if self.distinct {
+            out.s("distinct");
+        }
         if self.returning.is_empty() {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
         }

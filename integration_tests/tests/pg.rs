@@ -997,3 +997,68 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
     assert_eq!(res, 1i64);
     Ok(())
 }
+
+#[tokio::test]
+async fn test_query_union() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    let _res = good_ormning::pg::good_query_many!(
+        "pg_gen_base_insert",
+        r#"select "hizat" as "hizat" from "bannanana" union select "hizat" as "hizat" from "bannanana""#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_returning_wildcard() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_base_insert",
+        r#"insert into "bannanana" ( "hizat" ) values ( 'hi' ) returning *"#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res.hizat, "hi");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_between() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_base_insert",
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( 'a' , 5 )"#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_base_insert",
+        r#"select count(*) as "x" from "bannanana" where "hizat2" between 1 and 10"#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res, 1i64);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_case() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_base_insert",
+        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( 'a' , 5 )"#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    let res = good_ormning::pg::good_query_one!(
+        "pg_gen_base_insert",
+        r#"select case when "hizat2" > 0 then 'positive' else 'non-positive' end as "res" from "bannanana""#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res, "positive");
+    Ok(())
+}

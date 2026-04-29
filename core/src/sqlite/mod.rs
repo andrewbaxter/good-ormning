@@ -656,6 +656,7 @@ pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
         group: vec![],
         order: vec![],
         limit: None,
+        junctions: vec![],
     } }
 }
 
@@ -669,6 +670,7 @@ pub fn new_select_body_from(source: self::query::select_body::NamedSelectSource)
         group: vec![],
         order: vec![],
         limit: None,
+        junctions: vec![],
     } }
 }
 
@@ -728,6 +730,7 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        distinct: false,
     } }
 }
 
@@ -743,6 +746,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        distinct: false,
     } }
 }
 

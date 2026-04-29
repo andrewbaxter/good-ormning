@@ -152,6 +152,12 @@ pub enum SerialExpr {
         escape: Option<Box<SerialExpr>>,
         ilike: bool,
     },
+    Between {
+        e: Box<SerialExpr>,
+        negated: bool,
+        low: Box<SerialExpr>,
+        high: Box<SerialExpr>,
+    },
 }
 
 impl From<SerialWindowFrameType> for WindowFrameType {
@@ -244,6 +250,12 @@ impl From<SerialExpr> for Expr {
                 pattern: Box::new(Expr::from(*pattern)),
                 escape: escape.map(|e| Box::new(Expr::from(*e))),
                 ilike,
+            },
+            SerialExpr::Between { e, negated, low, high } => Expr::Between {
+                e: Box::new(Expr::from(*e)),
+                negated,
+                low: Box::new(Expr::from(*low)),
+                high: Box::new(Expr::from(*high)),
             },
         }
     }
@@ -353,6 +365,17 @@ pub enum Expr {
         escape: Option<Box<Expr>>,
         ilike: bool,
     },
+    Between {
+        e: Box<Expr>,
+        negated: bool,
+        low: Box<Expr>,
+        high: Box<Expr>,
+    },
+    Case {
+        operand: Option<Box<Expr>>,
+        conditions: Vec<(Expr, Expr)>,
+        else_: Option<Box<Expr>>,
+    },
 }
 
 
@@ -440,6 +463,7 @@ pub enum BinOp {
 pub enum PrefixOp {
     Not,
     BitwiseNot,
+    Minus,
 }
 
 pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
@@ -1042,6 +1066,7 @@ impl Expr {
                 let token = match op {
                     PrefixOp::Not => "not",
                     PrefixOp::BitwiseNot => "~",
+                    PrefixOp::Minus => "-",
                 };
                 let res = right.build(ctx, &path.push_back("Prefix op".into()), scope);
                 if matches!(op, PrefixOp::Not) {
@@ -1198,6 +1223,61 @@ impl Expr {
                     opt: false,
                     arr: false,
                 })]), out);
+            },
+            Expr::Between { e, negated, low, high } => {
+                let mut out = Tokens::new();
+                let (t, e_tokens) = e.build(ctx, &path.push_back("Between expr".into()), scope);
+                let (t_low, low_tokens) = low.build(ctx, &path.push_back("Between low".into()), scope);
+                let (t_high, high_tokens) = high.build(ctx, &path.push_back("Between high".into()), scope);
+                check_general_same(ctx, path, &t, &t_low);
+                check_general_same(ctx, path, &t, &t_high);
+                out.s(&e_tokens.to_string());
+                if *negated {
+                    out.s("not");
+                }
+                out.s("between").s(&low_tokens.to_string()).s("and").s(&high_tokens.to_string());
+                (ExprType(vec![(ExprValName::empty(), crate::pg::types::type_bool().build())]), out)
+            },
+            Expr::Case { operand, conditions, else_ } => {
+                let mut out = Tokens::new();
+                out.s("case");
+                let op_type = if let Some(operand) = operand {
+                    let (t, op_tokens) = operand.build(ctx, &path.push_back("Case operand".into()), scope);
+                    out.s(&op_tokens.to_string());
+                    Some(t)
+                } else {
+                    None
+                };
+                let mut res_type = None;
+                for (i, (cond, res)) in conditions.iter().enumerate() {
+                    out.s("when");
+                    let (cond_t, cond_tokens) = cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
+                    if let Some(op_t) = &op_type {
+                        check_general_same(ctx, &path.push_back(format!("Case condition {}", i)), op_t, &cond_t);
+                    } else {
+                        check_bool(ctx, &path.push_back(format!("Case condition {}", i)), &cond_t);
+                    }
+                    out.s(&cond_tokens.to_string()).s("then");
+                    let (r_t, res_tokens) = res.build(ctx, &path.push_back(format!("Case result {}", i)), scope);
+                    if let Some(res_t) = &res_type {
+                        check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t);
+                    } else {
+                        res_type = Some(r_t);
+                    }
+                    out.s(&res_tokens.to_string());
+                }
+                if let Some(else_) = else_ {
+                    out.s("else");
+                    let (else_t, else_tokens) = else_.build(ctx, &path.push_back("Case else".into()), scope);
+                    if let Some(res_t) = &res_type {
+                        check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t);
+                    } else {
+                        res_type = Some(else_t);
+                    }
+                    out.s(&else_tokens.to_string());
+                }
+                out.s("end");
+                (res_type.expect("Case must have at least one branch"), out)
             },
         }
     }

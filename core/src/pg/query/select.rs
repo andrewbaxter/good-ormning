@@ -126,6 +126,8 @@ pub struct Select {
     pub having: Option<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
+    pub distinct: bool,
+    pub junctions: Vec<super::select_body::SelectJunction>,
 }
 
 impl QueryBody for Select {
@@ -185,6 +187,9 @@ impl QueryBody for Select {
 
         // Build query
         out.s("select");
+        if self.distinct {
+            out.s("distinct");
+        }
         if self.returning.is_empty() {
             ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
         }
@@ -246,6 +251,18 @@ impl QueryBody for Select {
             let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
             check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), type_i64().build())]));
             out.s(&limit_tokens.to_string());
+        }
+        for (i, j) in self.junctions.iter().enumerate() {
+            let path = path.push_back(format!("Junction {}", i));
+            match j.op {
+                super::select_body::SelectJunctionOperator::Union => out.s("union"),
+                super::select_body::SelectJunctionOperator::UnionAll => out.s("union all"),
+                super::select_body::SelectJunctionOperator::Intersect => out.s("intersect"),
+                super::select_body::SelectJunctionOperator::Except => out.s("except"),
+            };
+            let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
+            check_general_same(ctx, &path, &out_type, &j_body_type);
+            out.s(&j_body_tokens.to_string());
         }
         (out_type, out)
     }

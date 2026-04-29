@@ -78,7 +78,8 @@ pub fn build() {
     {
         let v = PgVersion::new();
         let bananna = v.table("bannanana");
-        let hizat = bananna.field("hizat", field_str().build());
+        let _hizat = bananna.field("hizat", field_str().build());
+        let _hizat2 = bananna.field("hizat2", field_i32().opt().build());
         generate(Some("pg_gen_base_insert"), vec![(1usize, v.build())]).unwrap();
     }
 

@@ -15,6 +15,7 @@ use crate::{
                 ExprType,
                 check_bool,
                 ExprValName,
+                check_general_same,
             },
             select::{
                 Join,
@@ -51,6 +52,7 @@ pub struct SelectBody {
     pub order: Vec<(Expr, Order)>,
     pub limit: Option<Expr>,
     pub distinct: bool,
+    pub junctions: Vec<SelectJunction>,
 }
 
 impl QueryBody for SelectBody {
@@ -184,6 +186,18 @@ impl SelectBody {
                 &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]),
             );
             out.s(&limit_tokens.to_string());
+        }
+        for (i, j) in self.junctions.iter().enumerate() {
+            let path = path.push_back(format!("Junction {}", i));
+            match j.op {
+                SelectJunctionOperator::Union => out.s("union"),
+                SelectJunctionOperator::UnionAll => out.s("union all"),
+                SelectJunctionOperator::Intersect => out.s("intersect"),
+                SelectJunctionOperator::Except => out.s("except"),
+            };
+            let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
+            check_general_same(ctx, &path, &out_type, &j_body_type);
+            out.s(&j_body_tokens.to_string());
         }
         (out_type, out)
     }

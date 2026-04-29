@@ -708,6 +708,8 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        distinct: false,
+        junctions: vec![],
     } }
 
 }
@@ -726,6 +728,7 @@ pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
         order: vec![],
         limit: None,
         distinct: false,
+        junctions: vec![],
     } }
 
 }
@@ -741,6 +744,8 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        distinct: false,
+        junctions: vec![],
     } }
 }
 
