@@ -482,7 +482,31 @@ fn convert_select(
                 ))),
                 alias: alias.as_ref().map(|a| a.name.value.clone()),
             },
-            _ => unimplemented!("Select table factor"),
+            sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+                source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                    sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                        convert_expr(input, e, used_params, custom_types, field_lookup)
+                    },
+                    _ => unimplemented!("Unsupported function arg in table function: {:?}", a),
+                }).collect()),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
+            sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
+                source: JoinSource::Func(
+                    "unnest".to_string(),
+                    array_exprs
+                        .iter()
+                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                        .collect(),
+                ),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
+            sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction table factor"),
+            sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable table factor"),
+            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin table factor"),
+            sql::TableFactor::Pivot { .. } => unimplemented!("Pivot table factor"),
+            sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot table factor"),
+            sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize table factor"),
         }
     };
     let mut join = vec![];
@@ -508,7 +532,31 @@ fn convert_select(
                     ))),
                     alias: alias.as_ref().map(|a| a.name.value.clone()),
                 },
-                _ => unimplemented!("Join table factor"),
+                sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+                    source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                        sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                            convert_expr(input, e, used_params, custom_types, field_lookup)
+                        },
+                        _ => unimplemented!("Unsupported function arg in join table function: {:?}", a),
+                    }).collect()),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                },
+                sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
+                    source: JoinSource::Func(
+                        "unnest".to_string(),
+                        array_exprs
+                            .iter()
+                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                            .collect(),
+                    ),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                },
+                sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction join factor"),
+                sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable join factor"),
+                sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin join factor"),
+                sql::TableFactor::Pivot { .. } => unimplemented!("Pivot join factor"),
+                sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot join factor"),
+                sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize join factor"),
             };
             let type_ = match j.join_operator {
                 sql::JoinOperator::LeftOuter(_) => {
