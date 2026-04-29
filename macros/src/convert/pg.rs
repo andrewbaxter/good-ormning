@@ -472,6 +472,16 @@ fn convert_select(
                     alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
                 ),
             },
+            sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+                source: JoinSource::Subsel(Box::new(convert_select_query(
+                    input,
+                    subquery,
+                    used_params,
+                    custom_types,
+                    field_lookup,
+                ))),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
             _ => unimplemented!("Select table factor"),
         }
     };
@@ -487,6 +497,16 @@ fn convert_select(
                             .map(|a| a.name.value.clone())
                             .unwrap_or_else(|| get_table_ref(name).0.clone()),
                     ),
+                },
+                sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+                    source: JoinSource::Subsel(Box::new(convert_select_query(
+                        input,
+                        subquery,
+                        used_params,
+                        custom_types,
+                        field_lookup,
+                    ))),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
                 },
                 _ => unimplemented!("Join table factor"),
             };
