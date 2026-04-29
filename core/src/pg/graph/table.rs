@@ -111,7 +111,7 @@ impl NodeDataDispatch for NodeTable_ {
                         }
                         stmt.id(&self.def.fields.get(l_id).unwrap().id);
                     }
-                    stmt.s(") references").id(&ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
+                    stmt.s(") references").id(ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
                     for (i, (_, r_id)) in x.fields.iter().enumerate() {
                         if i > 0 {
                             stmt.s(",");

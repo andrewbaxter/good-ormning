@@ -536,7 +536,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, Some(&|v| Box::pin(async move {
         match v {
-            dbm::DbPgGenSelectJoinVersions::V1(mut db) => {
+            dbm::DbPgGenSelectJoinVersions::V1(db) => {
                 good_ormning::pg::good_query!(
                     "pg_gen_select_join",
                     r#"insert into "b" ( "hizat" , "three" ) values ( 'key' , 33 )"#;
@@ -548,7 +548,6 @@ async fn test_select_join() -> Result<(), loga::Error> {
                     dbm::DbPgGenSelectJoin1(&mut *db.0)
                 ).await?;
             },
-            _ => { },
         }
         Ok(())
     }))).await?;
@@ -875,7 +874,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_window_frame");
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, None).await?;
-    for i in 1..=3 {
+    for i in 1 ..= 3 {
         good_ormning::pg::good_query!(
             "pg_gen_query_window_frame",
             r#"insert into "bananna" ( "hizat" , "two" ) values ( 'key' , $1 )"#;
@@ -1003,7 +1002,7 @@ async fn test_query_union() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, None).await?;
-    let _res = good_ormning::pg::good_query_many!(
+    good_ormning::pg::good_query_many!(
         "pg_gen_base_insert",
         r#"select "hizat" as "hizat" from "bannanana" union select "hizat" as "hizat" from "bannanana""#;
         dbm::DbPgGenBaseInsert1(&mut db)

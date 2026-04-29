@@ -15,8 +15,9 @@ use {
             Type,
         },
     },
-    flowcontrol::shed,
 };
+#[cfg(feature = "chrono")]
+use flowcontrol::shed;
 
 /// Generates a field element for instert and update statements, to set a field
 /// from a parameter of the same type.
@@ -141,8 +142,8 @@ pub fn fn_min(expr: Expr) -> Expr {
     return Expr::Call {
         func: "min".to_string(),
         args: vec![expr],
-        compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let t = match args.get(0).and_then(|a| a.0.first()) {
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
                 Some(t) => t.1.clone(),
                 None => {
                     return ExprType(vec![]);
@@ -160,8 +161,8 @@ pub fn fn_max(expr: Expr) -> Expr {
     return Expr::Call {
         func: "max".to_string(),
         args: vec![expr],
-        compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let t = match args.get(0).and_then(|a| a.0.first()) {
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
                 Some(t) => t.1.clone(),
                 None => {
                     return ExprType(vec![]);
@@ -179,8 +180,8 @@ pub fn fn_avg(expr: Expr) -> Expr {
     return Expr::Call {
         func: "avg".to_string(),
         args: vec![expr],
-        compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let t = match args.get(0).and_then(|a| a.0.first()) {
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
                 Some(t) => t.1.clone(),
                 None => {
                     return ExprType(vec![]);
@@ -198,8 +199,8 @@ pub fn fn_sum(expr: Expr) -> Expr {
     return Expr::Call {
         func: "sum".to_string(),
         args: vec![expr],
-        compute_type: ComputeType(Rc::new(|ctx, path, args| {
-            let t = match args.get(0).and_then(|a| a.0.first()) {
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
                 Some(t) => t.1.clone(),
                 None => {
                     return ExprType(vec![]);
@@ -217,7 +218,7 @@ pub fn fn_count(expr: Expr) -> Expr {
     return Expr::Call {
         func: "count".to_string(),
         args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+        compute_type: ComputeType(Rc::new(|_, _, _| {
             return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::I64,
@@ -235,7 +236,7 @@ pub fn fn_row_number() -> Expr {
     return Expr::Call {
         func: "row_number".to_string(),
         args: vec![],
-        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+        compute_type: ComputeType(Rc::new(|_, _, _| {
             return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::I64,
@@ -253,7 +254,7 @@ pub fn fn_rank() -> Expr {
     return Expr::Call {
         func: "rank".to_string(),
         args: vec![],
-        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+        compute_type: ComputeType(Rc::new(|_, _, _| {
             return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::I64,
@@ -271,7 +272,7 @@ pub fn fn_dense_rank() -> Expr {
     return Expr::Call {
         func: "dense_rank".to_string(),
         args: vec![],
-        compute_type: ComputeType(Rc::new(|_ctx, _path, _args| {
+        compute_type: ComputeType(Rc::new(|_, _, _| {
             return ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::I64,

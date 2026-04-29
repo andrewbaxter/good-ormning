@@ -1,45 +1,45 @@
-use {
-    serde::{
-        Serialize,
-        Deserialize,
-    },
-    chrono::FixedOffset,
-    quote::{
-        quote,
-        format_ident,
-        ToTokens,
-    },
-    std::{
-        collections::HashMap,
-        rc::Rc,
-        fmt::Display,
-    },
-    chrono::{
-        DateTime,
-        Utc,
-    },
-    crate::{
-        pg::{
-            types::{
-                Type,
-                to_rust_types,
-                SimpleSimpleType,
-                SimpleType,
-            },
-            query::utils::{
-                PgQueryCtx,
-                QueryBody,
-            },
-            schema::{
-                field::FieldRef,
-                table::TableRef,
-            },
+use serde::{
+    Serialize,
+    Deserialize,
+};
+#[cfg(feature = "chrono")]
+use chrono::FixedOffset;
+use quote::{
+    quote,
+    format_ident,
+    ToTokens,
+};
+use std::{
+    collections::HashMap,
+    rc::Rc,
+    fmt::Display,
+};
+#[cfg(feature = "chrono")]
+use chrono::{
+    DateTime,
+    Utc,
+};
+use crate::{
+    pg::{
+        types::{
+            Type,
+            to_rust_types,
+            SimpleSimpleType,
+            SimpleType,
         },
-        utils::{
-            Tokens,
-            sanitize_ident,
-            Errs,
+        query::utils::{
+            PgQueryCtx,
+            QueryBody,
         },
+        schema::{
+            field::FieldRef,
+            table::TableRef,
+        },
+    },
+    utils::{
+        Tokens,
+        sanitize_ident,
+        Errs,
     },
 };
 #[cfg(feature = "jiff")]
@@ -240,12 +240,7 @@ impl From<SerialExpr> for Expr {
             },
             SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
             SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
-            SerialExpr::Like {
-                expr,
-                pattern,
-                escape,
-                ilike,
-            } => Expr::Like {
+            SerialExpr::Like { expr, pattern, escape, ilike } => Expr::Like {
                 expr: Box::new(Expr::from(*expr)),
                 pattern: Box::new(Expr::from(*pattern)),
                 escape: escape.map(|e| Box::new(Expr::from(*e))),
@@ -378,7 +373,6 @@ pub enum Expr {
     },
 }
 
-
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ExprValName {
     pub table_id: String,
@@ -503,7 +497,7 @@ pub fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprTyp
         return;
     };
     if t.opt {
-        ctx.errs.err(path, format!("Expected non-optional bool but got optional bool"));
+        ctx.errs.err(path, "Expected non-optional bool but got optional bool".to_string());
     }
     if !matches!(t.type_.type_, SimpleSimpleType::Bool) {
         ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.type_.type_));
@@ -521,7 +515,7 @@ pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Typ
         );
     }
     if !left.opt && right.opt {
-        errs.err(path, format!("Expression is optional but destination is not"));
+        errs.err(path, "Expression is optional but destination is not".to_string());
     }
 }
 
@@ -639,7 +633,6 @@ impl WindowFrameBound {
         out
     }
 }
-
 
 impl Expr {
     pub fn build(
@@ -916,7 +909,12 @@ impl Expr {
                             if found.len() == 1 {
                                 found[0].clone()
                             } else if found.len() > 1 {
-                                ctx.errs.err(path, format!("Field {:?} is ambiguous (found in multiple tables)", x.field_id));
+                                ctx
+                                    .errs
+                                    .err(
+                                        path,
+                                        format!("Field {:?} is ambiguous (found in multiple tables)", x.field_id),
+                                    );
                                 return (ExprType(vec![]), Tokens::new());
                             } else {
                                 ctx.errs.err(path, format!("Field {:?} not found in any table", x.field_id));
@@ -1209,8 +1207,10 @@ impl Expr {
                 }
                 out.s(&tokens_pattern.to_string());
                 if let Some(escape) = escape {
-                    let (t_escape, tokens_escape) = escape.build(ctx, &path.push_back("Like escape".into()), scope);
-                    if let Some(got_t) = t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
+                    let (t_escape, tokens_escape) =
+                        escape.build(ctx, &path.push_back("Like escape".into()), scope);
+                    if let Some(got_t) =
+                        t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
                         check_general_same_type(ctx, &path.push_back("Like escape".into()), &got_t, &want_t);
                     }
                     out.s("escape").s(&tokens_escape.to_string());
@@ -1251,7 +1251,8 @@ impl Expr {
                 let mut res_type = None;
                 for (i, (cond, res)) in conditions.iter().enumerate() {
                     out.s("when");
-                    let (cond_t, cond_tokens) = cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
+                    let (cond_t, cond_tokens) =
+                        cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
                     if let Some(op_t) = &op_type {
                         check_general_same(ctx, &path.push_back(format!("Case condition {}", i)), op_t, &cond_t);
                     } else {
@@ -1282,4 +1283,3 @@ impl Expr {
         }
     }
 }
-

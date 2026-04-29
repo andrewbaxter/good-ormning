@@ -111,7 +111,7 @@ impl SelectBody {
                 },
             }
             out.s("on");
-            let (_on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
+            let (_, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
             out.s(&on_tokens.to_string());
             joins.push(out.to_string());
         }
@@ -123,7 +123,7 @@ impl SelectBody {
             out.s("distinct");
         }
         if self.returning.is_empty() {
-            ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
+            ctx.errs.err(path, "Select must have at least one output, but outputs are empty".to_string());
         }
         let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.returning, res_count);
         out.s("from");
@@ -138,7 +138,7 @@ impl SelectBody {
             check_bool(ctx, &path, &where_t);
             out.s(&where_tokens.to_string());
         }
-        if self.group.len() > 0 {
+        if !self.group.is_empty() {
             out.s("group by");
             for (i, g) in self.group.iter().enumerate() {
                 let path = path.push_back(format!("Group by clause {}", i));

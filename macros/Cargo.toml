@@ -10,6 +10,8 @@ proc-macro = true
 default = ["pg", "sqlite"]
 pg = []
 sqlite = []
+chrono = ["good-ormning-core/chrono"]
+jiff = ["good-ormning-core/jiff"]
 
 [dependencies]
 proc-macro2 = "1"

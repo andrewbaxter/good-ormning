@@ -1,46 +1,46 @@
-use {
-    serde::{
-        Serialize,
-        Deserialize,
-    },
-    chrono::FixedOffset,
-    quote::{
-        quote,
-        format_ident,
-        ToTokens,
-    },
-    syn::Path,
-    std::{
-        collections::HashMap,
-        rc::Rc,
-        fmt::Display,
-    },
-    chrono::{
-        DateTime,
-        Utc,
-    },
-    crate::{
-        sqlite::{
-            types::{
-                Type,
-                to_rust_types,
-                SimpleSimpleType,
-                SimpleType,
-            },
-            query::utils::{
-                SqliteQueryCtx,
-                QueryBody,
-            },
-            schema::{
-                field::FieldRef,
-                table::TableRef,
-            },
+use serde::{
+    Serialize,
+    Deserialize,
+};
+#[cfg(feature = "chrono")]
+use chrono::FixedOffset;
+use quote::{
+    quote,
+    format_ident,
+    ToTokens,
+};
+use syn::Path;
+use std::{
+    collections::HashMap,
+    rc::Rc,
+    fmt::Display,
+};
+#[cfg(feature = "chrono")]
+use chrono::{
+    DateTime,
+    Utc,
+};
+use crate::{
+    sqlite::{
+        types::{
+            Type,
+            to_rust_types,
+            SimpleSimpleType,
+            SimpleType,
         },
-        utils::{
-            Tokens,
-            sanitize_ident,
-            Errs,
+        query::utils::{
+            SqliteQueryCtx,
+            QueryBody,
         },
+        schema::{
+            field::FieldRef,
+            table::TableRef,
+        },
+    },
+    utils::{
+        Tokens,
+        sanitize_ident,
+        Errs,
     },
 };
 #[cfg(feature = "jiff")]
@@ -63,6 +63,7 @@ impl ExprType {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct ComputeType(pub Rc<dyn Fn(&mut SqliteQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
 
 impl Clone for ComputeType {
@@ -651,7 +652,7 @@ impl Expr {
             },
             Expr::LitBytes(x) => {
                 let mut out = Tokens::new();
-                let h = hex::encode(&x);
+                let h = hex::encode(x);
                 out.s(&format!("x'{}'", h));
                 return empty_type!(out, SimpleSimpleType::Bytes);
             },
@@ -730,6 +731,7 @@ impl Expr {
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
                         }
                         rust_forward = match &t.type_.type_ {
+                            #[cfg(feature = "chrono")]
                             SimpleSimpleType::UtcTimeSChrono => {
                                 if t.opt {
                                     quote!(
@@ -747,6 +749,7 @@ impl Expr {
                                     )
                                 }
                             },
+                            #[cfg(feature = "chrono")]
                             SimpleSimpleType::UtcTimeMsChrono => {
                                 if t.opt {
                                     quote!(
@@ -764,6 +767,7 @@ impl Expr {
                                     )
                                 }
                             },
+                            #[cfg(feature = "jiff")]
                             SimpleSimpleType::UtcTimeSJiff => {
                                 if t.opt {
                                     quote!(
@@ -781,6 +785,7 @@ impl Expr {
                                     )
                                 }
                             },
+                            #[cfg(feature = "jiff")]
                             SimpleSimpleType::UtcTimeMsJiff => {
                                 if t.opt {
                                     quote!(
@@ -884,7 +889,7 @@ impl Expr {
                     &path.push_back(format!("Bin op {:?}", op)),
                     scope,
                     op,
-                    &vec![left.as_ref().clone(), right.as_ref().clone()],
+                    &[left.as_ref().clone(), right.as_ref().clone()],
                 );
             },
             Expr::BinOpChain { op, exprs } => {
@@ -1197,7 +1202,7 @@ pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<S
         );
     }
     if !left.opt && right.opt {
-        errs.err(path, format!("Expression is optional but destination is not"));
+        errs.err(path, "Expression is optional but destination is not".to_string());
     }
 }
 
@@ -1206,7 +1211,7 @@ fn do_bin_op(
     path: &rpds::Vector<String>,
     scope: &HashMap<Binding, Type>,
     op: &BinOp,
-    exprs: &Vec<Expr>,
+    exprs: &[Expr],
 ) -> (ExprType, Tokens) {
     let mut out = Tokens::new();
     let mut out_t = None;

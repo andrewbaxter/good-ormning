@@ -121,7 +121,7 @@ impl NodeDataDispatch for NodeField_ {
     fn create(&self, ctx: &mut PgMigrateCtx) {
         let path = self.display_path();
         if matches!(self.def.type_.type_.type_.type_, SimpleSimpleType::Auto) {
-            ctx.errs.err(&path, format!("Auto (serial) fields can't be added after table creation"));
+            ctx.errs.err(&path, "Auto (serial) fields can't be added after table creation".to_string());
         }
         let mut stmt = Tokens::new();
         stmt
@@ -170,7 +170,7 @@ impl NodeDataDispatch for NodeField_ {
                 }
                 stmt.s(&e_res.1.to_string());
             } else {
-                ctx.errs.err(&path, format!("New column missing default"));
+                ctx.errs.err(&path, "New column missing default".to_string());
             }
         }
         ctx.statements.push(stmt.to_string());

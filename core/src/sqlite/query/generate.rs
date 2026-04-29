@@ -14,7 +14,6 @@ use {
             types::{
                 to_rust_types,
                 Type,
-                SimpleSimpleType,
             },
             query::{
                 utils::{
@@ -32,6 +31,8 @@ use {
         QueryResCount,
     },
 };
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+use crate::sqlite::types::SimpleSimpleType;
 
 pub fn generate_query_functions(
     errs: &mut Errs,
@@ -75,6 +76,7 @@ pub fn generate_query_functions(
                     ident = quote!(Option < #ident >);
                 }
                 let mut unforward = match &v.type_.type_ {
+                    #[cfg(feature = "chrono")]
                     SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono => {
                         quote!{
                             let x: #ident = match r.get::< _,
@@ -100,6 +102,7 @@ pub fn generate_query_functions(
                             };
                         }
                     },
+                    #[cfg(feature = "jiff")]
                     SimpleSimpleType::UtcTimeSJiff | SimpleSimpleType::UtcTimeMsJiff => {
                         quote!{
                             let x: #ident = match r.get::< _,
@@ -127,7 +130,7 @@ pub fn generate_query_functions(
                     },
                 };
                 if let Some(custom) = &v.type_.custom {
-                    ident = match syn::parse_str::<syn::Path>(&custom) {
+                    ident = match syn::parse_str::<syn::Path>(custom) {
                         Ok(i) => i.to_token_stream(),
                         Err(e) => {
                             errs.err(

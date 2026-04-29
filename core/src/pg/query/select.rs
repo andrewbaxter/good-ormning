@@ -56,17 +56,17 @@ impl NamedSelectSource {
         let mut new_fields: Vec<(ExprValName, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res: (ExprType, Tokens) =
-                    s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
+                    s.build(ctx, &path.push_back("From subselect".to_string()), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
             JoinSource::Table(s) => {
-                let table_info = match ctx.tables.get(&s) {
+                let table_info = match ctx.tables.get(s) {
                     Some(f) => f,
                     None => {
                         ctx
                             .errs
-                            .err(&path.push_back(format!("From")), format!("No table with id {:?} in version", s));
+                            .err(&path.push_back("From".to_string()), format!("No table with id {:?} in version", s));
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
@@ -180,7 +180,7 @@ impl QueryBody for Select {
                 },
             }
             out.s("on");
-            let (_on_t, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
+            let (_, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
             out.s(&on_tokens.to_string());
             joins.push(out.to_string());
         }
@@ -191,7 +191,7 @@ impl QueryBody for Select {
             out.s("distinct");
         }
         if self.returning.is_empty() {
-            ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
+            ctx.errs.err(path, "Select must have at least one output, but outputs are empty".to_string());
         }
         let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.returning, res_count);
         if !matches!(self.table.source, JoinSource::Empty) {
@@ -208,7 +208,7 @@ impl QueryBody for Select {
             check_bool(ctx, &path, &where_t);
             out.s(&where_tokens.to_string());
         }
-        if self.group.len() > 0 {
+        if !self.group.is_empty() {
             out.s("group by");
             for (i, g) in self.group.iter().enumerate() {
                 let path = path.push_back(format!("Group by clause {}", i));

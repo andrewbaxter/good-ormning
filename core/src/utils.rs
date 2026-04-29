@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    fmt,
     rc::Rc,
 };
 use proc_macro2::{
@@ -8,15 +9,21 @@ use proc_macro2::{
 
 pub struct Tokens(String);
 
-impl ToString for Tokens {
-    fn to_string(&self) -> String {
-        self.0.clone()
+impl fmt::Display for Tokens {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return f.write_str(&self.0);
+    }
+}
+
+impl Default for Tokens {
+    fn default() -> Self {
+        return Self::new();
     }
 }
 
 impl Tokens {
     pub fn new() -> Tokens {
-        Tokens(String::new())
+        return Tokens(String::new());
     }
 
     pub fn s(&mut self, s: &str) -> &mut Self {
@@ -48,9 +55,15 @@ pub struct Errs_ {
 #[derive(Clone)]
 pub struct Errs(Rc<RefCell<Errs_>>);
 
+impl Default for Errs {
+    fn default() -> Self {
+        return Self::new();
+    }
+}
+
 impl Errs {
     pub fn new() -> Self {
-        Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })))
+        return Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })));
     }
 
     pub fn err(&self, path: &rpds::Vector<String>, t: String) {
@@ -58,7 +71,7 @@ impl Errs {
         let mut out = String::new();
         for (i, k) in path.iter().enumerate() {
             if i > 0 {
-                out.push_str("/");
+                out.push('/');
             }
             out.push_str(k.as_ref());
         }

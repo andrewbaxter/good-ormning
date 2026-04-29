@@ -578,7 +578,7 @@ fn test_select_join() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     dbm::migrate(&mut db, Some(&|v| {
         match v {
-            dbm::DbSqliteGenSelectJoinVersions::V1(mut db) => {
+            dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
                     r#"insert into "b" ( "hizat" , "three" ) values ( 'key' , 33 )"#;
@@ -590,7 +590,6 @@ fn test_select_join() -> Result<(), loga::Error> {
                     dbm::DbSqliteGenSelectJoin1(&mut *db.0)
                 )?;
             },
-            _ => { },
         }
         Ok(())
     }))?;
@@ -715,7 +714,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     dbm::migrate(&mut db, Some(&|v| {
         match v {
-            dbm::DbSqliteGenMigrateAddFieldVersions::V0(mut db) => {
+            dbm::DbSqliteGenMigrateAddFieldVersions::V0(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_add_field",
                     "0",
@@ -810,7 +809,7 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     dbm::migrate(&mut db, Some(&|v| {
         match v {
-            dbm::DbSqliteGenMigratePreMigrationVersions::V0(mut db) => {
+            dbm::DbSqliteGenMigratePreMigrationVersions::V0(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_pre_migration",
                     "0",
@@ -930,7 +929,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_window_frame");
     let mut db = rusqlite::Connection::open_in_memory()?;
     dbm::migrate(&mut db, None)?;
-    for i in 1i32..=3 {
+    for i in 1i32 ..= 3 {
         good_ormning::sqlite::good_query!(
             "sqlite_gen_query_window_frame",
             r#"insert into "bananna" ( "hizat" , "two" ) values ( 'key' , ?1 )"#;
@@ -1022,11 +1021,8 @@ fn test_query_glob() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
     db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'world' )"#, [])?;
-    let count: i64 = db.query_row(
-        r#"select count(*) from "bananna" where "hizat" glob 'hel*'"#,
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 =
+        db.query_row(r#"select count(*) from "bananna" where "hizat" glob 'hel*'"#, [], |row| row.get(0))?;
     assert_eq!(count, 1);
     return Ok(());
 }
@@ -1037,11 +1033,12 @@ fn test_query_indexed_by() -> Result<(), loga::Error> {
     let mut db = rusqlite::Connection::open_in_memory()?;
     dbm::migrate(&mut db, None)?;
     db.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
-    let res: String = db.query_row(
-        r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
-        [],
-        |row| row.get(0),
-    )?;
+    let res: String =
+        db.query_row(
+            r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
+            [],
+            |row| row.get(0),
+        )?;
     assert_eq!(res, "hello");
     return Ok(());
 }

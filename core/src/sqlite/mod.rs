@@ -82,11 +82,13 @@ pub use crate::sqlite::{
         type_i64 as sqlite_type_i64,
         type_str as sqlite_type_str,
         type_u32 as sqlite_type_u32,
-        type_utctime_s_chrono as sqlite_type_utctime_s_chrono,
-        type_utctime_s_jiff as sqlite_type_utctime_s_jiff,
         Type as SqliteType,
     },
 };
+#[cfg(feature = "chrono")]
+pub use crate::sqlite::types::type_utctime_s_chrono as sqlite_type_utctime_s_chrono;
+#[cfg(feature = "jiff")]
+pub use crate::sqlite::types::type_utctime_s_jiff as sqlite_type_utctime_s_jiff;
 
 pub struct Query {
     pub name: String,
@@ -832,6 +834,7 @@ pub struct Version {
 }
 
 impl Version {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> VersionHandle {
         VersionHandle(Rc::new(RefCell::new(Some(Version::default()))), Rc::new(std::cell::Cell::new(false)))
     }
@@ -1054,7 +1057,7 @@ impl TableHandle {
     }
 
     pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
-        let remote_table = fields.get(0).unwrap().1.table.id.clone();
+        let remote_table = fields.first().unwrap().1.table.id.clone();
         self.version.with(|v| {
             v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
                 id: id.into(),

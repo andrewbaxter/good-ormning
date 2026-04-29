@@ -64,7 +64,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                     }
                     stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(l_id).unwrap().id);
                 }
-                stmt.s(") references").id(&ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
+                stmt.s(") references").id(ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
                 for (i, (_, r_id)) in x.fields.iter().enumerate() {
                     if i > 0 {
                         stmt.s(",");

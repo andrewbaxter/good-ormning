@@ -92,18 +92,22 @@ pub fn field_auto() -> FieldTypeBuilder {
     FieldTypeBuilder::new(crate::sqlite::types::type_auto().build())
 }
 
+#[cfg(feature = "chrono")]
 pub fn field_utctime_s_chrono() -> FieldTypeBuilder {
     FieldTypeBuilder::new(crate::sqlite::types::type_utctime_s_chrono().build())
 }
 
+#[cfg(feature = "chrono")]
 pub fn field_utctime_ms_chrono() -> FieldTypeBuilder {
     FieldTypeBuilder::new(crate::sqlite::types::type_utctime_ms_chrono().build())
 }
 
+#[cfg(feature = "jiff")]
 pub fn field_utctime_s_jiff() -> FieldTypeBuilder {
     FieldTypeBuilder::new(crate::sqlite::types::type_utctime_s_jiff().build())
 }
 
+#[cfg(feature = "jiff")]
 pub fn field_utctime_ms_jiff() -> FieldTypeBuilder {
     FieldTypeBuilder::new(crate::sqlite::types::type_utctime_ms_jiff().build())
 }

@@ -204,7 +204,7 @@ pub fn build_set(
     path: &rpds::Vector<String>,
     scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
-    values: &Vec<(FieldRef, Expr)>,
+    values: &[(FieldRef, Expr)],
 ) {
     out.s("set");
     for (i, (field, val)) in values.iter().enumerate() {
@@ -213,7 +213,7 @@ pub fn build_set(
             out.s(",");
         }
         let field_info =
-            match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(&field)) {
+            match ctx.tables.get(&TableRef(field.table_id.clone())).and_then(|t| t.fields.get(field)) {
                 Some(t) => t.clone(),
                 None => {
                     ctx.errs.err(&path, format!("Set field {:?} is not known", field));
@@ -221,7 +221,7 @@ pub fn build_set(
                 },
             };
         out.id(&field_info.sql_name).s("=");
-        let res = val.build(ctx, &path, &scope);
+        let res = val.build(ctx, &path, scope);
         check_assignable(&mut ctx.errs, &path, &field_info.type_, &res.0);
         out.s(&res.1.to_string());
     }
@@ -232,7 +232,7 @@ pub fn build_returning(
     path: &rpds::Vector<String>,
     scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
-    outputs: &Vec<Returning>,
+    outputs: &[Returning],
     res_count: QueryResCount,
 ) -> ExprType {
     if !outputs.is_empty() {
@@ -246,7 +246,7 @@ pub fn build_returning_values(
     path: &rpds::Vector<String>,
     scope: &HashMap<ExprValName, Type>,
     out: &mut Tokens,
-    outputs: &Vec<Returning>,
+    outputs: &[Returning],
     res_count: QueryResCount,
 ) -> ExprType {
     let mut fields = vec![];
@@ -267,11 +267,8 @@ pub fn build_returning_values(
             out.s("as").id(s);
             name.id = s.clone();
         } else {
-            match &r.e {
-                Expr::Field(f) => {
-                    name = ExprValName::field(f);
-                },
-                _ => { },
+            if let Expr::Field(f) = &r.e {
+                name = ExprValName::field(f);
             }
         }
         fields.push((name, t));
@@ -279,7 +276,7 @@ pub fn build_returning_values(
     match res_count {
         QueryResCount::None => {
             if !fields.is_empty() {
-                ctx.errs.err(path, format!("Query has returning values but result count is None"));
+                ctx.errs.err(path, "Query has returning values but result count is None".to_string());
             }
         },
         QueryResCount::MaybeOne | QueryResCount::One | QueryResCount::Many => {

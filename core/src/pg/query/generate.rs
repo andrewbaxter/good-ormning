@@ -77,7 +77,7 @@ pub fn generate_query_functions(
                     let x: #ident = r.get(#i);
                 };
                 if let Some(custom) = &v.type_.custom {
-                    ident = match syn::parse_str::<syn::Path>(&custom) {
+                    ident = match syn::parse_str::<syn::Path>(custom) {
                         Ok(i) => i.to_token_stream(),
                         Err(e) => {
                             errs.err(

@@ -80,17 +80,17 @@ impl NamedSelectSource {
         let mut new_fields: Vec<(Binding, Type)> = match &self.source {
             JoinSource::Subsel(s) => {
                 let res: (ExprType, Tokens) =
-                    s.build(ctx, &path.push_back(format!("From subselect")), QueryResCount::Many);
+                    s.build(ctx, &path.push_back("From subselect".to_string()), QueryResCount::Many);
                 out.s("(").s(&res.1.to_string()).s(")");
                 res.0.0.clone()
             },
             JoinSource::Table(s) => {
-                let table_info = match ctx.tables.get(&s) {
+                let table_info = match ctx.tables.get(s) {
                     Some(f) => f,
                     None => {
                         ctx
                             .errs
-                            .err(&path.push_back(format!("From")), format!("No table with id {:?} in version", s));
+                            .err(&path.push_back("From".to_string()), format!("No table with id {:?} in version", s));
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
@@ -190,7 +190,7 @@ impl QueryBody for Select {
             out.s("distinct");
         }
         if self.returning.is_empty() {
-            ctx.errs.err(path, format!("Select must have at least one output, but outputs are empty"));
+            ctx.errs.err(path, "Select must have at least one output, but outputs are empty".to_string());
         }
         let (fields, table_tokens): (ExprType, Tokens) = self.table.build(ctx, path);
         for (k, v) in fields.0 {
@@ -234,7 +234,7 @@ impl QueryBody for Select {
                 }
                 let (_, source_tokens): (ExprType, Tokens) = j.source.build(ctx, &path);
                 out.s(&source_tokens.to_string()).s("on");
-                let (on_t, on_tokens): (ExprType, Tokens) = j.on.build(ctx, &path.push_back(format!("On")), &scope);
+                let (on_t, on_tokens): (ExprType, Tokens) = j.on.build(ctx, &path.push_back("On".to_string()), &scope);
                 check_bool(ctx, &path, &on_t);
                 out.s(&on_tokens.to_string());
             }

@@ -62,9 +62,13 @@ pub fn param_type_to_sqlite_type(pt: &ParamType, custom_types: &BTreeMap<String,
         "bool" => (SqliteSimpleSimpleType::Bool, None),
         "string" => (SqliteSimpleSimpleType::String, None),
         "bytes" => (SqliteSimpleSimpleType::Bytes, None),
+        #[cfg(feature = "chrono")]
         "utctime_s_chrono" => (SqliteSimpleSimpleType::UtcTimeSChrono, None),
+        #[cfg(feature = "chrono")]
         "utctime_ms_chrono" => (SqliteSimpleSimpleType::UtcTimeMsChrono, None),
+        #[cfg(feature = "jiff")]
         "utctime_s_jiff" => (SqliteSimpleSimpleType::UtcTimeSJiff, None),
+        #[cfg(feature = "jiff")]
         "utctime_ms_jiff" => (SqliteSimpleSimpleType::UtcTimeMsJiff, None),
         "auto" => (SqliteSimpleSimpleType::Auto, None),
         _ => {
@@ -110,7 +114,14 @@ pub fn sql_type_to_sqlite_type(
             None,
         ),
         sqlparser::ast::DataType::Timestamp(..) => {
-            (SqliteSimpleSimpleType::UtcTimeSChrono, None)
+            #[cfg(feature = "chrono")]
+            {
+                (SqliteSimpleSimpleType::UtcTimeSChrono, None)
+            }
+            #[cfg(not(feature = "chrono"))]
+            {
+                (SqliteSimpleSimpleType::I32, None)
+            }
         },
         sqlparser::ast::DataType::Custom(name, ..) => {
             let name_str = name.to_string();
@@ -140,12 +151,27 @@ pub fn convert_query(
 ) -> Query {
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup)),
-        sql::Statement::Insert(insert) => Box::new(convert_insert(input, insert, &mut used_params, custom_types, field_lookup)),
-        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
-            convert_update(input, table, assignments, selection, returning, &mut used_params, custom_types, field_lookup),
+        sql::Statement::Query(q) => Box::new(
+            convert_select_query(input, q, &mut used_params, custom_types, field_lookup),
         ),
-        sql::Statement::Delete(delete) => Box::new(convert_delete(input, delete, &mut used_params, custom_types, field_lookup)),
+        sql::Statement::Insert(insert) => Box::new(
+            convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
+        ),
+        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
+            convert_update(
+                input,
+                table,
+                assignments,
+                selection,
+                returning,
+                &mut used_params,
+                custom_types,
+                field_lookup,
+            ),
+        ),
+        sql::Statement::Delete(delete) => Box::new(
+            convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
+        ),
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
     for (ident, _) in &input.param_types {
@@ -179,10 +205,7 @@ fn convert_select_query(
             if !cte.alias.columns.is_empty() {
                 for col in &cte.alias.columns {
                     builder =
-                        builder.column(
-                            col.value.clone(),
-                            good_ormning_core::sqlite::types::type_i32().build(),
-                        );
+                        builder.column(col.value.clone(), good_ormning_core::sqlite::types::type_i32().build());
                 }
             } else {
                 for r in &query.returning {
@@ -335,7 +358,9 @@ fn convert_insert(
                             table_id: table.0.clone(),
                             field_id: target_name,
                         };
-                        updates.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
+                        updates.push(
+                            (field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)),
+                        );
                     }
                     let conflict = if let Some(target) = &oc.conflict_target {
                         match target {
@@ -366,7 +391,14 @@ fn convert_insert(
         table: table.clone(),
         values,
         on_conflict,
-        returning: convert_returning(input, &insert.returning, used_params, custom_types, field_lookup, Some(&table)),
+        returning: convert_returning(
+            input,
+            &insert.returning,
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&table),
+        ),
     };
 }
 
@@ -427,7 +459,14 @@ fn convert_delete(
     return Delete {
         table: table_ref.clone(),
         where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        returning: convert_returning(input, &delete.returning, used_params, custom_types, field_lookup, Some(&table_ref)),
+        returning: convert_returning(
+            input,
+            &delete.returning,
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&table_ref),
+        ),
         index_hint: None,
     };
 }
@@ -483,7 +522,10 @@ fn convert_select(
                                             .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
                                             .collect(),
                                     },
-                                    having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+                                    having: s
+                                        .having
+                                        .as_ref()
+                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                                     order: vec![],
                                     limit: None,
                                     distinct: s.distinct.is_some(),
@@ -495,7 +537,10 @@ fn convert_select(
                 NamedSelectSource {
                     source: JoinSource::Table(get_table_ref(name)),
                     alias: Some(
-                        alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                        alias
+                            .as_ref()
+                            .map(|a| a.name.value.clone())
+                            .unwrap_or_else(|| get_table_ref(name).0.clone()),
                     ),
                     index_hint: None,
                 }
@@ -511,7 +556,10 @@ fn convert_select(
                     NamedSelectSource {
                         source: JoinSource::Table(get_table_ref(name)),
                         alias: Some(
-                            alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                            alias
+                                .as_ref()
+                                .map(|a| a.name.value.clone())
+                                .unwrap_or_else(|| get_table_ref(name).0.clone()),
                         ),
                         index_hint: None,
                     }
@@ -551,10 +599,17 @@ fn convert_select(
     return Select {
         with: None,
         table: table.clone(),
-        returning: convert_returning(input, &Some(s.projection.clone()), used_params, custom_types, field_lookup, Some(&match &table.source {
-            JoinSource::Table(tr) => tr.clone(),
-            _ => TableRef("".into()),
-        })),
+        returning: convert_returning(
+            input,
+            &Some(s.projection.clone()),
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&match &table.source {
+                JoinSource::Table(tr) => tr.clone(),
+                _ => TableRef("".into()),
+            }),
+        ),
         junction: vec![],
         join,
         where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
@@ -688,12 +743,22 @@ fn convert_expr(
         },
         sql::Expr::Case { operand, conditions, results, else_result } => {
             return Expr::Case {
-                operand: operand.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
-                conditions: conditions.iter().zip(results.iter()).map(|(c, r)| (
-                    convert_expr(input, c, used_params, custom_types, field_lookup),
-                    convert_expr(input, r, used_params, custom_types, field_lookup),
-                )).collect(),
-                else_: else_result.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
+                operand: operand
+                    .as_ref()
+                    .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
+                conditions: conditions
+                    .iter()
+                    .zip(results.iter())
+                    .map(
+                        |(c, r)| (
+                            convert_expr(input, c, used_params, custom_types, field_lookup),
+                            convert_expr(input, r, used_params, custom_types, field_lookup),
+                        ),
+                    )
+                    .collect(),
+                else_: else_result
+                    .as_ref()
+                    .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
             };
         },
         sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
@@ -777,7 +842,9 @@ fn convert_expr(
         sql::Expr::InList { expr, list, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r =
-                Expr::LitArray(list.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect());
+                Expr::LitArray(
+                    list.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
+                );
             return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -792,7 +859,10 @@ fn convert_expr(
             return Expr::Select(Box::new(convert_select_query(input, q, used_params, custom_types, field_lookup)));
         },
         sql::Expr::Exists { subquery, negated } => {
-            let res = Expr::Exists(Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)));
+            let res =
+                Expr::Exists(
+                    Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+                );
             if *negated {
                 return Expr::PrefixOp {
                     op: PrefixOp::Not,
@@ -818,7 +888,11 @@ fn convert_expr(
                     }
                 }
             }
-            let filter = f.filter.as_ref().map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
+            let filter =
+                f
+                    .filter
+                    .as_ref()
+                    .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             if let Some(over) = &f.over {
                 let mut e = match name.as_str() {
                     "sum" => fn_sum(args.pop().expect("sum requires 1 arg")),
@@ -850,13 +924,47 @@ fn convert_expr(
                             order_by.push((expr, dir));
                         }
                         let frame = if let Some(sql_frame) = &spec.window_frame {
-                            let start = convert_window_frame_bound(input, &sql_frame.start_bound, used_params, custom_types, field_lookup);
-                            let end = sql_frame.end_bound.as_ref().map(|b| convert_window_frame_bound(input, b, used_params, custom_types, field_lookup));
+                            let start =
+                                convert_window_frame_bound(
+                                    input,
+                                    &sql_frame.start_bound,
+                                    used_params,
+                                    custom_types,
+                                    field_lookup,
+                                );
+                            let end =
+                                sql_frame
+                                    .end_bound
+                                    .as_ref()
+                                    .map(
+                                        |b| convert_window_frame_bound(
+                                            input,
+                                            b,
+                                            used_params,
+                                            custom_types,
+                                            field_lookup,
+                                        ),
+                                    );
                             Some(good_ormning_core::sqlite::query::expr::WindowFrame {
                                 type_: match sql_frame.units {
-                                    sql::WindowFrameUnits::Rows => good_ormning_core::sqlite::query::expr::WindowFrameType::Rows,
-                                    sql::WindowFrameUnits::Range => good_ormning_core::sqlite::query::expr::WindowFrameType::Range,
-                                    sql::WindowFrameUnits::Groups => good_ormning_core::sqlite::query::expr::WindowFrameType::Groups,
+                                    sql::WindowFrameUnits::Rows => good_ormning_core
+                                    ::sqlite
+                                    ::query
+                                    ::expr
+                                    ::WindowFrameType
+                                    ::Rows,
+                                    sql::WindowFrameUnits::Range => good_ormning_core
+                                    ::sqlite
+                                    ::query
+                                    ::expr
+                                    ::WindowFrameType
+                                    ::Range,
+                                    sql::WindowFrameUnits::Groups => good_ormning_core
+                                    ::sqlite
+                                    ::query
+                                    ::expr
+                                    ::WindowFrameType
+                                    ::Groups,
                                 },
                                 start,
                                 end,
@@ -902,16 +1010,25 @@ fn convert_window_frame_bound(
     match b {
         sql::WindowFrameBound::Preceding(e) => match e {
             Some(e) => {
-                return good_ormning_core::sqlite::query::expr::WindowFrameBound::Preceding(Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
+                return good_ormning_core::sqlite::query::expr::WindowFrameBound::Preceding(
+                    Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)),
+                );
             },
             None => {
                 return good_ormning_core::sqlite::query::expr::WindowFrameBound::UnboundedPreceding;
             },
         },
-        sql::WindowFrameBound::CurrentRow => return good_ormning_core::sqlite::query::expr::WindowFrameBound::CurrentRow,
+        sql::WindowFrameBound::CurrentRow => return good_ormning_core
+        ::sqlite
+        ::query
+        ::expr
+        ::WindowFrameBound
+        ::CurrentRow,
         sql::WindowFrameBound::Following(e) => match e {
             Some(e) => {
-                return good_ormning_core::sqlite::query::expr::WindowFrameBound::Following(Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
+                return good_ormning_core::sqlite::query::expr::WindowFrameBound::Following(
+                    Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)),
+                );
             },
             None => {
                 return good_ormning_core::sqlite::query::expr::WindowFrameBound::UnboundedFollowing;

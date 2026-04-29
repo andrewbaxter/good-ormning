@@ -27,3 +27,6 @@ async-trait = "0.1"
 loga = "0.4"
 sqlparser = "0.52"
 convert_case = "0.7.1"
+
+[lints.clippy]
+all = "allow"
