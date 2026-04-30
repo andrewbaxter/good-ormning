@@ -55,9 +55,12 @@ pub use crate::pg::{
     pg_type_bool,
     pg_type_bytes,
     pg_type_str,
-    pg_type_utctime_s_chrono,
-    pg_type_utctime_s_jiff,
+    GenerateArgs as PgGenerateArgs,
 };
+#[cfg(all(feature = "pg", feature = "chrono"))]
+pub use crate::pg::pg_type_utctime_s_chrono;
+#[cfg(all(feature = "pg", feature = "jiff"))]
+pub use crate::pg::pg_type_utctime_s_jiff;
 #[cfg(feature = "sqlite")]
 pub use crate::sqlite::{
     SqliteType,
@@ -70,6 +73,9 @@ pub use crate::sqlite::{
     sqlite_type_bool,
     sqlite_type_bytes,
     sqlite_type_str,
-    sqlite_type_utctime_s_chrono,
-    sqlite_type_utctime_s_jiff,
+    GenerateArgs as SqliteGenerateArgs,
 };
+#[cfg(all(feature = "sqlite", feature = "chrono"))]
+pub use crate::sqlite::sqlite_type_utctime_s_chrono;
+#[cfg(all(feature = "sqlite", feature = "jiff"))]
+pub use crate::sqlite::sqlite_type_utctime_s_jiff;

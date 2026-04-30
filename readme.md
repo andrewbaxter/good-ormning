@@ -11,11 +11,12 @@ Dynamic queries are not currently supported. If you want to assemble a query pro
 
 Create this `build.rs` file:
 
-```rust
+```rust,ignore
 use good_ormning::sqlite::{
     Version,
     schema::field::*,
     generate,
+    GenerateArgs,
 };
 
 fn main() {
@@ -25,10 +26,13 @@ fn main() {
     users.rowid_field(None);
     users.field("name", field_str().build());
     users.field("points", field_i64().build());
-    generate(None, vec![
-        // Versions
-        (1usize, latest_version.build())
-    ]).unwrap();
+    generate(GenerateArgs {
+        versions: vec![
+            // Versions
+            (1usize, latest_version.build())
+        ],
+        ..Default::default()
+    }).unwrap();
 }
 ```
 

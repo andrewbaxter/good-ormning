@@ -13,7 +13,6 @@ use {
         },
         utils::Errs,
     },
-    proc_macro2::TokenStream,
     convert_case::{
         Casing,
         Case,
@@ -39,25 +38,39 @@ pub use {
     },
 };
 
-/// Generate Rust code for migrations and queries.
-///
-/// # Arguments
-///
-/// * `db_name` - If you have multiple databases, use this to disambiguate them. You'll
-///   also need to use it in `good_module!` and `good_query!`.
-///
-/// * `versions` - a list of database version ids and schema versions. The ids must be
-///   consecutive but can start from any number. Once a version has been applied to a
-///   production database it shouldn't be modified again (modifications should be done
-///   in a new version).
-///
-///   These will be turned into migrations as part of the `migrate` function.
+pub struct GenerateArgs {
+    /// If you have multiple databases, use this to disambiguate them. You'll also need
+    /// to use it in `good_module!` and `good_query!`.
+    pub db_name: Option<String>,
+    /// A list of database version ids and schema versions. The ids must be consecutive
+    /// but can start from any number. Once a version has been applied to a production
+    /// database it shouldn't be modified again (modifications should be done in a new
+    /// version).
+    ///
+    /// These will be turned into migrations as part of the `migrate` function.
+    pub versions: Vec<(usize, Version)>,
+    /// A list of queries to generate type-safe functions for.
+    pub queries: Vec<Query>,
+}
+
+impl Default for GenerateArgs {
+    fn default() -> Self {
+        Self {
+            db_name: None,
+            versions: vec![],
+            queries: vec![],
+        }
+    }
+}
+
+/// Generate Rust code for migrations and queries. Also saves schema type info for
+/// proc_macros to refer to.
 ///
 /// # Returns
 ///
 /// * Error - a list of validation or generation errors that occurred
-pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Result<(), Vec<String>> {
-    let db_name = db_name.unwrap_or(good_ormning_core::utils::DEFAULT_DB_NAME);
+pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
+    let db_name = args.db_name.as_deref().unwrap_or(good_ormning_core::utils::DEFAULT_DB_NAME);
     let out_dir = env::var("OUT_DIR").map_err(|e| vec![format!("OUT_DIR not set: {:?}", e)])?;
     let out_dir = Path::new(&out_dir);
     let output = out_dir.join(good_ormning_core::utils::rs_file_name(db_name));
@@ -74,7 +87,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
         } else {
             HashMap::new()
         };
-        for (version_i, version) in versions.iter() {
+        for (version_i, version) in args.versions.iter() {
             let entry = versions_map.entry(*version_i).or_insert_with(|| Version::default());
             for (k, v) in &version.tables {
                 entry.tables.insert(k.clone(), v.clone());
@@ -90,7 +103,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
     let mut prev_version: Option<Version> = None;
     let mut prev_version_i: Option<i64> = None;
     let mut field_lookup: HashMap<TableRef, SqliteTableInfo> = HashMap::new();
-    for (version_i, version) in &versions {
+    for (version_i, version) in &args.versions {
         let path = rpds::vector![format!("Migration to {}", version_i)];
         let mut migration = vec![];
 
@@ -175,7 +188,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
     let enum_name = format_ident!("Db{}Versions", pascal_db_name);
     let mut enum_variants = vec![];
     let mut db_types = vec![];
-    for (version_i, _) in &versions {
+    for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
         enum_variants.push(quote!(#enum_variant(#newtype_name <'a, C >)));
@@ -186,7 +199,14 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
     }
     let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
     let db_alias_name = format_ident!("Db{}", pascal_db_name);
-    let db_others: Vec<TokenStream> = vec![];
+    let db_others =
+        good_ormning_core::sqlite::query::generate::generate_query_functions(
+            &mut errs,
+            field_lookup,
+            args.queries,
+            "",
+            quote!(#latest_newtype_name <'_, C >),
+        );
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
@@ -291,6 +311,7 @@ mod test {
     use {
         super::{
             generate,
+            GenerateArgs,
             query::expr::SerialExpr,
             schema::field::{
                 field_auto,
@@ -303,60 +324,72 @@ mod test {
 
     #[test]
     fn test_add_field_serial_bad() {
-        assert!(generate(None, vec![
-            // Versions (previous)
-            (0usize, {
-                let v = Version::new();
-                v.table("bananna").field("hizat", field_str().build());
-                v.build()
-            }),
-            (1usize, {
-                let v = Version::new();
-                let bananna = v.table("bananna");
-                bananna.field("hizat", field_str().build());
-                bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build());
-                v.build()
-            })
-        ]).is_err());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("bananna");
+                    bananna.field("hizat", field_str().build());
+                    bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).is_err());
     }
 
     #[test]
     #[should_panic]
     fn test_add_field_dup_bad() {
-        generate(None, vec![
-            // Versions (previous)
-            (0usize, {
-                let v = Version::new();
-                v.table("bananna").field("hizat", field_str().build());
-                v.build()
-            }),
-            (1usize, {
-                let v = Version::new();
-                let bananna = v.table("bananna");
-                bananna.field("hizat", field_str().build());
-                bananna.field("zomzom", field_i32().build());
-                v.build()
-            })
-        ]).unwrap();
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("bananna");
+                    bananna.field("hizat", field_str().build());
+                    bananna.field("zomzom", field_i32().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn test_add_table_dup_bad() {
-        generate(None, vec![
-            // Versions (previous)
-            (0usize, {
-                let v = Version::new();
-                v.table("bananna").field("hizat", field_str().build());
-                v.build()
-            }),
-            (1usize, {
-                let v = Version::new();
-                v.table("bananna").field("hizat", field_str().build());
-                v.table("bananna").field("hizat", field_str().build());
-                v.build()
-            })
-        ]).unwrap();
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
     }
 
     #[test]
@@ -364,14 +397,22 @@ mod test {
         let v = Version::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        assert!(generate(None, vec![(0usize, v.build())],).is_err());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
     }
 
     #[test]
     fn test_select_nothing_bad() {
         let v = Version::new();
         v.table("bananna").field("hizat", field_str().build());
-        assert!(generate(None, vec![(0usize, v.build())],).is_err());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
     }
 
     #[test]
@@ -379,6 +420,10 @@ mod test {
         let v = Version::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        assert!(generate(None, vec![(0usize, v.build())],).is_err());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
     }
 }

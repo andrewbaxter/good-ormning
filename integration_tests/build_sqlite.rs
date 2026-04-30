@@ -5,6 +5,7 @@ use good_ormning::{
         FieldHandle,
         Version as SqliteVersion,
         generate,
+        GenerateArgs,
         new_select_body,
         query::utils::CteBuilder,
         schema::field::{
@@ -53,10 +54,14 @@ pub fn build() {
         users.rowid_field(None);
         users.field("name", field_str().build());
         users.field("points", field_i64().build());
-        generate(Some("sqlite_gen_hello_world"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_hello_world".to_string()),
+            versions: vec![
             // Versions
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Base: create table, insert, select
@@ -65,7 +70,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_str().build());
         bananna.field("hizat2", field_i32().opt().build());
-        generate(Some("sqlite_gen_base_insert"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_base_insert".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
 
@@ -75,7 +84,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_str().build());
         bananna.primary_key("hizat_pk", &[&hizat]);
-        generate(Some("sqlite_gen_constraint"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_constraint".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: i32
@@ -83,7 +96,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_i32().build());
-        generate(Some("sqlite_gen_param_i32"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_i32".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: datetime (seconds) (chrono)
@@ -91,7 +108,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_utctime_s_chrono().build());
-        generate(Some("sqlite_gen_param_utctime_s_chrono"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_utctime_s_chrono".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: datetime (ms) (chrono)
@@ -99,7 +120,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_utctime_ms_chrono().build());
-        generate(Some("sqlite_gen_param_utctime_ms_chrono"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_utctime_ms_chrono".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: datetime (seconds) (jiff)
@@ -107,7 +132,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_utctime_s_jiff().build());
-        generate(Some("sqlite_gen_param_utctime_s_jiff"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_utctime_s_jiff".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: datetime (ms) (jiff)
@@ -115,35 +144,55 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_utctime_ms_jiff().build());
-        generate(Some("sqlite_gen_param_utctime_ms_jiff"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_utctime_ms_jiff".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_like"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_like".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_is_null"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_is_null".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_concat"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_concat".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_row_number"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_row_number".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: Opt`<i32>`
@@ -151,7 +200,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_i32().opt().build());
-        generate(Some("sqlite_gen_param_opt_i32"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_i32".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: Opt`<i32>`, null
@@ -159,7 +212,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_i32().opt().build());
-        generate(Some("sqlite_gen_param_opt_i32_null"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_i32_null".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: All custom types
@@ -199,7 +256,11 @@ pub fn build() {
             .enumerate() {
             custom_fields.push(bananna.field(&format!("x_{}", i), type_));
         }
-        generate(Some("sqlite_gen_param_custom"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_custom".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # (insert) Param: Opt`<Custom>`
@@ -208,7 +269,11 @@ pub fn build() {
         let my_string = v.custom_type("MyString").rust_type("integration_tests::MyString").base_type(type_str().build());
         let bananna = v.table("bananna");
         bananna.field("hizat", FieldTypeBuilder::new(my_string.field_type().type_).opt().build());
-        generate(Some("sqlite_gen_param_opt_custom"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_custom".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Insert on conflict do nothing
@@ -217,9 +282,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         let hizat = bananna.field("hizat", field_str().build());
         bananna.unique_index("all", &[&hizat]);
-        generate(Some("sqlite_gen_insert_on_conflict_do_nothing"),
-            vec![(1usize, v.build())],
-        ).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_insert_on_conflict_do_nothing".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
 
     }
 
@@ -230,9 +297,11 @@ pub fn build() {
         let hizat = bananna.field("hizat", field_str().build());
         bananna.field("two", field_i32().build());
         bananna.unique_index("all", &[&hizat]);
-        generate(Some("sqlite_gen_insert_on_conflict_update"),
-            vec![(1usize, v.build())],
-        ).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_insert_on_conflict_update".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Update
@@ -240,7 +309,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_update"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_update".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Update, where
@@ -248,7 +321,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("ban");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_update_where"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_update_where".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Update, returning
@@ -256,7 +333,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("b");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_update_returning"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_update_returning".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Delete
@@ -264,7 +345,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("b");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_delete"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_delete".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Delete, where
@@ -272,7 +357,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("ba");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_delete_where"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_delete_where".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Delete, returning
@@ -280,7 +369,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("b");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_delete_returning"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_delete_returning".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Select + join
@@ -292,9 +385,11 @@ pub fn build() {
         let one = v.table("select_join_two");
         one.field("hizat", field_str().build());
         one.field("two", field_str().build());
-        generate(Some("sqlite_gen_select_join"), 
-            vec![(1usize, v.build())],
-        ).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_join".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
 
     }
 
@@ -303,7 +398,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_select_limit"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_limit".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Select order
@@ -311,7 +410,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_i32().build());
-        generate(Some("sqlite_gen_select_order"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_order".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Select group
@@ -320,7 +423,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_i32().build());
         bananna.field("hizat2", field_i32().build());
-        generate(Some("sqlite_gen_select_group_by"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_group_by".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - add field
@@ -331,7 +438,9 @@ pub fn build() {
         bananna.field("zomzom",
             field_bool().migrate_fill(good_ormning::sqlite::query::expr::SerialExpr::LitBool(true)).build(),
         );
-        generate(Some("sqlite_gen_migrate_add_field"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_add_field".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -341,7 +450,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - rename field
@@ -349,7 +460,9 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bannna");
         bananna.field("hizat", field_str().build()).renamed_from("hozot");
-        generate(Some("sqlite_gen_migrate_rename_field"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_rename_field".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -359,7 +472,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - remove field
@@ -367,7 +482,9 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bnanaa");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_migrate_remove_field"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_remove_field".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -378,7 +495,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - add table
@@ -388,7 +507,9 @@ pub fn build() {
         bananna.field("hizat", field_str().build());
         let two = v.table("migrate_add_table_two");
         two.field("two", field_i32().build());
-        generate(Some("sqlite_gen_migrate_add_table"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_add_table".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -398,7 +519,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - rename table
@@ -406,7 +529,9 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bana").renamed_from("migrate_rename_table_bnanana");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_migrate_rename_table"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_rename_table".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -416,7 +541,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - remove table
@@ -426,7 +553,9 @@ pub fn build() {
         bananna.field("hizat", field_str().build());
         let two = v.table("migrate_remove_table_two");
         two.field("two", field_i32().build());
-        generate(Some("sqlite_gen_migrate_remove_table"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_remove_table".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, {
                 let v = SqliteVersion::new();
@@ -438,7 +567,9 @@ pub fn build() {
                 x
             }),
             (1usize, v.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Junction
@@ -447,7 +578,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_i32().build());
         bananna.field("hizat2", field_i32().build());
-        generate(Some("sqlite_gen_select_junction"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_junction".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Select CTE
@@ -460,7 +595,11 @@ pub fn build() {
             CteBuilder::new("hibbo", Box::new(new_select_body(&bananna).return_field(&hizat2).build()));
         hibbo_builder.field("zathi", get_type(&hizat2));
         hibbo_builder.build();
-        generate(Some("sqlite_gen_select_cte"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_cte".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Window function
@@ -469,7 +608,11 @@ pub fn build() {
         let bananna = v.table("bannanana");
         bananna.field("hizat", field_i32().build());
         bananna.field("hizat2", field_i32().build());
-        generate(Some("sqlite_gen_select_window"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_window".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Migrate - pre migration
@@ -482,11 +625,15 @@ pub fn build() {
         let v1 = SqliteVersion::new();
         let v1_bananna = v1.table("migrate_pre_migration_v0_banana");
         v1_bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_migrate_pre_migration"), vec![
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_pre_migration".to_string()),
+            versions: vec![
             // Versions (previous)
             (0usize, v0.build()),
             (1usize, v1.build())
-        ]).unwrap();
+        ],
+            ..Default::default()
+        }).unwrap();
     }
 
     // # Param array
@@ -494,7 +641,11 @@ pub fn build() {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_i32().build());
-        generate(Some("sqlite_gen_param_arr_i32"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_arr_i32".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
@@ -502,7 +653,11 @@ pub fn build() {
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
         bananna.field("two", field_i32().build());
-        generate(Some("sqlite_gen_query_filter"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_filter".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
@@ -510,21 +665,33 @@ pub fn build() {
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
         bananna.field("two", field_i32().build());
-        generate(Some("sqlite_gen_query_window_frame"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_window_frame".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_collate"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_collate".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().opt().build());
-        generate(Some("sqlite_gen_query_is_distinct_from"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_is_distinct_from".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
@@ -532,14 +699,22 @@ pub fn build() {
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
         bananna.field("two", field_i32().build());
-        generate(Some("sqlite_gen_query_having"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_having".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_glob"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_glob".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
@@ -547,20 +722,32 @@ pub fn build() {
         let bananna = v.table("bananna");
         let hizat = bananna.field("hizat", field_str().build());
         let _ = bananna.index("bananna_hizat", &[&hizat]);
-        generate(Some("sqlite_gen_query_indexed_by"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_indexed_by".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_cte_subquery"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_cte_subquery".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 
     {
         let v = SqliteVersion::new();
         let bananna = v.table("bananna");
         bananna.field("hizat", field_str().build());
-        generate(Some("sqlite_gen_query_like_escape"), vec![(1usize, v.build())]).unwrap();
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query_like_escape".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
     }
 }
