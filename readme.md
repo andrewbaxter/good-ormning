@@ -132,12 +132,20 @@ They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL
 - `PARAM: TYPE = VALUE` - The parameter values and their types (because the proc macro doesn't receive type information...).
 
   `TYPE` takes the format `[arr] [opt] type`. `type` can be any custom type name, or:
-  - `i32`
+  - `i16`, `i32`, `i64`, `u32`, `f32`, `f64`
+  - `bool`
+  - `string`
+  - `bytes`
+  - `utctime_s_chrono`, `utctime_ms_chrono`
+  - `utctime_s_jiff`, `utctime_ms_jiff`
+  - `auto`
+
+Parameters can also be provided inline in the SQL string using `${type = value}` syntax.
 
 Example:
 
 ```rust,ignore
-let users = good_query_many!("select \* from users"; dbm::Db(&mut client));
+good_query!("insert into users (name, points) values (${string = \"rust human\"}, ${i64 = 0})"; dbm::Db(&mut db)).unwrap();
 ```
 
 ### Features

@@ -59,6 +59,24 @@ async fn test_param_i32() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_inline_param_i32() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_inline_param_i32");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_inline_param_i32",
+        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
+        dbm::DbPgGenInlineParamI321(&mut db)
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        "pg_gen_inline_param_i32",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
+        dbm::DbPgGenInlineParamI321(&mut db)
+    ).await?, 22);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_utctime_chrono");
     let (mut db, _cont) = db().await?;

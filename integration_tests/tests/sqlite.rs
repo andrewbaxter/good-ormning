@@ -99,6 +99,61 @@ fn test_param_i32() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_inline_param_i32() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_inline_param_i32");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_inline_param_i32",
+        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_inline_param_i32",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?, 22);
+    Ok(())
+}
+
+#[test]
+fn test_inline_param_complex() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_inline_param_i32");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    let val = 47;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_inline_param_i32",
+        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = val} )"#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_inline_param_i32",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = val} and ${bool = true}"#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?, 47);
+    Ok(())
+}
+
+#[test]
+fn test_inline_param_with_path() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_inline_param_i32");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_inline_param_i32",
+        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = std::i32::MAX} )"#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_inline_param_i32",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        dbm::DbSqliteGenInlineParamI321(&mut db)
+    )?, std::i32::MAX);
+    Ok(())
+}
+
+#[test]
 fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_utctime_s_chrono");
     let mut db = rusqlite::Connection::open_in_memory()?;
@@ -1184,7 +1239,6 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     good_ormning::good_module!(dbm, "sqlite_gen_repeated_param");
     let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;
     dbm::migrate(&mut db, None)?;
-
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
         r#"
@@ -1216,7 +1270,6 @@ fn test_repeated_param() -> Result<(), loga::Error> {
         rank: i32 = 10,
         track: string = "song1"
     )?;
-
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
         r#"
@@ -1248,18 +1301,15 @@ fn test_repeated_param() -> Result<(), loga::Error> {
         rank: i32 = 5,
         track: string = "song1"
     )?;
-
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
         r#"select "genrerank" . "date" as "date" from "genrerank""#;
         dbm::DbSqliteGenRepeatedParam1(&mut db)
     )?, 20260502);
-
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
         r#"select "genrerank" . "rank" as "rank" from "genrerank""#;
         dbm::DbSqliteGenRepeatedParam1(&mut db)
     )?, 5);
-
     Ok(())
 }

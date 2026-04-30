@@ -678,4 +678,15 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_i32().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_inline_param_i32".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }
