@@ -672,7 +672,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, Some(&|v| Box::pin(async move {
         match v {
-            dbm::DbPgGenMigrateAddFieldVersions::V0(mut db) => {
+            dbm::DbPgGenMigrateAddFieldVersions::V0(db) => {
                 good_ormning::pg::good_query!(
                     "pg_gen_migrate_add_field",
                     "0",

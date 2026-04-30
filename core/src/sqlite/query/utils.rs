@@ -1,31 +1,25 @@
-use std::{
-    collections::HashMap,
-};
-use dyn_clone::clone_trait_object;
-use proc_macro2::TokenStream;
-use crate::{
-    sqlite::{
-        types::Type,
-        QueryResCount,
-        schema::{
-            field::{
-                FieldRef,
+use {
+    crate::{
+        sqlite::{
+            QueryResCount,
+            schema::{
+                field::FieldRef,
+                table::TableRef,
             },
-            table::{
-                TableRef,
-            },
+            types::Type,
+        },
+        utils::{
+            Errs,
+            Tokens,
         },
     },
-    utils::{
-        Tokens,
-        Errs,
-    },
-};
-use super::{
-    expr::{
-        ExprType,
+    dyn_clone::clone_trait_object,
+    proc_macro2::TokenStream,
+    std::collections::HashMap,
+    super::expr::{
         Binding,
         Expr,
+        ExprType,
         check_assignable,
     },
 };

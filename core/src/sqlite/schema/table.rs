@@ -1,19 +1,13 @@
-use std::{
-    collections::BTreeMap,
-};
-use serde::{
-    Serialize,
-    Deserialize,
-};
-use super::{
-    field::{
-        Field,
+use {
+    serde::{
+        Deserialize,
+        Serialize,
     },
-    index::{
-        Index,
-    },
-    constraint::{
-        Constraint,
+    std::collections::BTreeMap,
+    super::{
+        constraint::Constraint,
+        field::Field,
+        index::Index,
     },
 };
 

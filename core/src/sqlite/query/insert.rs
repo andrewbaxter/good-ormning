@@ -1,33 +1,33 @@
-use crate::sqlite::query::utils::Returning;
-use std::{
-    collections::{
+use {
+    crate::{
+        sqlite::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Binding,
+                    Expr,
+                    ExprType,
+                    check_assignable,
+                },
+                utils::{
+                    QueryBody,
+                    Returning,
+                    SqliteQueryCtx,
+                    build_returning,
+                    build_set,
+                },
+            },
+            schema::{
+                field::FieldRef,
+                table::TableRef,
+            },
+            types::SimpleSimpleType,
+        },
+        utils::Tokens,
+    },
+    std::collections::{
         HashMap,
         HashSet,
-    },
-};
-use crate::{
-    sqlite::{
-        QueryResCount,
-        schema::{
-            field::FieldRef,
-            table::TableRef,
-        },
-        types::SimpleSimpleType,
-    },
-    utils::Tokens,
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_assignable,
-        Binding,
-    },
-    utils::{
-        SqliteQueryCtx,
-        QueryBody,
-        build_returning,
-        build_set,
     },
 };
 
@@ -135,6 +135,6 @@ impl QueryBody for Insert {
             }
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
-        (out_type, out)
+        return (out_type, out);
     }
 }

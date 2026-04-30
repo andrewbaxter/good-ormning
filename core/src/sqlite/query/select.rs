@@ -1,37 +1,37 @@
-use std::collections::HashMap;
-use crate::{
-    utils::Tokens,
-    sqlite::{
-        types::{
-            Type,
-            type_i64,
+use {
+    crate::{
+        sqlite::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Binding,
+                    Expr,
+                    ExprType,
+                    check_bool,
+                    check_general_same,
+                },
+                select_body::{
+                    SelectJunction,
+                    build_select_junction,
+                },
+                utils::{
+                    QueryBody,
+                    Returning,
+                    SqliteQueryCtx,
+                    With,
+                    build_returning_values,
+                    build_with,
+                },
+            },
+            schema::table::TableRef,
+            types::{
+                Type,
+                type_i64,
+            },
         },
-        QueryResCount,
-        schema::{
-            table::TableRef,
-        },
+        utils::Tokens,
     },
-};
-use super::{
-    utils::{
-        SqliteQueryCtx,
-        QueryBody,
-        build_returning_values,
-        Returning,
-        With,
-        build_with,
-    },
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        check_general_same,
-        Binding,
-    },
-    select_body::{
-        SelectJunction,
-        build_select_junction,
-    },
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]
@@ -154,7 +154,7 @@ impl NamedSelectSource {
             }
             new_fields = new_fields2;
         }
-        (ExprType(new_fields), out)
+        return (ExprType(new_fields), out);
     }
 }
 
@@ -294,6 +294,6 @@ impl QueryBody for Select {
             let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junction);
             out.s(&junction_tokens.to_string());
         }
-        (out_type, out)
+        return (out_type, out);
     }
 }

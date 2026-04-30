@@ -1,29 +1,31 @@
-use crate::sqlite::query::utils::Returning;
-use std::collections::HashMap;
-use crate::{
-    sqlite::{
-        QueryResCount,
-        schema::{
-            table::TableRef,
-            field::FieldRef,
+use {
+    crate::{
+        sqlite::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Binding,
+                    Expr,
+                    ExprType,
+                    check_bool,
+                },
+                select::IndexHint,
+                utils::{
+                    QueryBody,
+                    Returning,
+                    SqliteQueryCtx,
+                    build_returning,
+                    build_set,
+                },
+            },
+            schema::{
+                field::FieldRef,
+                table::TableRef,
+            },
         },
+        utils::Tokens,
     },
-    utils::Tokens,
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        Binding,
-    },
-    utils::{
-        SqliteQueryCtx,
-        QueryBody,
-        build_returning,
-        build_set,
-    },
-    select::IndexHint,
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]
@@ -41,7 +43,7 @@ impl QueryBody for Update {
         ctx: &mut SqliteQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
-    ) -> (super::expr::ExprType, crate::utils::Tokens) {
+    ) -> (ExprType, Tokens) {
         // Prep
         let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t.clone(),
@@ -77,6 +79,6 @@ impl QueryBody for Update {
             out.s(&where_tokens.to_string());
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
-        (out_type, out)
+        return (out_type, out);
     }
 }

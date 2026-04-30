@@ -1,27 +1,30 @@
-use std::collections::HashMap;
-use crate::{
-    pg::{
-        QueryResCount,
-        schema::{
-            table::TableRef,
-            field::FieldRef,
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Expr,
+                    ExprType,
+                    ExprValName,
+                    check_bool,
+                },
+                utils::{
+                    PgQueryCtx,
+                    QueryBody,
+                    Returning,
+                    build_returning,
+                    build_set,
+                },
+            },
+            schema::{
+                field::FieldRef,
+                table::TableRef,
+            },
         },
+        utils::Tokens,
     },
-    utils::Tokens,
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        ExprValName,
-    },
-    utils::{
-        QueryBody,
-        build_returning,
-        build_set,
-        Returning,
-    },
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]
@@ -35,10 +38,10 @@ pub struct Update {
 impl QueryBody for Update {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
-    ) -> (super::expr::ExprType, crate::utils::Tokens) {
+    ) -> (ExprType, Tokens) {
         // Prep
         let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t.clone(),
@@ -64,6 +67,6 @@ impl QueryBody for Update {
             out.s(&where_tokens.to_string());
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
-        (out_type, out)
+        return (out_type, out);
     }
 }

@@ -1,18 +1,18 @@
 use {
+    async_trait::async_trait,
     std::borrow::Cow,
 };
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
-    Utc,
     FixedOffset,
+    Utc,
 };
 #[cfg(feature = "jiff")]
 use jiff::{
     Timestamp,
     Zoned,
 };
-use async_trait::async_trait;
 
 pub trait GoodErrorQuery<T> {
     fn to_good_error_query(self, query: &str) -> Result<T, loga::Error>;

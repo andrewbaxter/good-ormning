@@ -1,23 +1,26 @@
-use std::collections::HashMap;
-use crate::{
-    utils::Tokens,
-    pg::{
-        QueryResCount,
-        schema::table::TableRef,
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Expr,
+                    ExprType,
+                    ExprValName,
+                    check_bool,
+                },
+                utils::{
+                    PgQueryCtx,
+                    QueryBody,
+                    Returning,
+                    build_returning,
+                },
+            },
+            schema::table::TableRef,
+        },
+        utils::Tokens,
     },
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        ExprValName,
-    },
-    utils::{
-        QueryBody,
-        build_returning,
-        Returning,
-    },
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]
@@ -30,10 +33,10 @@ pub struct Delete {
 impl QueryBody for Delete {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
-    ) -> (super::expr::ExprType, crate::utils::Tokens) {
+    ) -> (ExprType, Tokens) {
         // Prep
         let table_info = match ctx.tables.get(&self.table) {
             Some(t) => t.clone(),
@@ -58,6 +61,6 @@ impl QueryBody for Delete {
             out.s(&where_tokens.to_string());
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
-        (out_type, out)
+        return (out_type, out);
     }
 }

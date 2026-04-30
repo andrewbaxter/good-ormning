@@ -1,28 +1,61 @@
-use std::env;
-use std::fs;
-use std::collections::HashMap;
-use convert_case::{
-    Casing,
-    Case,
-};
-use good_ormning_core::pg::Version as PgVersion;
-use good_ormning_core::sqlite::Version as SqliteVersion;
-use proc_macro::TokenStream;
-use quote::{
-    quote,
-    format_ident,
-};
-use syn::{
-    parse_macro_input,
-    parse::{
-        Parse,
-        ParseStream,
+use {
+    convert_case::{
+        Case,
+        Casing,
     },
-    Ident,
-    Token,
-    LitStr,
+    good_ormning_core::{
+        pg::{
+            Version as PgVersion,
+            query::utils::{
+                PgFieldInfo,
+                PgTableInfo,
+            },
+            schema::{
+                field::FieldRef as PgFieldRef,
+                table::TableRef as PgTableRef,
+            },
+        },
+        sqlite::{
+            Version as SqliteVersion,
+            query::utils::{
+                SqliteFieldInfo,
+                SqliteTableInfo,
+            },
+            schema::{
+                field::FieldRef as SqliteFieldRef,
+                table::TableRef as SqliteTableRef,
+            },
+        },
+        utils::Errs,
+    },
+    proc_macro::TokenStream,
+    quote::{
+        format_ident,
+        quote,
+    },
+    std::{
+        collections::{
+            HashMap,
+            hash_map::DefaultHasher,
+        },
+        env,
+        fs,
+        hash::{
+            Hash,
+            Hasher,
+        },
+    },
+    syn::{
+        Ident,
+        LitStr,
+        Token,
+        parse::{
+            Parse,
+            ParseStream,
+        },
+        parse_macro_input,
+    },
 };
-use good_ormning_core::utils::Errs;
 
 mod convert;
 
@@ -101,19 +134,19 @@ impl Parse for GoodQueryInput {
             input.parse::<Token![=]>()?;
             let val: syn::Expr = input.parse()?;
             param_types.push((name, ParamType {
-                arr,
-                opt,
-                base,
+                arr: arr,
+                opt: opt,
+                base: base,
             }));
             params.push(val);
         }
         Ok(GoodQueryInput {
-            version,
-            db_name,
-            sql,
-            param_types,
-            conn,
-            params,
+            version: version,
+            db_name: db_name,
+            sql: sql,
+            param_types: param_types,
+            conn: conn,
+            params: params,
         })
     }
 }
@@ -167,37 +200,23 @@ fn parse_and_generate_pg(
     };
     let custom_types = version.custom_types.clone();
     for (table_id, table) in &version.tables {
-        let mut fields:
-            HashMap<
-                good_ormning_core::pg::schema::field::FieldRef,
-                good_ormning_core::pg::query::utils::PgFieldInfo,
-            > =
-            HashMap::new();
+        let mut fields: HashMap<PgFieldRef, PgFieldInfo> = HashMap::new();
         for (field_id, field) in &table.fields {
-            fields.insert(good_ormning_core::pg::schema::field::FieldRef {
+            fields.insert(PgFieldRef {
                 table_id: table_id.clone(),
                 field_id: field_id.clone(),
-            }, good_ormning_core::pg::query::utils::PgFieldInfo {
+            }, PgFieldInfo {
                 sql_name: field.id.clone(),
                 type_: field.type_.type_.clone(),
             });
         }
-        field_lookup.insert(
-            good_ormning_core::pg::schema::table::TableRef(table_id.clone()),
-            good_ormning_core::pg::query::utils::PgTableInfo {
-                sql_name: table.id.clone(),
-                fields: fields,
-            },
-        );
+        field_lookup.insert(PgTableRef(table_id.clone()), PgTableInfo {
+            sql_name: table.id.clone(),
+            fields: fields,
+        });
     }
     let mut query = crate::convert::pg::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
-
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{
-        Hash,
-        Hasher,
-    };
 
     let mut hasher = DefaultHasher::new();
     input.sql.hash(&mut hasher);
@@ -278,37 +297,23 @@ fn parse_and_generate_sqlite(
     };
     let custom_types = version.custom_types.clone();
     for (table_id, table) in &version.tables {
-        let mut fields:
-            HashMap<
-                good_ormning_core::sqlite::schema::field::FieldRef,
-                good_ormning_core::sqlite::query::utils::SqliteFieldInfo,
-            > =
-            HashMap::new();
+        let mut fields: HashMap<SqliteFieldRef, SqliteFieldInfo> = HashMap::new();
         for (field_id, field) in &table.fields {
-            fields.insert(good_ormning_core::sqlite::schema::field::FieldRef {
+            fields.insert(SqliteFieldRef {
                 table_id: table_id.clone(),
                 field_id: field_id.clone(),
-            }, good_ormning_core::sqlite::query::utils::SqliteFieldInfo {
+            }, SqliteFieldInfo {
                 sql_name: field.id.clone(),
                 type_: field.type_.type_.clone(),
             });
         }
-        field_lookup.insert(
-            good_ormning_core::sqlite::schema::table::TableRef(table_id.clone()),
-            good_ormning_core::sqlite::query::utils::SqliteTableInfo {
-                sql_name: table.id.clone(),
-                fields: fields,
-            },
-        );
+        field_lookup.insert(SqliteTableRef(table_id.clone()), SqliteTableInfo {
+            sql_name: table.id.clone(),
+            fields: fields,
+        });
     }
     let mut query = crate::convert::sqlite::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
-
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{
-        Hash,
-        Hasher,
-    };
 
     let mut hasher = DefaultHasher::new();
     input.sql.hash(&mut hasher);

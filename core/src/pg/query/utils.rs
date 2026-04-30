@@ -1,31 +1,25 @@
-use std::{
-    collections::HashMap,
-};
-use dyn_clone::clone_trait_object;
-use proc_macro2::TokenStream;
-use crate::{
-    pg::{
-        types::Type,
-        QueryResCount,
-        schema::{
-            field::{
-                FieldRef,
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            schema::{
+                field::FieldRef,
+                table::TableRef,
             },
-            table::{
-                TableRef,
-            },
+            types::Type,
+        },
+        utils::{
+            Errs,
+            Tokens,
         },
     },
-    utils::{
-        Tokens,
-        Errs,
-    },
-};
-use super::{
-    expr::{
+    dyn_clone::clone_trait_object,
+    proc_macro2::TokenStream,
+    std::collections::HashMap,
+    super::expr::{
+        Expr,
         ExprType,
         ExprValName,
-        Expr,
         check_assignable,
     },
 };

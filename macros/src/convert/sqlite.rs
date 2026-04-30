@@ -1,55 +1,61 @@
-use sqlparser::ast as sql;
-use std::collections::HashSet;
-use crate::GoodQueryInput;
-use good_ormning_core::sqlite::{
-    query::{
-        expr::{
-            Expr,
-            BinOp,
-            PrefixOp,
-        },
-        select::{
-            Select,
-            NamedSelectSource,
-            JoinSource,
-            Join,
-            JoinType,
-            Order,
-        },
-        insert::{
-            Insert,
-            InsertConflict,
-        },
-        update::Update,
-        delete::Delete,
-        utils::{
-            Returning,
-            QueryBody,
-            With,
-            CteBuilder,
-            SqliteTableInfo,
-        },
-        helpers::*,
+use {
+    crate::{
+        GoodQueryInput,
+        ParamType,
     },
-    schema::{
-        table::TableRef,
-        field::FieldRef,
+    good_ormning_core::{
+        QueryResCount,
+        sqlite::{
+            Query,
+            query::{
+                delete::Delete,
+                expr::{
+                    BinOp,
+                    Expr,
+                    PrefixOp,
+                },
+                helpers::*,
+                insert::{
+                    Insert,
+                    InsertConflict,
+                },
+                select::{
+                    Join,
+                    JoinSource,
+                    JoinType,
+                    NamedSelectSource,
+                    Order,
+                    Select,
+                },
+                update::Update,
+                utils::{
+                    CteBuilder,
+                    QueryBody,
+                    Returning,
+                    SqliteTableInfo,
+                    With,
+                },
+            },
+            schema::{
+                custom_type::CustomType as SqliteCustomType,
+                field::FieldRef,
+                table::TableRef,
+            },
+            types::{
+                SimpleSimpleType,
+                SimpleSimpleType as SqliteSimpleSimpleType,
+                SimpleType,
+                SimpleType as SqliteSimpleType,
+                Type as SqliteType,
+            },
+        },
     },
-    types::{
-        SimpleType,
-        SimpleSimpleType,
+    sqlparser::ast as sql,
+    std::collections::{
+        BTreeMap,
+        HashSet,
     },
-    Query,
 };
-use good_ormning_core::QueryResCount;
-use std::collections::BTreeMap;
-use good_ormning_core::sqlite::schema::custom_type::CustomType as SqliteCustomType;
-use good_ormning_core::sqlite::types::{
-    Type as SqliteType,
-    SimpleType as SqliteSimpleType,
-    SimpleSimpleType as SqliteSimpleSimpleType,
-};
-use crate::ParamType;
 
 pub fn param_type_to_sqlite_type(pt: &ParamType, custom_types: &BTreeMap<String, SqliteCustomType>) -> SqliteType {
     let (simple_type, custom) = match pt.base.as_str() {

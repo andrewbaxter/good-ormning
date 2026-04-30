@@ -1,18 +1,31 @@
-use good_ormning::pg::Version as PgVersion;
-use good_ormning::{pg_type_i32 as type_i32, pg_type_i64 as type_i64, pg_type_u32 as type_u32, pg_type_f32 as type_f32, pg_type_f64 as type_f64, pg_type_bool as type_bool, pg_type_bytes as type_bytes, pg_type_str as type_str, pg_type_utctime_s_chrono as type_utctime_s_chrono, pg_type_utctime_s_jiff as type_utctime_s_jiff, PgType as Type, PgFieldTypeBuilder as FieldTypeBuilder};
-use good_ormning::pg::{
-            FieldHandle,
-            schema::field::{
-                    field_str,
-                    field_i32,
-                    field_bool,
-                    field_utctime_s_chrono,
-                    field_utctime_s_jiff,
-                },
-            query::utils::CteBuilder,
-            generate,
-            new_select_body,
-        };
+use good_ormning::{
+    PgFieldTypeBuilder as FieldTypeBuilder,
+    PgType as Type,
+    pg::{
+        FieldHandle,
+        Version as PgVersion,
+        generate,
+        new_select_body,
+        query::utils::CteBuilder,
+        schema::field::{
+            field_bool,
+            field_i32,
+            field_str,
+            field_utctime_s_chrono,
+            field_utctime_s_jiff,
+        },
+    },
+    pg_type_bool as type_bool,
+    pg_type_bytes as type_bytes,
+    pg_type_f32 as type_f32,
+    pg_type_f64 as type_f64,
+    pg_type_i32 as type_i32,
+    pg_type_i64 as type_i64,
+    pg_type_str as type_str,
+    pg_type_u32 as type_u32,
+    pg_type_utctime_s_chrono as type_utctime_s_chrono,
+    pg_type_utctime_s_jiff as type_utctime_s_jiff,
+};
 
 fn get_type(f: &FieldHandle) -> Type {
     let version = f.table.version.0.borrow();

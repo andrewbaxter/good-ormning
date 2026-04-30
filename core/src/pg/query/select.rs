@@ -1,33 +1,33 @@
-use std::collections::HashMap;
-use crate::{
-    utils::Tokens,
-    pg::{
-        types::{
-            Type,
-            type_i64,
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Expr,
+                    ExprType,
+                    ExprValName,
+                    check_bool,
+                    check_general_same,
+                },
+                utils::{
+                    PgQueryCtx,
+                    QueryBody,
+                    Returning,
+                    With,
+                    build_returning_values,
+                    build_with,
+                },
+            },
+            schema::table::TableRef,
+            types::{
+                Type,
+                type_i64,
+            },
         },
-        QueryResCount,
-        schema::{
-            table::TableRef,
-        },
+        utils::Tokens,
     },
-};
-use super::{
-    utils::{
-        QueryBody,
-        PgQueryCtx,
-        build_returning_values,
-        Returning,
-        With,
-        build_with,
-    },
-    expr::{
-        Expr,
-        ExprType,
-        check_bool,
-        ExprValName,
-        check_general_same,
-    },
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]
@@ -88,7 +88,7 @@ impl NamedSelectSource {
             JoinSource::Empty => {
                 vec![]
             },
-            };
+        };
 
         if let Some(s) = &self.alias {
             out.s("as").id(s);
@@ -98,7 +98,7 @@ impl NamedSelectSource {
             }
             new_fields = new_fields2;
         }
-        (ExprType(new_fields), out)
+        return (ExprType(new_fields), out);
     }
 }
 
@@ -133,7 +133,7 @@ pub struct Select {
 impl QueryBody for Select {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
@@ -264,6 +264,6 @@ impl QueryBody for Select {
             check_general_same(ctx, &path, &out_type, &j_body_type);
             out.s(&j_body_tokens.to_string());
         }
-        (out_type, out)
+        return (out_type, out);
     }
 }

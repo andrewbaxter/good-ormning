@@ -1,32 +1,33 @@
-use std::{
-    collections::{
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Expr,
+                    ExprType,
+                    ExprValName,
+                    check_assignable,
+                },
+                utils::{
+                    PgQueryCtx,
+                    QueryBody,
+                    Returning,
+                    build_returning,
+                    build_set,
+                },
+            },
+            schema::{
+                field::FieldRef,
+                table::TableRef,
+            },
+            types::SimpleSimpleType,
+        },
+        utils::Tokens,
+    },
+    std::collections::{
         HashMap,
         HashSet,
-    },
-};
-use crate::{
-    pg::{
-        QueryResCount,
-        schema::{
-            field::FieldRef,
-            table::TableRef,
-        },
-        types::SimpleSimpleType,
-    },
-    utils::Tokens,
-};
-use super::{
-    expr::{
-        Expr,
-        ExprType,
-        check_assignable,
-        ExprValName,
-    },
-    utils::{
-        QueryBody,
-        build_returning,
-        build_set,
-        Returning,
     },
 };
 
@@ -50,7 +51,7 @@ pub struct Insert {
 impl QueryBody for Insert {
     fn build(
         &self,
-        ctx: &mut super::utils::PgQueryCtx,
+        ctx: &mut PgQueryCtx,
         path: &rpds::Vector<String>,
         res_count: QueryResCount,
     ) -> (ExprType, Tokens) {
@@ -134,6 +135,6 @@ impl QueryBody for Insert {
             }
         }
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
-        (out_type, out)
+        return (out_type, out);
     }
 }
