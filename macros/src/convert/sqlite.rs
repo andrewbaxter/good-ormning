@@ -552,13 +552,9 @@ fn convert_select(
                 }
             },
             sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                source: JoinSource::Subsel(Box::new(convert_select_query(
-                    input,
-                    subquery,
-                    used_params,
-                    custom_types,
-                    field_lookup,
-                ))),
+                source: JoinSource::Subsel(
+                    Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+                ),
                 alias: alias.as_ref().map(|a| a.name.value.clone()),
                 index_hint: None,
             },
@@ -598,13 +594,9 @@ fn convert_select(
                     }
                 },
                 sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Subsel(Box::new(convert_select_query(
-                        input,
-                        subquery,
-                        used_params,
-                        custom_types,
-                        field_lookup,
-                    ))),
+                    source: JoinSource::Subsel(
+                        Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+                    ),
                     alias: alias.as_ref().map(|a| a.name.value.clone()),
                     index_hint: None,
                 },
@@ -873,6 +865,11 @@ fn convert_expr(
                 op: BinOp::IsNotDistinctFrom,
                 right: Box::new(convert_expr(input, right, used_params, custom_types, field_lookup)),
             };
+        },
+        sql::Expr::Tuple(exprs) => {
+            return Expr::LitArray(
+                exprs.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
+            );
         },
         sql::Expr::Nested(expr) => return convert_expr(input, expr, used_params, custom_types, field_lookup),
         sql::Expr::Cast { expr, data_type, .. } => {

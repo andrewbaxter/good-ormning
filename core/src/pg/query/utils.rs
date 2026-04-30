@@ -17,6 +17,7 @@ use {
     proc_macro2::TokenStream,
     std::collections::HashMap,
     super::expr::{
+        BinOp,
         Expr,
         ExprType,
         ExprValName,
@@ -168,6 +169,7 @@ pub struct PgQueryCtx {
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub rust_args: Vec<TokenStream>,
     pub query_args: Vec<TokenStream>,
+    pub op_stack: Vec<BinOp>,
 }
 
 impl PgQueryCtx {
@@ -178,6 +180,7 @@ impl PgQueryCtx {
             rust_arg_lookup: Default::default(),
             rust_args: Default::default(),
             query_args: Default::default(),
+            op_stack: Default::default(),
         }
     }
 }

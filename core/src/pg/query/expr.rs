@@ -644,8 +644,13 @@ impl Expr {
         match self {
             Expr::LitArray(v) => {
                 let mut out = Tokens::new();
-                out.s("array [");
                 let mut res_types = vec![];
+                let is_in = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
+                if is_in {
+                    out.s("(");
+                } else {
+                    out.s("array [");
+                }
                 for (i, e) in v.iter().enumerate() {
                     if i > 0 {
                         out.s(",");
@@ -654,7 +659,11 @@ impl Expr {
                     out.s(&res.1.to_string());
                     res_types.push(res.0);
                 }
-                out.s("]");
+                if is_in {
+                    out.s(")");
+                } else {
+                    out.s("]");
+                }
                 let mut out_type = None;
                 for (i, t) in res_types.iter().enumerate() {
                     if let Some(prev) = &out_type {
@@ -955,41 +964,145 @@ impl Expr {
             },
             Expr::BinOp { left, op, right } => {
                 let mut out = Tokens::new();
+                let token;
+                match op {
+                    BinOp::In | BinOp::NotIn => {
+                        let token = match op {
+                            BinOp::In => "in",
+                            BinOp::NotIn => "not in",
+                            _ => unreachable!(),
+                        };
+                        ctx.op_stack.push(op.clone());
+                        let (left_t, left_tokens) = left.build(ctx, &path.push_back("Operand 0".into()), scope);
+                        let (right_t, right_tokens) = right.build(ctx, &path.push_back("Operand 1".into()), scope);
+                        ctx.op_stack.pop();
+                        if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                            if right_t.0.len() == left_t.0.len() {
+                                check_general_same(ctx, path, &left_t, &right_t);
+                            } else if !left_t.0.is_empty() && right_t.0.len() % left_t.0.len() == 0 {
+                                for i in 0 .. (right_t.0.len() / left_t.0.len()) {
+                                    let start = i * left_t.0.len();
+                                    let end = start + left_t.0.len();
+                                    let sub_right_t = ExprType(right_t.0[start .. end].to_vec());
+                                    check_general_same(
+                                        ctx,
+                                        &path.push_back(format!("Right set element {}", i)),
+                                        &left_t,
+                                        &sub_right_t,
+                                    );
+                                }
+                            } else {
+                                ctx
+                                    .errs
+                                    .err(
+                                        path,
+                                        format!(
+                                            "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                            op,
+                                            left_t.0.len(),
+                                            right_t.0.len()
+                                        ),
+                                    );
+                            }
+                        }
+                        out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
+                        return (ExprType(vec![(ExprValName::empty(), Type {
+                            type_: SimpleType {
+                                type_: SimpleSimpleType::Bool,
+                                custom: None,
+                            },
+                            opt: false,
+                            arr: false,
+                        })]), out);
+                    },
+                    BinOp::Plus => {
+                        token = "+";
+                    },
+                    BinOp::Minus => {
+                        token = "-";
+                    },
+                    BinOp::Multiply => {
+                        token = "*";
+                    },
+                    BinOp::Divide => {
+                        token = "/";
+                    },
+                    BinOp::And => {
+                        token = "and";
+                    },
+                    BinOp::Or => {
+                        token = "or";
+                    },
+                    BinOp::Equals => {
+                        token = "=";
+                    },
+                    BinOp::NotEquals => {
+                        token = "<>";
+                    },
+                    BinOp::Is => {
+                        token = "is";
+                    },
+                    BinOp::IsNot => {
+                        token = "is not";
+                    },
+                    BinOp::LessThan => {
+                        token = "<";
+                    },
+                    BinOp::LessThanEqualTo => {
+                        token = "<=";
+                    },
+                    BinOp::GreaterThan => {
+                        token = ">";
+                    },
+                    BinOp::GreaterThanEqualTo => {
+                        token = ">=";
+                    },
+                    BinOp::Like => {
+                        token = "like";
+                    },
+                    BinOp::ILike => {
+                        token = "ilike";
+                    },
+                    BinOp::StringConcat => {
+                        token = "||";
+                    },
+                    BinOp::Mod => {
+                        token = "%";
+                    },
+                    BinOp::BitwiseAnd => {
+                        token = "&";
+                    },
+                    BinOp::BitwiseOr => {
+                        token = "|";
+                    },
+                    BinOp::BitwiseXor => {
+                        token = "#";
+                    },
+                    BinOp::BitwiseShiftLeft => {
+                        token = "<<";
+                    },
+                    BinOp::BitwiseShiftRight => {
+                        token = ">>";
+                    },
+                    BinOp::IsDistinctFrom => {
+                        token = "is distinct from";
+                    },
+                    BinOp::IsNotDistinctFrom => {
+                        token = "is not distinct from";
+                    },
+                    BinOp::Glob => {
+                        token = "glob";
+                    },
+                    BinOp::Regexp => {
+                        token = "regexp";
+                    },
+                    BinOp::Match => {
+                        token = "match";
+                    },
+                }
                 let l_res = left.build(ctx, &path.push_back("Bin op left".into()), scope);
                 let r_res = right.build(ctx, &path.push_back("Bin op right".into()), scope);
                 let t = check_same(&mut ctx.errs, path, &l_res.0, &r_res.0);
-                let token = match op {
-                    BinOp::Plus => "+",
-                    BinOp::Minus => "-",
-                    BinOp::Multiply => "*",
-                    BinOp::Divide => "/",
-                    BinOp::And => "and",
-                    BinOp::Or => "or",
-                    BinOp::Equals => "=",
-                    BinOp::NotEquals => "<>",
-                    BinOp::Is => "is",
-                    BinOp::IsNot => "is not",
-                    BinOp::LessThan => "<",
-                    BinOp::LessThanEqualTo => "<=",
-                    BinOp::GreaterThan => ">",
-                    BinOp::GreaterThanEqualTo => ">=",
-                    BinOp::In => "in",
-                    BinOp::NotIn => "not in",
-                    BinOp::Like => "like",
-                    BinOp::ILike => "ilike",
-                    BinOp::StringConcat => "||",
-                    BinOp::Mod => "%",
-                    BinOp::BitwiseAnd => "&",
-                    BinOp::BitwiseOr => "|",
-                    BinOp::BitwiseXor => "#",
-                    BinOp::BitwiseShiftLeft => "<<",
-                    BinOp::BitwiseShiftRight => ">>",
-                    BinOp::IsDistinctFrom => "is distinct from",
-                    BinOp::IsNotDistinctFrom => "is not distinct from",
-                    BinOp::Glob => "glob",
-                    BinOp::Regexp => "regexp",
-                    BinOp::Match => "match",
-                };
                 out.s(&l_res.1.to_string()).s(token).s(&r_res.1.to_string());
                 let mut res_t = t.unwrap_or(Type {
                     type_: SimpleType {
@@ -1008,8 +1121,6 @@ impl Expr {
                     BinOp::LessThanEqualTo |
                     BinOp::GreaterThan |
                     BinOp::GreaterThanEqualTo |
-                    BinOp::In |
-                    BinOp::NotIn |
                     BinOp::Like |
                     BinOp::ILike |
                     BinOp::IsDistinctFrom |
@@ -1036,6 +1147,7 @@ impl Expr {
                             arr: false,
                         };
                     },
+                    BinOp::In | BinOp::NotIn => unreachable!(),
                     _ => { },
                 }
                 return (ExprType(vec![(ExprValName::empty(), res_t)]), out);

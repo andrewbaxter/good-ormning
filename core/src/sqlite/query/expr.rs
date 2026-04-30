@@ -384,7 +384,6 @@ pub enum Expr {
     },
 }
 
-
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Binding {
     pub table_id: String,
@@ -563,7 +562,6 @@ impl WindowFrameBound {
     }
 }
 
-
 impl Expr {
     pub fn build(
         &self,
@@ -574,7 +572,12 @@ impl Expr {
         match self {
             Expr::LitArray(res) => {
                 let mut out = Tokens::new();
-                out.s("(");
+                let is_in = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
+                if is_in {
+                    out.s("(");
+                } else {
+                    out.s("[");
+                }
                 let mut types = vec![];
                 for (i, res) in res.iter().enumerate() {
                     if i > 0 {
@@ -584,7 +587,11 @@ impl Expr {
                     out.s(&tokens.to_string());
                     types.push(t);
                 }
-                out.s(")");
+                if is_in {
+                    out.s(")");
+                } else {
+                    out.s("]");
+                }
                 return (ExprType(types.into_iter().flat_with_index(|i, t| t.0.into_iter().map(move |(mut k, v)| {
                     if k.id.is_empty() {
                         k.id = format!("_{}", i);
@@ -844,7 +851,12 @@ impl Expr {
                             if found.len() == 1 {
                                 found[0].clone()
                             } else if found.len() > 1 {
-                                ctx.errs.err(path, format!("Field {:?} is ambiguous (found in multiple tables)", x.field_id));
+                                ctx
+                                    .errs
+                                    .err(
+                                        path,
+                                        format!("Field {:?} is ambiguous (found in multiple tables)", x.field_id),
+                                    );
                                 return (ExprType(vec![]), Tokens::new());
                             } else {
                                 ctx.errs.err(path, format!("Field {:?} not found in any table", x.field_id));
@@ -987,8 +999,7 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
-                let (t, tokens) =
-                    s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
+                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (t, out);
             },
@@ -1007,8 +1018,7 @@ impl Expr {
             Expr::Exists(s) => {
                 let mut out = Tokens::new();
                 out.s("exists (");
-                let (_, tokens) =
-                    s.build(ctx, &path.push_back("Exists".into()), crate::QueryResCount::Many);
+                let (_, tokens) = s.build(ctx, &path.push_back("Exists".into()), crate::QueryResCount::Many);
                 out.s(&tokens.to_string()).s(")");
                 return (ExprType(vec![(Binding::empty(), Type {
                     type_: SimpleType {
@@ -1051,8 +1061,10 @@ impl Expr {
                 }
                 out.s(&tokens_pattern.to_string());
                 if let Some(escape) = escape {
-                    let (t_escape, tokens_escape) = escape.build(ctx, &path.push_back("Like escape".into()), scope);
-                    if let Some(got_t) = t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
+                    let (t_escape, tokens_escape) =
+                        escape.build(ctx, &path.push_back("Like escape".into()), scope);
+                    if let Some(got_t) =
+                        t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
                         check_general_same_type(ctx, &path.push_back("Like escape".into()), &got_t, &want_t);
                     }
                     out.s("escape").s(&tokens_escape.to_string());
@@ -1100,7 +1112,8 @@ impl Expr {
                 let mut res_type = None;
                 for (i, (cond, res)) in conditions.iter().enumerate() {
                     out.s("when");
-                    let (cond_t, cond_tokens) = cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
+                    let (cond_t, cond_tokens) =
+                        cond.build(ctx, &path.push_back(format!("Case condition {}", i)), scope);
                     if let Some(op_t) = &op_type {
                         check_general_same(ctx, &path.push_back(format!("Case condition {}", i)), op_t, &cond_t);
                     } else {
@@ -1131,7 +1144,6 @@ impl Expr {
         }
     }
 }
-
 
 pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
     check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
@@ -1214,38 +1226,144 @@ fn do_bin_op(
     exprs: &[Expr],
 ) -> (ExprType, Tokens) {
     let mut out = Tokens::new();
+    let token;
+    match op {
+        BinOp::In | BinOp::NotIn => {
+            if exprs.len() != 2 {
+                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
+                return (ExprType(vec![]), Tokens::new());
+            }
+            let token = match op {
+                BinOp::In => "in",
+                BinOp::NotIn => "not in",
+                _ => unreachable!(),
+            };
+            ctx.op_stack.push(op.clone());
+            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
+            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
+            ctx.op_stack.pop();
+            if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                if right_t.0.len() == left_t.0.len() {
+                    check_general_same(ctx, path, &left_t, &right_t);
+                } else if !left_t.0.is_empty() && right_t.0.len() % left_t.0.len() == 0 {
+                    for i in 0 .. (right_t.0.len() / left_t.0.len()) {
+                        let start = i * left_t.0.len();
+                        let end = start + left_t.0.len();
+                        let sub_right_t = ExprType(right_t.0[start .. end].to_vec());
+                        check_general_same(
+                            ctx,
+                            &path.push_back(format!("Right set element {}", i)),
+                            &left_t,
+                            &sub_right_t,
+                        );
+                    }
+                } else {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                op,
+                                left_t.0.len(),
+                                right_t.0.len()
+                            ),
+                        );
+                }
+            }
+            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
+            return (ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::Bool,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]), out);
+        },
+        BinOp::Plus => {
+            token = "+";
+        },
+        BinOp::Minus => {
+            token = "-";
+        },
+        BinOp::Multiply => {
+            token = "*";
+        },
+        BinOp::Divide => {
+            token = "/";
+        },
+        BinOp::And => {
+            token = "and";
+        },
+        BinOp::Or => {
+            token = "or";
+        },
+        BinOp::Equals => {
+            token = "=";
+        },
+        BinOp::NotEquals => {
+            token = "<>";
+        },
+        BinOp::Is => {
+            token = "is";
+        },
+        BinOp::IsNot => {
+            token = "is not";
+        },
+        BinOp::LessThan => {
+            token = "<";
+        },
+        BinOp::LessThanEqualTo => {
+            token = "<=";
+        },
+        BinOp::GreaterThan => {
+            token = ">";
+        },
+        BinOp::GreaterThanEqualTo => {
+            token = ">=";
+        },
+        BinOp::Like => {
+            token = "like";
+        },
+        BinOp::StringConcat => {
+            token = "||";
+        },
+        BinOp::Mod => {
+            token = "%";
+        },
+        BinOp::BitwiseAnd => {
+            token = "&";
+        },
+        BinOp::BitwiseOr => {
+            token = "|";
+        },
+        BinOp::BitwiseXor => {
+            token = "~";
+        },
+        BinOp::BitwiseShiftLeft => {
+            token = "<<";
+        },
+        BinOp::BitwiseShiftRight => {
+            token = ">>";
+        },
+        BinOp::IsDistinctFrom => {
+            token = "is distinct from";
+        },
+        BinOp::IsNotDistinctFrom => {
+            token = "is not distinct from";
+        },
+        BinOp::Glob => {
+            token = "glob";
+        },
+        BinOp::Regexp => {
+            token = "regexp";
+        },
+        BinOp::Match => {
+            token = "match";
+        },
+    }
     let mut out_t = None;
-    let token = match op {
-        BinOp::Plus => "+",
-        BinOp::Minus => "-",
-        BinOp::Multiply => "*",
-        BinOp::Divide => "/",
-        BinOp::And => "and",
-        BinOp::Or => "or",
-        BinOp::Equals => "=",
-        BinOp::NotEquals => "<>",
-        BinOp::Is => "is",
-        BinOp::IsNot => "is not",
-        BinOp::LessThan => "<",
-        BinOp::LessThanEqualTo => "<=",
-        BinOp::GreaterThan => ">",
-        BinOp::GreaterThanEqualTo => ">=",
-        BinOp::Like => "like",
-        BinOp::In => "in",
-        BinOp::NotIn => "not in",
-        BinOp::StringConcat => "||",
-        BinOp::Mod => "%",
-        BinOp::BitwiseAnd => "&",
-        BinOp::BitwiseOr => "|",
-        BinOp::BitwiseXor => "~",
-        BinOp::BitwiseShiftLeft => "<<",
-        BinOp::BitwiseShiftRight => ">>",
-        BinOp::IsDistinctFrom => "is distinct from",
-        BinOp::IsNotDistinctFrom => "is not distinct from",
-        BinOp::Glob => "glob",
-        BinOp::Regexp => "regexp",
-        BinOp::Match => "match",
-    };
     for (i, res) in exprs.iter().enumerate() {
         if i > 0 {
             out.s(token);
@@ -1258,12 +1376,22 @@ fn do_bin_op(
             },
         };
         match op {
-            BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide | BinOp::Mod | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor | BinOp::BitwiseShiftLeft | BinOp::BitwiseShiftRight => {
+            BinOp::Plus |
+            BinOp::Minus |
+            BinOp::Multiply |
+            BinOp::Divide |
+            BinOp::Mod |
+            BinOp::BitwiseAnd |
+            BinOp::BitwiseOr |
+            BinOp::BitwiseXor |
+            BinOp::BitwiseShiftLeft |
+            BinOp::BitwiseShiftRight => {
                 if !matches!(
                     got_t.type_.type_,
                     SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto
-                ) && !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
-                     // arithmetic allows floats, bitwise only ints
+                ) &&
+                    !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
+                    // arithmetic allows floats, bitwise only ints
                 } else if !matches!(
                     got_t.type_.type_,
                     SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
@@ -1273,7 +1401,11 @@ fn do_bin_op(
                         .errs
                         .err(
                             &path.push_back(format!("Operand {}", i)),
-                            format!("Arithmetic/Bitwise operator {:?} not supported for type {:?}", op, got_t.type_.type_),
+                            format!(
+                                "Arithmetic/Bitwise operator {:?} not supported for type {:?}",
+                                op,
+                                got_t.type_.type_
+                            ),
                         );
                 }
             },
@@ -1296,8 +1428,6 @@ fn do_bin_op(
             BinOp::GreaterThan |
             BinOp::GreaterThanEqualTo |
             BinOp::Like |
-            BinOp::In |
-            BinOp::NotIn |
             BinOp::StringConcat |
             BinOp::IsDistinctFrom |
             BinOp::IsNotDistinctFrom |
@@ -1306,6 +1436,7 @@ fn do_bin_op(
             BinOp::Match => {
 
             },
+            BinOp::In | BinOp::NotIn => unreachable!(),
         }
         if let Some(out_t) = &mut out_t {
             check_general_same_type(ctx, path, out_t, &got_t);
@@ -1324,8 +1455,6 @@ fn do_bin_op(
         BinOp::GreaterThan |
         BinOp::GreaterThanEqualTo |
         BinOp::Like |
-        BinOp::In |
-        BinOp::NotIn |
         BinOp::IsDistinctFrom |
         BinOp::IsNotDistinctFrom |
         BinOp::Glob |
@@ -1346,6 +1475,7 @@ fn do_bin_op(
             opt: false,
             arr: false,
         },
+        BinOp::In | BinOp::NotIn => unreachable!(),
         _ => out_t.unwrap_or(Type {
             type_: SimpleType {
                 type_: SimpleSimpleType::I32,

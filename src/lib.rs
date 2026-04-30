@@ -17,8 +17,11 @@ pub use good_ormning_core::{
 /// # Parameters
 ///
 /// * `$vis` - (Optional) Visibility of the module (e.g., `pub`).
+///
 /// * `$mod_name` - The name of the module to create.
-/// * `$db_name` - (Optional) The database name string literal. Must match the name passed to `generate`.
+///
+/// * `$db_name` - (Optional) The database name string literal. Must match the name
+///   passed to `generate`.
 ///
 /// # Example
 ///

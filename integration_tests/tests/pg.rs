@@ -1061,3 +1061,23 @@ async fn test_query_case() -> Result<(), loga::Error> {
     assert_eq!(res, "positive");
     Ok(())
 }
+
+#[tokio::test]
+async fn test_query_tuple_in() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    db
+        .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
+        .await
+        .map_err(loga::err)?;
+    let res = good_ormning::pg::good_query_many!(
+        "pg_gen_base_insert",
+        "select hizat from bannanana where (hizat, hizat2) in (('a', 1), ('c', 3)) order by hizat";
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0], "a");
+    assert_eq!(res[1], "c");
+    Ok(())
+}

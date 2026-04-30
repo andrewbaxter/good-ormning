@@ -17,6 +17,7 @@ use {
     proc_macro2::TokenStream,
     std::collections::HashMap,
     super::expr::{
+        BinOp,
         Binding,
         Expr,
         ExprType,
@@ -209,6 +210,7 @@ pub struct SqliteQueryCtx {
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub rust_args: Vec<TokenStream>,
     pub query_args: Vec<TokenStream>,
+    pub op_stack: Vec<BinOp>,
 }
 
 #[derive(Clone, Debug)]
@@ -225,6 +227,7 @@ impl SqliteQueryCtx {
             rust_arg_lookup: Default::default(),
             rust_args: Default::default(),
             query_args: Default::default(),
+            op_stack: Default::default(),
         }
     }
 }

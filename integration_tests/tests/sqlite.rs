@@ -1161,3 +1161,20 @@ fn test_query_case() -> Result<(), loga::Error> {
     assert_eq!(res, "positive");
     Ok(())
 }
+
+#[test]
+fn test_query_tuple_in() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_base_insert");
+    let mut db = rusqlite::Connection::open_in_memory().map_err(loga::err)?;
+    dbm::migrate(&mut db, None)?;
+    db.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
+    let res = good_ormning::sqlite::good_query_many!(
+        "sqlite_gen_base_insert",
+        "select hizat from bannanana where (hizat, hizat2) in (('a', 1), ('c', 3)) order by hizat";
+        dbm::DbSqliteGenBaseInsert1(&mut db)
+    )?;
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0], "a");
+    assert_eq!(res[1], "c");
+    Ok(())
+}
