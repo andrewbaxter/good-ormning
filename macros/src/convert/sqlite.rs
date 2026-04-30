@@ -181,7 +181,9 @@ pub fn convert_query(
         _ => unimplemented!("Unsupported statement type: {:?}", statement),
     };
     for (ident, _) in &input.param_types {
-        if !used_params.contains(&ident.to_string()) {
+        let s = ident.to_string();
+        let s = s.trim_start_matches("r#");
+        if !used_params.contains(s) {
             panic!("Parameter {} not used in query", ident);
         }
     }
@@ -715,18 +717,22 @@ fn convert_expr(
                 sql::Value::SingleQuotedString(s) => return Expr::LitString(s.clone()),
                 sql::Value::Boolean(b) => return Expr::LitBool(*b),
                 sql::Value::Placeholder(p) => {
-                    let placeholder_name = p.replace("$", "").replace("?", "");
+                    let placeholder_name = p.trim_start_matches(|c| c == '$' || c == '?' || c == ':' || c == '@');
                     let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
                         format!("p{}", idx)
                     } else {
-                        placeholder_name
+                        placeholder_name.to_string()
                     };
                     used_params.insert(param_name.clone());
                     let pt =
                         input
                             .param_types
                             .iter()
-                            .find(|(ident, _)| ident.to_string() == param_name)
+                            .find(|(ident, _)| {
+                                let s = ident.to_string();
+                                let s = s.trim_start_matches("r#");
+                                return s == param_name;
+                            })
                             .map(|(_, pt)| pt)
                             .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
                     return Expr::Param {

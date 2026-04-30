@@ -750,4 +750,21 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+
+    {
+        let v = SqliteVersion::new();
+        let genrerank = v.table("genrerank");
+        let date = genrerank.field("date", field_i32().build());
+        let genre = genrerank.field("genre", field_str().build());
+        let secondary = genrerank.field("secondary", field_str().build());
+        let sort = genrerank.field("sort", field_i32().build());
+        let rank = genrerank.field("rank", field_i32().build());
+        let track = genrerank.field("track", field_str().build());
+        genrerank.unique_index("conflict_idx", &[&genre, &secondary, &sort, &track]);
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_repeated_param".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }

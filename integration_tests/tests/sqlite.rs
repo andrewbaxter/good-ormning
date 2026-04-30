@@ -1178,3 +1178,88 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
     assert_eq!(res[1], "c");
     Ok(())
 }
+
+#[test]
+fn test_repeated_param() -> Result<(), loga::Error> {
+    good_ormning::good_module!(dbm, "sqlite_gen_repeated_param");
+    let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;
+    dbm::migrate(&mut db, None)?;
+
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_repeated_param",
+        r#"
+                    insert into "genrerank"
+                        (
+                            "date", 
+                            "genre", 
+                            "secondary", 
+                            "sort", 
+                            "rank", 
+                            "track"
+                        )
+                        values (
+                            $date,
+                            $genre,
+                            $secondary,
+                            $sort,
+                            $rank,
+                            $track
+                        )
+                    on conflict ("genre", "secondary", "sort", "track")
+                        do update set "date" = $date, "rank" = $rank
+    "#;
+        dbm::DbSqliteGenRepeatedParam1(&mut db),
+        date: i32 = 20260501,
+        genre: string = "rock",
+        secondary: string = "classic",
+        sort: i32 = 1,
+        rank: i32 = 10,
+        track: string = "song1"
+    )?;
+
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_repeated_param",
+        r#"
+                    insert into "genrerank"
+                        (
+                            "date", 
+                            "genre", 
+                            "secondary", 
+                            "sort", 
+                            "rank", 
+                            "track"
+                        )
+                        values (
+                            $date,
+                            $genre,
+                            $secondary,
+                            $sort,
+                            $rank,
+                            $track
+                        )
+                    on conflict ("genre", "secondary", "sort", "track")
+                        do update set "date" = $date, "rank" = $rank
+    "#;
+        dbm::DbSqliteGenRepeatedParam1(&mut db),
+        date: i32 = 20260502,
+        genre: string = "rock",
+        secondary: string = "classic",
+        sort: i32 = 1,
+        rank: i32 = 5,
+        track: string = "song1"
+    )?;
+
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_repeated_param",
+        r#"select "genrerank" . "date" as "date" from "genrerank""#;
+        dbm::DbSqliteGenRepeatedParam1(&mut db)
+    )?, 20260502);
+
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        "sqlite_gen_repeated_param",
+        r#"select "genrerank" . "rank" as "rank" from "genrerank""#;
+        dbm::DbSqliteGenRepeatedParam1(&mut db)
+    )?, 5);
+
+    Ok(())
+}
