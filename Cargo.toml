@@ -10,8 +10,8 @@ readme = "readme.md"
 
 [features]
 default = []
-chrono = ["dep:chrono", "good-ormning-core/chrono"]
-jiff = ["dep:jiff", "good-ormning-core/jiff"]
+chrono = ["dep:chrono", "good-ormning-core/chrono", "good-ormning-macros/chrono"]
+jiff = ["dep:jiff", "good-ormning-core/jiff", "good-ormning-macros/jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
 

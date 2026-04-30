@@ -191,7 +191,7 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
     let db_alias_name = format_ident!("Db{}", pascal_db_name);
     let db_others: Vec<TokenStream> = vec![];
     let tokens = quote!{
-        #![allow(unused)] use good_ormning:: runtime:: GoodError;
+        use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
         #(#db_types) * pub enum #enum_name <'a,
         C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
