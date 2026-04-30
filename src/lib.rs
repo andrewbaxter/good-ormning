@@ -12,6 +12,20 @@ pub use good_ormning_core::{
     QueryResCount,
 };
 
+/// Create a module containing the generated code for a database.
+///
+/// # Parameters
+///
+/// * `$vis` - (Optional) Visibility of the module (e.g., `pub`).
+/// * `$mod_name` - The name of the module to create.
+/// * `$db_name` - (Optional) The database name string literal. Must match the name passed to `generate`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// good_module!(dbm);
+/// good_module!(pub my_db, "custom_db");
+/// ```
 #[macro_export]
 macro_rules! good_module{
     ($vis: vis $mod_name: ident) => {

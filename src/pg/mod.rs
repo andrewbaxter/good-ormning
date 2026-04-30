@@ -39,11 +39,13 @@ pub use {
     },
 };
 
-/// Generate Rust code for migrations and queries.
+/// Generate Rust code for migrations and queries, also saves schema type
+/// information for use by queries.
 ///
 /// # Arguments
 ///
-/// * `output` - the path to a single rust source file where the output will be written
+/// * `db_name` - If you have multiple databases, use this to disambiguate them. You'll
+///   also need to use it in `good_module!` and `good_query!`.
 ///
 /// * `versions` - a list of database version ids and schema versions. The ids must be
 ///   consecutive but can start from any number. Once a version has been applied to a
@@ -51,9 +53,6 @@ pub use {
 ///   in a new version).
 ///
 ///   These will be turned into migrations as part of the `migrate` function.
-///
-/// * `queries` - a list of queries against the schema in the latest version. These
-///   will be turned into functions.
 ///
 /// # Returns
 ///
@@ -71,7 +70,6 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
 
     // Serialize versions for proc macro
     {
-        eprintln!("DEBUG: Writing versions to {:?}", json_path);
         let mut versions_map: HashMap<usize, Version> = if json_path.exists() {
             serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap_or_default()
         } else {
@@ -214,7 +212,10 @@ pub fn generate(db_name: Option<&str>, versions: Vec<(usize, Version)>) -> Resul
             }
             Ok(())
         }
-        pub async fn migrate(
+        #[
+            doc =
+                "(Initialize and) migrate the database to the latest schema version. Optionally takes a callback which is run after each version, so custom post-schema change code can be run. Use `good_query!` macros with the version parameter to do migrations."
+        ] pub async fn migrate(
             db: & mut tokio_postgres:: Client,
             callback: Option <&(
                 dyn for <'b > Fn(

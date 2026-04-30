@@ -217,7 +217,6 @@ fn parse_and_generate_pg(
     }
     let mut query = crate::convert::pg::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
-
     let mut hasher = DefaultHasher::new();
     input.sql.hash(&mut hasher);
     let query_hash = hasher.finish();
@@ -314,7 +313,6 @@ fn parse_and_generate_sqlite(
     }
     let mut query = crate::convert::sqlite::convert_query(&input, statement, &custom_types, &field_lookup);
     query.res_count = res_count;
-
     let mut hasher = DefaultHasher::new();
     input.sql.hash(&mut hasher);
     let query_hash = hasher.finish();
@@ -348,48 +346,56 @@ fn parse_and_generate_sqlite(
     }
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_pg(input, good_ormning_core::QueryResCount::None).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_one_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_pg(input, good_ormning_core::QueryResCount::One).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_opt_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_pg(input, good_ormning_core::QueryResCount::MaybeOne).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_many_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_pg(input, good_ormning_core::QueryResCount::Many).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::None).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_one_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::One).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_opt_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
     parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::MaybeOne).into()
 }
 
+/// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_many_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
