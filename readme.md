@@ -38,6 +38,8 @@ fn main() {
 
 `generate` will save the version type info in `$OUT_DIR` for use in the proc macros, and generates code to perform database migrations.
 
+You can also programmatically assemble queries using ast objects and pass them in to `GenerateArgs` to have it turn them into functions in the created module.
+
 Use the database with:
 
 ```rust,ignore
@@ -60,6 +62,8 @@ fn main() {
 ```
 
 `migrate`'s second parameter is a callback which is called after each migration, so you can run custom fixup code in migrations.
+
+Output:
 
 ```markdown
 User: rust human, Points: 0
