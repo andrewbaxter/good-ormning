@@ -8,7 +8,7 @@ package.readme = "readme.md"
 
 [package]
 name = "good-ormning"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 license.workspace = true
 description.workspace = true
@@ -52,8 +52,8 @@ async-trait = "0.1"
 loga = "0.4"
 sqlparser = "0.52"
 convert_case = "0.7.1"
-good-ormning-core = { version = "0.5.0", path = "core" }
-good-ormning-macros = { version = "0.5.0", path = "macros" }
+good-ormning-core = { version = "0.5.1", path = "core" }
+good-ormning-macros = { version = "0.5.1", path = "macros" }
 
 [dev-dependencies]
 rusqlite = "0.37"
