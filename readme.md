@@ -38,7 +38,7 @@ fn main() {
 
 `generate` will save the version type info in `$OUT_DIR` for use in the proc macros, and generates code to perform database migrations.
 
-You can also programmatically assemble queries using ast objects and pass them in to `GenerateArgs` to have it turn them into functions in the created module.
+You can also programmatically assemble queries using AST objects and pass them in to `GenerateArgs` to have it turn them into functions in the created module.
 
 Use the database with:
 
@@ -52,7 +52,7 @@ fn main() {
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
     dbm::migrate(&mut db, None).unwrap();
 
-    good_query!("insert into users (name, points) values ($name, $points)"; dbm::Db(&mut db), name: string = "rust human", points: i64 = 0).unwrap();
+    good_query!("insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"; dbm::Db(&mut db)).unwrap();
 
     let users = good_ormning::sqlite::good_query_many!("select name, points from users"; dbm::Db(&mut db)).unwrap();
     for user in users {
@@ -131,9 +131,13 @@ They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL
 
 - `SQL` - The literal SQL query you want to execute. This will be parsed and used to do type checking and return type generation.
 
+  You can add parameters directly in the SQL, using the syntax `${TYPE = VALUE}`. See `PARAMS` for the list of types.
+
 - `CONN` - The database connection
 
 - `PARAM: TYPE = VALUE` - The parameter values and their types (because the proc macro doesn't receive type information...).
+
+  This is an alternative to putting the parameters directly in the SQL. It's useful if you want to use the same parameter multiple times in the query.
 
   `TYPE` takes the format `[arr] [opt] type`. `type` can be any custom type name, or:
   - `i16`, `i32`, `i64`, `u32`, `f32`, `f64`
