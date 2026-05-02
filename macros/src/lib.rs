@@ -199,10 +199,8 @@ impl Parse for GoodQueryInput {
                     opt: opt_p,
                     base: base_p,
                 }));
-
                 final_sql.push_str(&format!("${}", param_idx));
                 last_end = end + 1;
-
             } else {
                 return Err(input.error("Unclosed inline parameter ${"));
             }

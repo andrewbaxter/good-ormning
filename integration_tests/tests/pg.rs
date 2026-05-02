@@ -1105,7 +1105,6 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_repeated_param");
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, None).await?;
-
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
         r#"
@@ -1137,7 +1136,6 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
         rank: i32 = 10,
         track: string = "song1"
     ).await?;
-
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
         r#"
@@ -1169,18 +1167,15 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
         rank: i32 = 5,
         track: string = "song1"
     ).await?;
-
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
         r#"select "genrerank" . "date" as "date" from "genrerank""#;
         dbm::DbPgGenRepeatedParam1(&mut db)
     ).await?, 20260502);
-
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
         r#"select "genrerank" . "rank" as "rank" from "genrerank""#;
         dbm::DbPgGenRepeatedParam1(&mut db)
     ).await?, 5);
-
     Ok(())
 }
