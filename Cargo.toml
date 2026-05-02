@@ -10,14 +10,14 @@ readme = "readme.md"
 
 [features]
 default = []
-chrono = ["dep:chrono"]
-jiff = ["dep:jiff"]
-pg = []
-sqlite = []
+chrono = ["dep:chrono", "good-ormning-core/chrono", "good-ormning-macros/chrono"]
+jiff = ["dep:jiff", "good-ormning-core/jiff", "good-ormning-macros/jiff"]
+pg = ["dep:tokio-postgres"]
+sqlite = ["dep:rusqlite"]
 
 [dependencies]
-chrono = { version = "0.4", optional = true }
-jiff = { version = "0.2", optional = true }
+chrono = { version = "0.4", optional = true, features = ["serde"] }
+jiff = { version = "0.2", optional = true, features = ["serde"] }
 enum_dispatch = "0.3"
 flowcontrol = "0.2.2"
 genemichaels-lib = "0.5.0-pre3"
@@ -25,20 +25,28 @@ hex = "0.4"
 proc-macro2 = "1"
 quote = "1"
 rpds = "1"
+dyn-clone = "1.0"
 samevariant = "0.0"
 stable-hash = "0.4"
 syn = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.37", optional = true, features = [
+    "array",
+    "bundled",
+] }
+tokio-postgres = { version = "0.7", optional = true }
+async-trait = "0.1"
+loga = "0.4"
+sqlparser = "0.52"
+convert_case = "0.7.1"
+good-ormning-core = { path = "core" }
+good-ormning-macros = { path = "macros" }
 
 [workspace]
-members = ["integration_tests", "runtime"]
+members = ["integration_tests", "macros"]
 
 [dev-dependencies]
-good-ormning-runtime = { path = "runtime", features = [
-    "pg",
-    "sqlite",
-    "chrono",
-    "jiff",
-] }
 rusqlite = "0.37"
 
 [package.metadata.docs.rs]
