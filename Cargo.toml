@@ -26,6 +26,7 @@ chrono = [
 jiff = ["dep:jiff", "good-ormning-core/jiff", "good-ormning-macros/jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
+import = ["dep:aargvark", "dep:tokio", "pg", "sqlite"]
 
 [dependencies]
 chrono = { version = "0.4", optional = true, features = ["serde"] }
@@ -49,11 +50,18 @@ rusqlite = { version = "0.37", optional = true, features = [
 ] }
 tokio-postgres = { version = "0.7", optional = true }
 async-trait = "0.1"
+aargvark = { version = "0.9", optional = true }
+tokio = { version = ">=0", features = ["macros", "rt-multi-thread"], optional = true }
 loga = "0.4"
 sqlparser = "0.52"
 convert_case = "0.7.1"
 good-ormning-core = { version = "0.5.1", path = "core" }
 good-ormning-macros = { version = "0.5.1", path = "macros" }
+
+[[bin]]
+name = "good-ormning-import"
+path = "src/import/main.rs"
+required-features = ["import"]
 
 [dev-dependencies]
 rusqlite = "0.37"

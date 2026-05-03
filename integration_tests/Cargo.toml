@@ -14,6 +14,7 @@ tokio = { version = ">=0", features = ["macros", "rt"] }
     "pg",
     "sqlite",
     "jiff",
+    "import",
 ] }
 "good-ormning-macros" = { path = "../macros" }
 tokio-postgres = { version = ">=0", features = [
@@ -21,6 +22,7 @@ tokio-postgres = { version = ">=0", features = [
     "with-jiff-0_2",
 ] }
 loga = ">=0"
+good-ormning-core = { version = "0.5.1", path = "../core" }
 flowcontrol = ">=0"
 tempfile = "3.27.0"
 pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide" }

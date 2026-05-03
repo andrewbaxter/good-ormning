@@ -5,6 +5,8 @@ pub mod pg;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 pub mod runtime;
+#[cfg(feature = "import")]
+pub mod import;
 
 pub use good_ormning_core::{
     utils,
