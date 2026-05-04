@@ -13,8 +13,7 @@ use {
 };
 
 async fn new_client(server: &PgliteServer) -> tokio_postgres::Client {
-    let (client, db_conn) =
-        tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls).await.unwrap();
+    let (client, db_conn) = tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls).await.unwrap();
     tokio::spawn(async move {
         if let Err(e) = db_conn.await {
             eprintln!("connection error: {}", e);
@@ -27,7 +26,6 @@ async fn new_client(server: &PgliteServer) -> tokio_postgres::Client {
 async fn test_import_pg() {
     let server = PgliteServer::temporary_tcp().unwrap();
     let client = new_client(&server).await;
-
     client.simple_query("SET search_path TO public").await.unwrap();
     for stmt in [
         "CREATE TABLE users (id bigserial PRIMARY KEY, name text NOT NULL, score double precision, active boolean NOT NULL DEFAULT true, data bytea)",
@@ -37,7 +35,6 @@ async fn test_import_pg() {
     ] {
         client.simple_query(stmt).await.unwrap();
     }
-
     let version = pg::read_schema(&client).await.unwrap();
 
     // Verify tables
@@ -56,6 +53,7 @@ async fn test_import_pg() {
         SimpleSimpleType::Auto,
         "id field should be Auto type (bigserial)"
     );
+
     // PK constraint
     let has_pk = users.constraints.values().any(|c| matches!(&c.type_, ConstraintType::PrimaryKey(_)));
     assert!(has_pk, "users missing PK constraint");

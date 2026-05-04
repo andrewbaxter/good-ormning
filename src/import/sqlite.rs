@@ -74,7 +74,7 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         let mut out = vec![];
         let rows = stmt.query_map([], |r| r.get::<_, String>(0)).context("Querying table list")?;
         for row in rows {
-            out.push(row.map_err(|e| loga::err(e))?);
+            out.push(row.map_err(loga::err).context("Reading row from table list")?);
         }
         out
     };
@@ -96,7 +96,6 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
     }
 
     let mut table_raws: Vec<(String, TableRaw)> = vec![];
-
     for table_name in &table_names {
         struct ColInfo {
             name: String,
@@ -107,22 +106,18 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
 
         let cols: Vec<ColInfo> = {
             let mut stmt =
-                conn
-                    .prepare(&format!("PRAGMA table_info(\"{}\")", table_name))
-                    .context("Preparing table_info")?;
+                conn.prepare(&format!("PRAGMA table_info(\"{}\")", table_name)).context("Preparing table_info")?;
             let mut out = vec![];
-            let rows = stmt
-                .query_map([], |r| {
-                    Ok(ColInfo {
-                        name: r.get(1)?,
-                        type_str: r.get::<_, String>(2).unwrap_or_default(),
-                        notnull: r.get::<_, i64>(3).unwrap_or(0) != 0,
-                        pk_pos: r.get::<_, i64>(5).unwrap_or(0),
-                    })
+            let rows = stmt.query_map([], |r| {
+                Ok(ColInfo {
+                    name: r.get(1)?,
+                    type_str: r.get::<_, String>(2).unwrap_or_default(),
+                    notnull: r.get::<_, i64>(3).unwrap_or(0) != 0,
+                    pk_pos: r.get::<_, i64>(5).unwrap_or(0),
                 })
-                .context("Querying table_info")?;
+            }).context("Querying table_info")?;
             for row in rows {
-                out.push(row.map_err(|e| loga::err(e))?);
+                out.push(row.map_err(loga::err).context("Reading row from table_info")?);
             }
             out
         };
@@ -134,12 +129,11 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         } else {
             None
         };
-
         let mut fields: BTreeMap<String, Field> = BTreeMap::new();
+
         // sql column name → the field_id used as BTreeMap key
         let mut sql_to_field_id: HashMap<String, String> = HashMap::new();
         let mut constraints: BTreeMap<String, Constraint> = BTreeMap::new();
-
         for col in &cols {
             let is_rowid = rowid_alias.map(|r| r.name == col.name).unwrap_or(false);
             if is_rowid {
@@ -150,6 +144,7 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     type_: make_field_type(SimpleSimpleType::Auto, false),
                 });
                 sql_to_field_id.insert(col.name.clone(), "rowid".to_string());
+
                 // A PK constraint is needed so good-ormning generates INTEGER PRIMARY KEY.
                 constraints.insert(format!("{}_pkey", table_name), Constraint {
                     id: format!("{}_pkey", table_name),
@@ -159,10 +154,9 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             } else {
                 let field_id = col.name.clone();
                 let sst =
-                    map_type(&col.type_str)
-                        .context(
-                            format!("Mapping type for column {:?} of table {:?}", col.name, table_name),
-                        )?;
+                    map_type(
+                        &col.type_str,
+                    ).context(format!("Mapping type for column {:?} of table {:?}", col.name, table_name))?;
                 fields.insert(field_id.clone(), Field {
                     id: col.name.clone(),
                     renamed_from: None,
@@ -179,12 +173,11 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             constraints.insert(format!("{}_pkey", table_name), Constraint {
                 id: format!("{}_pkey", table_name),
                 renamed_from: None,
-                type_: ConstraintType::PrimaryKey(PrimaryKeyDef {
-                    fields: sorted_pk
-                        .into_iter()
-                        .map(|(_, c)| sql_to_field_id[&c.name].clone())
-                        .collect(),
-                }),
+                type_: ConstraintType::PrimaryKey(
+                    PrimaryKeyDef {
+                        fields: sorted_pk.into_iter().map(|(_, c)| sql_to_field_id[&c.name].clone()).collect(),
+                    },
+                ),
             });
         }
 
@@ -195,19 +188,17 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     .prepare(&format!("PRAGMA foreign_key_list(\"{}\")", table_name))
                     .context("Preparing foreign_key_list")?;
             let mut out = vec![];
-            let rows = stmt
-                .query_map([], |r| {
-                    Ok(RawFk {
-                        fk_id: r.get(0)?,
-                        seq: r.get(1)?,
-                        remote_table: r.get(2)?,
-                        local_col: r.get(3)?,
-                        remote_col: r.get(4)?,
-                    })
+            let rows = stmt.query_map([], |r| {
+                Ok(RawFk {
+                    fk_id: r.get(0)?,
+                    seq: r.get(1)?,
+                    remote_table: r.get(2)?,
+                    local_col: r.get(3)?,
+                    remote_col: r.get(4)?,
                 })
-                .context("Querying foreign_key_list")?;
+            }).context("Querying foreign_key_list")?;
             for row in rows {
-                out.push(row.map_err(|e| loga::err(e))?);
+                out.push(row.map_err(loga::err).context("Reading row from foreign_key_list")?);
             }
             out
         };
@@ -219,19 +210,18 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                 name: String,
                 unique: bool,
             }
+
             let idx_entries: Vec<IdxEntry> = {
                 let mut stmt =
                     conn
                         .prepare(&format!("PRAGMA index_list(\"{}\")", table_name))
                         .context("Preparing index_list")?;
                 let mut out = vec![];
-                let rows = stmt
-                    .query_map([], |r| {
-                        Ok((r.get::<_, String>(1)?, r.get::<_, i64>(2)? != 0, r.get::<_, String>(3)?))
-                    })
-                    .context("Querying index_list")?;
+                let rows = stmt.query_map([], |r| {
+                    Ok((r.get::<_, String>(1)?, r.get::<_, i64>(2)? != 0, r.get::<_, String>(3)?))
+                }).context("Querying index_list")?;
                 for row in rows {
-                    let (name, unique, origin) = row.map_err(|e| loga::err(e))?;
+                    let (name, unique, origin) = row.map_err(loga::err).context("Reading row from index_list")?;
                     if origin != "pk" {
                         out.push(IdxEntry {
                             name: name,
@@ -248,25 +238,29 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                             .prepare(&format!("PRAGMA index_info(\"{}\")", entry.name))
                             .context("Preparing index_info")?;
                     let mut out = vec![];
-                    let rows = stmt
-                        .query_map([], |r| r.get::<_, String>(2))
-                        .context("Querying index_info")?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(2)).context("Querying index_info")?;
                     for row in rows {
-                        out.push(row.map_err(|e| loga::err(e))?);
+                        out.push(row.map_err(loga::err).context("Reading row from index_info")?);
                     }
                     out
                 };
+
                 // Convert sql column names to field_ids.
-                let field_ids =
-                    col_names
-                        .iter()
-                        .map(|col| {
-                            sql_to_field_id
-                                .get(col)
-                                .cloned()
-                                .ok_or_else(|| loga::err(format!("Index {:?} references unknown column {:?} in table {:?}", entry.name, col, table_name)))
-                        })
-                        .collect::<Result<Vec<String>, _>>()?;
+                let field_ids = col_names.iter().map(|col| {
+                    sql_to_field_id
+                        .get(col)
+                        .cloned()
+                        .ok_or_else(
+                            || loga::err(
+                                format!(
+                                    "Index {:?} references unknown column {:?} in table {:?}",
+                                    entry.name,
+                                    col,
+                                    table_name
+                                ),
+                            ),
+                        )
+                }).collect::<Result<Vec<String>, _>>()?;
                 indices.insert(entry.name.clone(), Index {
                     id: entry.name,
                     renamed_from: None,
@@ -275,7 +269,6 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                 });
             }
         }
-
         table_raws.push((table_name.clone(), TableRaw {
             table: Table {
                 id: table_name.clone(),
@@ -289,10 +282,10 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         }));
     }
 
-    // Pass 2: resolve FK remote column sql names to field_ids using the complete table map.
+    // Pass 2: resolve FK remote column sql names to field_ids using the complete
+    // table map.
     let sql_to_field_id_by_table: HashMap<String, HashMap<String, String>> =
         table_raws.iter().map(|(name, raw)| (name.clone(), raw.sql_to_field_id.clone())).collect();
-
     let mut tables: BTreeMap<String, Table> = BTreeMap::new();
     for (table_name, mut raw) in table_raws {
         // Group raw FKs by fk_id.
@@ -308,23 +301,39 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             pairs.sort_by_key(|(seq, _, _)| *seq);
             let remote_map = sql_to_field_id_by_table.get(&remote_table);
             let field_pairs =
-                pairs
-                    .into_iter()
-                    .map(|(_, local_col, remote_col)| -> Result<(String, String), loga::Error> {
-                        let local_fid =
-                            raw
-                                .sql_to_field_id
-                                .get(&local_col)
-                                .cloned()
-                                .ok_or_else(|| loga::err(format!("FK {:?} in table {:?} references unknown local column {:?}", fk_id, table_name, local_col)))?;
-                        let remote_fid =
-                            remote_map
-                                .and_then(|m| m.get(&remote_col))
-                                .cloned()
-                                .ok_or_else(|| loga::err(format!("FK {:?} in table {:?} references unknown column {:?} in remote table {:?}", fk_id, table_name, remote_col, remote_table)))?;
-                        return Ok((local_fid, remote_fid));
-                    })
-                    .collect::<Result<Vec<(String, String)>, _>>()?;
+                pairs.into_iter().map(|(_, local_col, remote_col)| -> Result<(String, String), loga::Error> {
+                    let local_fid =
+                        raw
+                            .sql_to_field_id
+                            .get(&local_col)
+                            .cloned()
+                            .ok_or_else(
+                                || loga::err(
+                                    format!(
+                                        "FK {:?} in table {:?} references unknown local column {:?}",
+                                        fk_id,
+                                        table_name,
+                                        local_col
+                                    ),
+                                ),
+                            )?;
+                    let remote_fid =
+                        remote_map
+                            .and_then(|m| m.get(&remote_col))
+                            .cloned()
+                            .ok_or_else(
+                                || loga::err(
+                                    format!(
+                                        "FK {:?} in table {:?} references unknown column {:?} in remote table {:?}",
+                                        fk_id,
+                                        table_name,
+                                        remote_col,
+                                        remote_table
+                                    ),
+                                ),
+                            )?;
+                    return Ok((local_fid, remote_fid));
+                }).collect::<Result<Vec<(String, String)>, _>>()?;
             let constraint_name = format!("{}_{}_fkey", table_name, fk_id);
             raw.table.constraints.insert(constraint_name.clone(), Constraint {
                 id: constraint_name,
@@ -337,7 +346,6 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         }
         tables.insert(table_name, raw.table);
     }
-
     return Ok(Version {
         tables: tables,
         custom_types: BTreeMap::new(),

@@ -49,7 +49,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     match main_inner().await {
-        Ok(_) => {},
+        Ok(_) => { },
         Err(e) => {
             loga::fatal(e);
         },
@@ -75,8 +75,7 @@ async fn main_inner() -> Result<(), loga::Error> {
             println!("{}", code);
         },
         Engine::Sqlite => {
-            let conn =
-                rusqlite::Connection::open(&args.connection).context("Opening SQLite database")?;
+            let conn = rusqlite::Connection::open(&args.connection).context("Opening SQLite database")?;
             let version = sqlite::read_schema(&conn)?;
             let code = codegen::generate_sqlite(&version, &db_name).context("Generating sqlite build.rs")?;
             println!("{}", code);

@@ -74,9 +74,7 @@ fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
 
 fn parse_index_columns(indexdef: &str) -> Result<Vec<String>, loga::Error> {
     let dialect = PostgreSqlDialect {};
-    let mut stmts =
-        Parser::parse_sql(&dialect, indexdef)
-            .map_err(|e| loga::err(format!("Failed to parse index DDL: {}", e)))?;
+    let mut stmts = Parser::parse_sql(&dialect, indexdef).map_err(loga::err).context("Failed to parse index DDL")?;
     let stmt = stmts.pop().ok_or_else(|| loga::err("Empty index DDL"))?;
     match stmt {
         Statement::CreateIndex(CreateIndex { columns, .. }) => {
@@ -95,8 +93,8 @@ fn parse_index_columns(indexdef: &str) -> Result<Vec<String>, loga::Error> {
     }
 }
 
-/// Read the current schema from a PostgreSQL client, returning a `Version`
-/// using the existing good-ormning schema model.
+/// Read the current schema from a PostgreSQL client, returning a `Version` using
+/// the existing good-ormning schema model.
 pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
     let table_rows =
         client
@@ -107,18 +105,17 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             .await
             .context("Querying table list")?;
     let table_names: Vec<String> = table_rows.iter().map(|r| r.get(0)).collect();
-
     let mut tables: BTreeMap<String, Table> = BTreeMap::new();
-
     for table_name in &table_names {
         // Columns via pg_attribute + pg_type.
-        let col_rows = client
-            .query(
-                "SELECT a.attname, t.typname, NOT a.attnotnull, pg_catalog.pg_get_expr(d.adbin, d.adrelid) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_type t ON t.oid = a.atttypid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum",
-                &[table_name],
-            )
-            .await
-            .context("Querying columns")?;
+        let col_rows =
+            client
+                .query(
+                    "SELECT a.attname, t.typname, NOT a.attnotnull, pg_catalog.pg_get_expr(d.adbin, d.adrelid) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_type t ON t.oid = a.atttypid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum",
+                    &[table_name],
+                )
+                .await
+                .context("Querying columns")?;
 
         // In PG, field_id == sql column name (no rowid concept).
         let mut fields: BTreeMap<String, Field> = BTreeMap::new();
@@ -128,8 +125,10 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             let is_nullable: bool = row.get(2);
             let col_default: Option<String> = row.get(3);
             let sst =
-                map_type(&typname, col_default.as_deref())
-                    .context(format!("Mapping type for column {:?} of table {:?}", col_name, table_name))?;
+                map_type(
+                    &typname,
+                    col_default.as_deref(),
+                ).context(format!("Mapping type for column {:?} of table {:?}", col_name, table_name))?;
             fields.insert(col_name.clone(), Field {
                 id: col_name.clone(),
                 renamed_from: None,
@@ -138,14 +137,14 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
         }
 
         // Primary key constraints via pg_constraint.
-        let pk_rows = client
-            .query(
-                "SELECT con.conname, a.attname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(con.conkey) WHERE n.nspname = 'public' AND c.relname = $1 AND con.contype = 'p' ORDER BY con.conname, array_position(con.conkey, a.attnum)",
-                &[table_name],
-            )
-            .await
-            .context("Querying primary key constraints")?;
-
+        let pk_rows =
+            client
+                .query(
+                    "SELECT con.conname, a.attname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(con.conkey) WHERE n.nspname = 'public' AND c.relname = $1 AND con.contype = 'p' ORDER BY con.conname, array_position(con.conkey, a.attnum)",
+                    &[table_name],
+                )
+                .await
+                .context("Querying primary key constraints")?;
         let mut constraints: BTreeMap<String, Constraint> = BTreeMap::new();
         if !pk_rows.is_empty() {
             let pk_name: String = pk_rows[0].get(0);
@@ -158,14 +157,14 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
         }
 
         // Foreign key constraints via pg_constraint.
-        let fk_rows = client
-            .query(
-                "SELECT con.conname, la.attname, fc.relname, fa.attname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class fc ON fc.oid = con.confrelid CROSS JOIN LATERAL unnest(con.conkey, con.confkey) AS u(local_att, foreign_att) JOIN pg_catalog.pg_attribute la ON la.attrelid = c.oid AND la.attnum = u.local_att JOIN pg_catalog.pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = u.foreign_att WHERE n.nspname = 'public' AND c.relname = $1 AND con.contype = 'f' ORDER BY con.conname, u.local_att",
-                &[table_name],
-            )
-            .await
-            .context("Querying foreign key constraints")?;
-
+        let fk_rows =
+            client
+                .query(
+                    "SELECT con.conname, la.attname, fc.relname, fa.attname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class fc ON fc.oid = con.confrelid CROSS JOIN LATERAL unnest(con.conkey, con.confkey) AS u(local_att, foreign_att) JOIN pg_catalog.pg_attribute la ON la.attrelid = c.oid AND la.attnum = u.local_att JOIN pg_catalog.pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = u.foreign_att WHERE n.nspname = 'public' AND c.relname = $1 AND con.contype = 'f' ORDER BY con.conname, u.local_att",
+                    &[table_name],
+                )
+                .await
+                .context("Querying foreign key constraints")?;
         let mut fk_map: HashMap<String, (String, Vec<(String, String)>)> = HashMap::new();
         for row in &fk_rows {
             let constraint_name: String = row.get(0);
@@ -189,21 +188,25 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             });
         }
 
-        // Non-constraint indexes: use pg_index, filtering out pk/fk/unique constraint indexes.
-        let idx_rows = client
-            .query(
-                "SELECT ic.relname, pg_catalog.pg_get_indexdef(ix.indexrelid), ix.indisunique FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class tc ON tc.oid = ix.indrelid JOIN pg_catalog.pg_namespace tn ON tn.oid = tc.relnamespace JOIN pg_catalog.pg_class ic ON ic.oid = ix.indexrelid WHERE tn.nspname = 'public' AND tc.relname = $1 AND NOT ix.indisprimary AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con WHERE con.conindid = ix.indexrelid) ORDER BY ic.relname",
-                &[table_name],
-            )
-            .await
-            .context("Querying indexes")?;
-
+        // Non-constraint indexes: use pg_index, filtering out pk/fk/unique constraint
+        // indexes.
+        let idx_rows =
+            client
+                .query(
+                    "SELECT ic.relname, pg_catalog.pg_get_indexdef(ix.indexrelid), ix.indisunique FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class tc ON tc.oid = ix.indrelid JOIN pg_catalog.pg_namespace tn ON tn.oid = tc.relnamespace JOIN pg_catalog.pg_class ic ON ic.oid = ix.indexrelid WHERE tn.nspname = 'public' AND tc.relname = $1 AND NOT ix.indisprimary AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con WHERE con.conindid = ix.indexrelid) ORDER BY ic.relname",
+                    &[table_name],
+                )
+                .await
+                .context("Querying indexes")?;
         let mut indices: BTreeMap<String, Index> = BTreeMap::new();
         for row in &idx_rows {
             let index_name: String = row.get(0);
             let indexdef: String = row.get(1);
             let is_unique: bool = row.get(2);
-            let cols = parse_index_columns(&indexdef)?;
+            let cols =
+                parse_index_columns(
+                    &indexdef,
+                ).context(format!("Parsing columns for index {:?} on table {:?}", index_name, table_name))?;
             indices.insert(index_name.clone(), Index {
                 id: index_name,
                 renamed_from: None,
@@ -211,7 +214,6 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
                 unique: is_unique,
             });
         }
-
         tables.insert(table_name.clone(), Table {
             id: table_name.clone(),
             renamed_from: None,
@@ -220,7 +222,6 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             constraints: constraints,
         });
     }
-
     return Ok(Version {
         tables: tables,
         custom_types: BTreeMap::new(),

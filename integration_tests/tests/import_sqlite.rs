@@ -9,8 +9,9 @@ use {
 #[test]
 fn test_import_sqlite() {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    conn.execute_batch(
-        "
+    conn
+        .execute_batch(
+            "
         CREATE TABLE users (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -26,9 +27,8 @@ fn test_import_sqlite() {
         CREATE INDEX idx_posts_user ON posts(user_id);
         CREATE UNIQUE INDEX idx_posts_title ON posts(title);
     ",
-    )
-    .unwrap();
-
+        )
+        .unwrap();
     let version = sqlite::read_schema(&conn).unwrap();
 
     // Verify tables
@@ -41,6 +41,7 @@ fn test_import_sqlite() {
     assert!(users.fields.contains_key("name"), "users missing name field");
     assert!(users.fields.contains_key("score"), "users missing score field");
     assert!(users.fields.contains_key("data"), "users missing data field");
+
     // PK constraint must be present for rowid alias
     let has_pk = users.constraints.values().any(|c| matches!(&c.type_, ConstraintType::PrimaryKey(_)));
     assert!(has_pk, "users missing PK constraint");
