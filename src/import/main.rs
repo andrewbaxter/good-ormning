@@ -71,14 +71,14 @@ async fn main_inner() -> Result<(), loga::Error> {
                 }
             });
             let version = pg::read_schema(&client).await?;
-            let code = codegen::generate_pg(&version, &db_name);
+            let code = codegen::generate_pg(&version, &db_name).context("Generating pg build.rs")?;
             println!("{}", code);
         },
         Engine::Sqlite => {
             let conn =
                 rusqlite::Connection::open(&args.connection).context("Opening SQLite database")?;
             let version = sqlite::read_schema(&conn)?;
-            let code = codegen::generate_sqlite(&version, &db_name);
+            let code = codegen::generate_sqlite(&version, &db_name).context("Generating sqlite build.rs")?;
             println!("{}", code);
         },
     }

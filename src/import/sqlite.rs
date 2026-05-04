@@ -29,19 +29,20 @@ use {
     },
 };
 
-fn map_type(type_str: &str) -> SimpleSimpleType {
+fn map_type(type_str: &str) -> Result<SimpleSimpleType, loga::Error> {
     let t = type_str.to_lowercase();
     if t.contains("real") || t.contains("floa") || t.contains("doub") {
-        return SimpleSimpleType::F64;
+        return Ok(SimpleSimpleType::F64);
     } else if t.contains("bool") {
-        return SimpleSimpleType::Bool;
+        return Ok(SimpleSimpleType::Bool);
     } else if t.contains("blob") || t.is_empty() {
-        return SimpleSimpleType::Bytes;
+        return Ok(SimpleSimpleType::Bytes);
     } else if t.contains("char") || t.contains("clob") || t.contains("text") {
-        return SimpleSimpleType::String;
+        return Ok(SimpleSimpleType::String);
+    } else if t.contains("int") {
+        return Ok(SimpleSimpleType::I64);
     } else {
-        // "int" and anything else with int affinity, plus unknown → I64
-        return SimpleSimpleType::I64;
+        return Err(loga::err(format!("Unknown SQLite type: {:?}", type_str)));
     }
 }
 
@@ -157,7 +158,11 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                 });
             } else {
                 let field_id = col.name.clone();
-                let sst = map_type(&col.type_str);
+                let sst =
+                    map_type(&col.type_str)
+                        .context(
+                            format!("Mapping type for column {:?} of table {:?}", col.name, table_name),
+                        )?;
                 fields.insert(field_id.clone(), Field {
                     id: col.name.clone(),
                     renamed_from: None,
@@ -252,16 +257,16 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     out
                 };
                 // Convert sql column names to field_ids.
-                let field_ids: Vec<String> =
+                let field_ids =
                     col_names
                         .iter()
                         .map(|col| {
                             sql_to_field_id
                                 .get(col)
                                 .cloned()
-                                .unwrap_or_else(|| col.clone())
+                                .ok_or_else(|| loga::err(format!("Index {:?} references unknown column {:?} in table {:?}", entry.name, col, table_name)))
                         })
-                        .collect();
+                        .collect::<Result<Vec<String>, _>>()?;
                 indices.insert(entry.name.clone(), Index {
                     id: entry.name,
                     renamed_from: None,
@@ -302,17 +307,24 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             let (remote_table, mut pairs) = fk_map.remove(&fk_id).unwrap();
             pairs.sort_by_key(|(seq, _, _)| *seq);
             let remote_map = sql_to_field_id_by_table.get(&remote_table);
-            let field_pairs: Vec<(String, String)> = pairs
-                .into_iter()
-                .map(|(_, local_col, remote_col)| {
-                    let local_fid = raw.sql_to_field_id.get(&local_col).cloned().unwrap_or(local_col);
-                    let remote_fid = remote_map
-                        .and_then(|m| m.get(&remote_col))
-                        .cloned()
-                        .unwrap_or(remote_col);
-                    (local_fid, remote_fid)
-                })
-                .collect();
+            let field_pairs =
+                pairs
+                    .into_iter()
+                    .map(|(_, local_col, remote_col)| -> Result<(String, String), loga::Error> {
+                        let local_fid =
+                            raw
+                                .sql_to_field_id
+                                .get(&local_col)
+                                .cloned()
+                                .ok_or_else(|| loga::err(format!("FK {:?} in table {:?} references unknown local column {:?}", fk_id, table_name, local_col)))?;
+                        let remote_fid =
+                            remote_map
+                                .and_then(|m| m.get(&remote_col))
+                                .cloned()
+                                .ok_or_else(|| loga::err(format!("FK {:?} in table {:?} references unknown column {:?} in remote table {:?}", fk_id, table_name, remote_col, remote_table)))?;
+                        return Ok((local_fid, remote_fid));
+                    })
+                    .collect::<Result<Vec<(String, String)>, _>>()?;
             let constraint_name = format!("{}_{}_fkey", table_name, fk_id);
             raw.table.constraints.insert(constraint_name.clone(), Constraint {
                 id: constraint_name,

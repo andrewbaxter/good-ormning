@@ -1,4 +1,16 @@
-use std::collections::HashMap;
+use {
+    genemichaels_lib::FormatConfig,
+    loga::ResultContext,
+    proc_macro2::{
+        Ident,
+        TokenStream,
+    },
+    quote::{
+        format_ident,
+        quote,
+    },
+    std::collections::HashMap,
+};
 
 fn sanitize_ident(s: &str) -> String {
     let out: String =
@@ -61,217 +73,245 @@ fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> 
     }
 }
 
-fn emit_constraints_and_indices(
-    lines: &mut Vec<String>,
-    tvar: &str,
-    table_key: &str,
-    constraints: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::constraint::Constraint>,
-    indices: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::index::Index>,
+fn lookup_field(
     field_var_map: &HashMap<(String, String), String>,
-) {
-    use good_ormning_core::pg::schema::constraint::ConstraintType;
-    for constraint in constraints.values() {
-        match &constraint.type_ {
-            ConstraintType::PrimaryKey(pk) => {
-                let refs = field_refs(field_var_map, table_key, &pk.fields);
-                lines.push(format!("    {}.primary_key(\"{}\", &[{}]);", tvar, constraint.id, refs));
-            },
-            ConstraintType::ForeignKey(fk) => {
-                let pairs: Vec<String> = fk
-                    .fields
-                    .iter()
-                    .map(|(lf, rf)| {
-                        let lvar = lookup_field(field_var_map, table_key, lf);
-                        let rvar = lookup_field(field_var_map, &fk.remote_table, rf);
-                        format!("(&{}, &{})", lvar, rvar)
-                    })
-                    .collect();
-                lines.push(
-                    format!("    {}.foreign_key(\"{}\", &[{}]);", tvar, constraint.id, pairs.join(", ")),
-                );
-            },
-        }
-    }
-    for index in indices.values() {
-        let refs = field_refs(field_var_map, table_key, &index.fields);
-        if index.unique {
-            lines.push(format!("    {}.unique_index(\"{}\", &[{}]);", tvar, index.id, refs));
-        } else {
-            lines.push(format!("    {}.index(\"{}\", &[{}]);", tvar, index.id, refs));
-        }
-    }
-}
-
-fn emit_constraints_and_indices_sqlite(
-    lines: &mut Vec<String>,
-    tvar: &str,
     table_key: &str,
-    constraints: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::constraint::Constraint>,
-    indices: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::index::Index>,
-    field_var_map: &HashMap<(String, String), String>,
-) {
-    use good_ormning_core::sqlite::schema::constraint::ConstraintType;
-    for constraint in constraints.values() {
-        match &constraint.type_ {
-            ConstraintType::PrimaryKey(pk) => {
-                let refs = field_refs(field_var_map, table_key, &pk.fields);
-                lines.push(format!("    {}.primary_key(\"{}\", &[{}]);", tvar, constraint.id, refs));
-            },
-            ConstraintType::ForeignKey(fk) => {
-                let pairs: Vec<String> = fk
-                    .fields
-                    .iter()
-                    .map(|(lf, rf)| {
-                        let lvar = lookup_field(field_var_map, table_key, lf);
-                        let rvar = lookup_field(field_var_map, &fk.remote_table, rf);
-                        format!("(&{}, &{})", lvar, rvar)
-                    })
-                    .collect();
-                lines.push(
-                    format!("    {}.foreign_key(\"{}\", &[{}]);", tvar, constraint.id, pairs.join(", ")),
-                );
-            },
-        }
-    }
-    for index in indices.values() {
-        let refs = field_refs(field_var_map, table_key, &index.fields);
-        if index.unique {
-            lines.push(format!("    {}.unique_index(\"{}\", &[{}]);", tvar, index.id, refs));
-        } else {
-            lines.push(format!("    {}.index(\"{}\", &[{}]);", tvar, index.id, refs));
-        }
-    }
+    field_id: &str,
+) -> Result<Ident, loga::Error> {
+    let name =
+        field_var_map
+            .get(&(table_key.to_string(), field_id.to_string()))
+            .cloned()
+            .ok_or_else(|| loga::err(format!("Field {:?} not found in table {:?}", field_id, table_key)))?;
+    return Ok(format_ident!("{}", name));
 }
 
-fn field_refs(field_var_map: &HashMap<(String, String), String>, table_key: &str, field_ids: &[String]) -> String {
-    return field_ids
-        .iter()
-        .map(|fid| format!("&{}", lookup_field(field_var_map, table_key, fid)))
-        .collect::<Vec<_>>()
-        .join(", ");
-}
-
-fn lookup_field(field_var_map: &HashMap<(String, String), String>, table_key: &str, field_id: &str) -> String {
-    return field_var_map
-        .get(&(table_key.to_string(), field_id.to_string()))
-        .cloned()
-        .unwrap_or_else(|| format!("/* unknown: {}.{} */", table_key, field_id));
+fn format_tokens(tokens: TokenStream) -> String {
+    match genemichaels_lib::format_str(&tokens.to_string(), &FormatConfig::default()) {
+        Ok(res) => return res.rendered,
+        Err(_) => return tokens.to_string(),
+    }
 }
 
 /// Generate a `build.rs` `main()` body for the given PostgreSQL `Version`.
-pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> String {
-    let ns = "good_ormning::pg::schema::field";
-    let mut lines: Vec<String> = vec![];
-    lines.push("fn main() {".to_string());
-    lines.push("    println!(\"cargo:rerun-if-changed=build.rs\");".to_string());
-    lines.push("    let v = good_ormning::pg::Version::new();".to_string());
+pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> Result<String, loga::Error> {
+    use good_ormning_core::pg::schema::constraint::ConstraintType;
+    let mut stmts: Vec<TokenStream> = vec![];
+    stmts.push(quote! { println!("cargo:rerun-if-changed=build.rs"); });
+    stmts.push(quote! { let v = good_ormning::pg::Version::new(); });
 
-    // Map (table_key, field_id) → rust variable name for constraint/index refs.
     let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
 
     for (table_key, table) in &version.tables {
-        let tvar = format!("t_{}", sanitize_ident(table_key));
-        lines.push(format!("    let {} = v.table(\"{}\");", tvar, table.id));
+        let tvar = format_ident!("t_{}", sanitize_ident(table_key));
+        let table_id = &table.id;
+        stmts.push(quote! { let #tvar = v.table(#table_id); });
 
         for (field_id, field) in &table.fields {
-            let fvar = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
-            let fn_name = pg_field_fn(&field.type_.type_.type_.type_);
-            let opt_chain = if field.type_.type_.opt { ".opt()" } else { "" };
-            lines.push(
-                format!(
-                    "    let {} = {}.field(\"{}\", {}::{}(){}.build());",
-                    fvar,
-                    tvar,
-                    field.id,
-                    ns,
-                    fn_name,
-                    opt_chain
-                ),
-            );
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar);
+            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            let fvar = format_ident!("{}", &fvar_name);
+            let fn_ident = format_ident!("{}", pg_field_fn(&field.type_.type_.type_.type_));
+            let field_id_str = &field.id;
+            if field.type_.type_.opt {
+                stmts.push(quote! {
+                    let #fvar =
+                        #tvar.field(
+                            #field_id_str,
+                            good_ormning::pg::schema::field::#fn_ident().opt().build()
+                        );
+                });
+            } else {
+                stmts.push(quote! {
+                    let #fvar =
+                        #tvar.field(
+                            #field_id_str,
+                            good_ormning::pg::schema::field::#fn_ident().build()
+                        );
+                });
+            }
+            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
         }
 
-        emit_constraints_and_indices(
-            &mut lines,
-            &tvar,
-            table_key,
-            &table.constraints,
-            &table.indices,
-            &field_var_map,
-        );
+        for constraint in table.constraints.values() {
+            let constraint_id = &constraint.id;
+            match &constraint.type_ {
+                ConstraintType::PrimaryKey(pk) => {
+                    let refs =
+                        pk
+                            .fields
+                            .iter()
+                            .map(|fid| -> Result<TokenStream, loga::Error> {
+                                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                                return Ok(quote! { &#fvar });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating primary key constraint {:?}", constraint_id))?;
+                    stmts.push(quote! { #tvar.primary_key(#constraint_id, &[#(#refs),*]); });
+                },
+                ConstraintType::ForeignKey(fk) => {
+                    let pairs =
+                        fk
+                            .fields
+                            .iter()
+                            .map(|(lf, rf)| -> Result<TokenStream, loga::Error> {
+                                let lvar = lookup_field(&field_var_map, table_key, lf)?;
+                                let rvar = lookup_field(&field_var_map, &fk.remote_table, rf)?;
+                                return Ok(quote! { (&#lvar, &#rvar) });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating foreign key constraint {:?}", constraint_id))?;
+                    stmts.push(quote! { #tvar.foreign_key(#constraint_id, &[#(#pairs),*]); });
+                },
+            }
+        }
+
+        for index in table.indices.values() {
+            let index_id = &index.id;
+            let refs =
+                index
+                    .fields
+                    .iter()
+                    .map(|fid| -> Result<TokenStream, loga::Error> {
+                        let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                        return Ok(quote! { &#fvar });
+                    })
+                    .collect::<Result<Vec<TokenStream>, _>>()
+                    .context(format!("Generating index {:?}", index_id))?;
+            if index.unique {
+                stmts.push(quote! { #tvar.unique_index(#index_id, &[#(#refs),*]); });
+            } else {
+                stmts.push(quote! { #tvar.index(#index_id, &[#(#refs),*]); });
+            }
+        }
     }
 
-    lines.push(format!("    good_ormning::pg::generate(good_ormning::pg::GenerateArgs {{"));
-    lines.push(format!("        db_name: Some(\"{}\".to_string()),", db_name));
-    lines.push("        versions: vec![(1usize, v.build())],".to_string());
-    lines.push("        ..Default::default()".to_string());
-    lines.push("    }).unwrap();".to_string());
-    lines.push("}".to_string());
+    stmts.push(quote! {
+        good_ormning::pg::generate(good_ormning::pg::GenerateArgs {
+            db_name: Some(#db_name.to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    });
 
-    return lines.join("\n");
+    return Ok(format_tokens(quote! {
+        fn main() {
+            #(#stmts)*
+        }
+    }));
 }
 
 /// Generate a `build.rs` `main()` body for the given SQLite `Version`.
-pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &str) -> String {
-    let ns = "good_ormning::sqlite::schema::field";
-    let mut lines: Vec<String> = vec![];
-    lines.push("fn main() {".to_string());
-    lines.push("    println!(\"cargo:rerun-if-changed=build.rs\");".to_string());
-    lines.push("    let v = good_ormning::sqlite::Version::new();".to_string());
+pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &str) -> Result<String, loga::Error> {
+    use good_ormning_core::sqlite::schema::constraint::ConstraintType;
+    let mut stmts: Vec<TokenStream> = vec![];
+    stmts.push(quote! { println!("cargo:rerun-if-changed=build.rs"); });
+    stmts.push(quote! { let v = good_ormning::sqlite::Version::new(); });
 
     let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
 
     for (table_key, table) in &version.tables {
-        let tvar = format!("t_{}", sanitize_ident(table_key));
-        lines.push(format!("    let {} = v.table(\"{}\");", tvar, table.id));
+        let tvar = format_ident!("t_{}", sanitize_ident(table_key));
+        let table_id = &table.id;
+        stmts.push(quote! { let #tvar = v.table(#table_id); });
 
         for (field_id, field) in &table.fields {
-            let fvar = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            let fvar = format_ident!("{}", &fvar_name);
             if field_id == "rowid" {
-                // Rowid alias field: use rowid_field() instead of field().
                 if field.id == "rowid" {
-                    lines.push(format!("    let {} = {}.rowid_field(None);", fvar, tvar));
+                    stmts.push(quote! { let #fvar = #tvar.rowid_field(None); });
                 } else {
-                    lines.push(
-                        format!("    let {} = {}.rowid_field(Some(\"{}\"));", fvar, tvar, field.id),
-                    );
+                    let sql_name = &field.id;
+                    stmts.push(quote! { let #fvar = #tvar.rowid_field(Some(#sql_name)); });
                 }
             } else {
-                let fn_name = sqlite_field_fn(&field.type_.type_.type_.type_);
-                let opt_chain = if field.type_.type_.opt { ".opt()" } else { "" };
-                lines.push(
-                    format!(
-                        "    let {} = {}.field(\"{}\", {}::{}(){}.build());",
-                        fvar,
-                        tvar,
-                        field.id,
-                        ns,
-                        fn_name,
-                        opt_chain
-                    ),
-                );
+                let fn_ident = format_ident!("{}", sqlite_field_fn(&field.type_.type_.type_.type_));
+                let field_id_str = &field.id;
+                if field.type_.type_.opt {
+                    stmts.push(quote! {
+                        let #fvar =
+                            #tvar.field(
+                                #field_id_str,
+                                good_ormning::sqlite::schema::field::#fn_ident().opt().build()
+                            );
+                    });
+                } else {
+                    stmts.push(quote! {
+                        let #fvar =
+                            #tvar.field(
+                                #field_id_str,
+                                good_ormning::sqlite::schema::field::#fn_ident().build()
+                            );
+                    });
+                }
             }
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar);
+            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
         }
 
-        emit_constraints_and_indices_sqlite(
-            &mut lines,
-            &tvar,
-            table_key,
-            &table.constraints,
-            &table.indices,
-            &field_var_map,
-        );
+        for constraint in table.constraints.values() {
+            let constraint_id = &constraint.id;
+            match &constraint.type_ {
+                ConstraintType::PrimaryKey(pk) => {
+                    let refs =
+                        pk
+                            .fields
+                            .iter()
+                            .map(|fid| -> Result<TokenStream, loga::Error> {
+                                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                                return Ok(quote! { &#fvar });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating primary key constraint {:?}", constraint_id))?;
+                    stmts.push(quote! { #tvar.primary_key(#constraint_id, &[#(#refs),*]); });
+                },
+                ConstraintType::ForeignKey(fk) => {
+                    let pairs =
+                        fk
+                            .fields
+                            .iter()
+                            .map(|(lf, rf)| -> Result<TokenStream, loga::Error> {
+                                let lvar = lookup_field(&field_var_map, table_key, lf)?;
+                                let rvar = lookup_field(&field_var_map, &fk.remote_table, rf)?;
+                                return Ok(quote! { (&#lvar, &#rvar) });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating foreign key constraint {:?}", constraint_id))?;
+                    stmts.push(quote! { #tvar.foreign_key(#constraint_id, &[#(#pairs),*]); });
+                },
+            }
+        }
+
+        for index in table.indices.values() {
+            let index_id = &index.id;
+            let refs =
+                index
+                    .fields
+                    .iter()
+                    .map(|fid| -> Result<TokenStream, loga::Error> {
+                        let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                        return Ok(quote! { &#fvar });
+                    })
+                    .collect::<Result<Vec<TokenStream>, _>>()
+                    .context(format!("Generating index {:?}", index_id))?;
+            if index.unique {
+                stmts.push(quote! { #tvar.unique_index(#index_id, &[#(#refs),*]); });
+            } else {
+                stmts.push(quote! { #tvar.index(#index_id, &[#(#refs),*]); });
+            }
+        }
     }
 
-    lines.push(format!(
-        "    good_ormning::sqlite::generate(good_ormning::sqlite::GenerateArgs {{"
-    ));
-    lines.push(format!("        db_name: Some(\"{}\".to_string()),", db_name));
-    lines.push("        versions: vec![(1usize, v.build())],".to_string());
-    lines.push("        ..Default::default()".to_string());
-    lines.push("    }).unwrap();".to_string());
-    lines.push("}".to_string());
+    stmts.push(quote! {
+        good_ormning::sqlite::generate(good_ormning::sqlite::GenerateArgs {
+            db_name: Some(#db_name.to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    });
 
-    return lines.join("\n");
+    return Ok(format_tokens(quote! {
+        fn main() {
+            #(#stmts)*
+        }
+    }));
 }

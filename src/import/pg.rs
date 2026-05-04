@@ -38,22 +38,23 @@ use {
     tokio_postgres::Client,
 };
 
-fn map_type(typname: &str, col_default: Option<&str>) -> SimpleSimpleType {
+fn map_type(typname: &str, col_default: Option<&str>) -> Result<SimpleSimpleType, loga::Error> {
     // int8 is bigint; bigserial has a nextval() default.
     if typname == "int8" {
         if col_default.map(|d| d.starts_with("nextval(")).unwrap_or(false) {
-            return SimpleSimpleType::Auto;
+            return Ok(SimpleSimpleType::Auto);
         }
-        return SimpleSimpleType::I64;
+        return Ok(SimpleSimpleType::I64);
     }
     match typname {
-        "int2" => return SimpleSimpleType::I16,
-        "int4" => return SimpleSimpleType::I32,
-        "float4" => return SimpleSimpleType::F32,
-        "float8" => return SimpleSimpleType::F64,
-        "bool" => return SimpleSimpleType::Bool,
-        "bytea" => return SimpleSimpleType::Bytes,
-        _ => return SimpleSimpleType::String,
+        "int2" => return Ok(SimpleSimpleType::I16),
+        "int4" => return Ok(SimpleSimpleType::I32),
+        "float4" => return Ok(SimpleSimpleType::F32),
+        "float8" => return Ok(SimpleSimpleType::F64),
+        "bool" => return Ok(SimpleSimpleType::Bool),
+        "bytea" => return Ok(SimpleSimpleType::Bytes),
+        "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => return Ok(SimpleSimpleType::String),
+        _ => return Err(loga::err(format!("Unknown PostgreSQL type: {:?}", typname))),
     }
 }
 
@@ -126,7 +127,9 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             let typname: String = row.get(1);
             let is_nullable: bool = row.get(2);
             let col_default: Option<String> = row.get(3);
-            let sst = map_type(&typname, col_default.as_deref());
+            let sst =
+                map_type(&typname, col_default.as_deref())
+                    .context(format!("Mapping type for column {:?} of table {:?}", col_name, table_name))?;
             fields.insert(col_name.clone(), Field {
                 id: col_name.clone(),
                 renamed_from: None,
