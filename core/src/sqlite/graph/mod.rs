@@ -1,5 +1,7 @@
-use std::collections::HashSet;
-use crate::graphmigrate::Comparison;
+use {
+    crate::graphmigrate::Comparison,
+    std::collections::HashSet,
+};
 pub use self::utils::SqliteMigrateCtx;
 
 pub mod table;

@@ -1757,66 +1757,56 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
         #[rustfmt::external("sql-formatter-pg")]
-        r#"
-                    insert into "genrerank"
-                        (
-                            "date", 
-                            "genre", 
-                            "secondary", 
-                            "sort", 
-                            "rank", 
-                            "track"
-                        )
-                        values (
-                            $repdate,
-                            $genre,
-                            $secondary,
-                            $sort,
-                            $rank,
-                            $track
-                        )
-                    on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $repdate, "rank" = $rank
-    "#;
+        r#"insert into
+             "genrerank" (
+               "date",
+               "genre",
+               "secondary",
+               "sort",
+               "rank",
+               "track"
+             )
+           values
+             ($1, $2, $3, $4, $5, $6)
+           on conflict ("genre", "secondary", "sort", "track") do update
+           set
+             "date" = $1,
+             "rank" = $5
+           "#;
         dbm::DbPgGenRepeatedParam1(&mut db),
-        repdate: i32 = 20260501,
-        genre: string = "rock",
-        secondary: string = "classic",
-        sort: i32 = 1,
-        rank: i32 = 10,
-        track: string = "song1"
+        p1: i32 = 20260501,
+        p2: string = "rock",
+        p3: string = "classic",
+        p4: i32 = 1,
+        p5: i32 = 10,
+        p6: string = "song1"
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
         #[rustfmt::external("sql-formatter-pg")]
-        r#"
-                    insert into "genrerank"
-                        (
-                            "date", 
-                            "genre", 
-                            "secondary", 
-                            "sort", 
-                            "rank", 
-                            "track"
-                        )
-                        values (
-                            $repdate,
-                            $genre,
-                            $secondary,
-                            $sort,
-                            $rank,
-                            $track
-                        )
-                    on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $repdate, "rank" = $rank
-    "#;
+        r#"insert into
+             "genrerank" (
+               "date",
+               "genre",
+               "secondary",
+               "sort",
+               "rank",
+               "track"
+             )
+           values
+             ($1, $2, $3, $4, $5, $6)
+           on conflict ("genre", "secondary", "sort", "track") do update
+           set
+             "date" = $1,
+             "rank" = $5
+           "#;
         dbm::DbPgGenRepeatedParam1(&mut db),
-        repdate: i32 = 20260502,
-        genre: string = "rock",
-        secondary: string = "classic",
-        sort: i32 = 1,
-        rank: i32 = 5,
-        track: string = "song1"
+        p1: i32 = 20260502,
+        p2: string = "rock",
+        p3: string = "classic",
+        p4: i32 = 1,
+        p5: i32 = 5,
+        p6: string = "song1"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
@@ -1842,19 +1832,19 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
-async fn test_inline_param_i32_old_syntax() -> Result<(), loga::Error> {
-    good_module!(dbm, "pg_gen_inline_param_i32_old");
+async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_inline_param_i32_common");
     let (mut db, _cont) = db().await?;
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
-        "pg_gen_inline_param_i32_old",
+        "pg_gen_inline_param_i32_common",
         r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
-        dbm::DbPgGenInlineParamI32Old1(&mut db)
+        dbm::DbPgGenInlineParamI32Common1(&mut db)
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
-        "pg_gen_inline_param_i32_old",
+        "pg_gen_inline_param_i32_common",
         r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
-        dbm::DbPgGenInlineParamI32Old1(&mut db)
+        dbm::DbPgGenInlineParamI32Common1(&mut db)
     ).await?, 22);
     Ok(())
 }

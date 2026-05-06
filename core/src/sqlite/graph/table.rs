@@ -1,22 +1,20 @@
-use std::collections::HashSet;
-use crate::{
-    sqlite::{
-        schema::{
-            table::{
-                Table,
-            },
+use {
+    crate::{
+        graphmigrate::Comparison,
+        sqlite::{
+            schema::table::Table,
+            types::to_sql_type,
         },
-        types::to_sql_type,
+        utils::Tokens,
     },
-    graphmigrate::Comparison,
-    utils::Tokens,
-};
-use super::{
-    GraphId,
-    NodeDataDispatch,
-    NodeData,
-    Node,
-    utils::SqliteMigrateCtx,
+    std::collections::HashSet,
+    super::{
+        GraphId,
+        Node,
+        NodeData,
+        NodeDataDispatch,
+        utils::SqliteMigrateCtx,
+    },
 };
 
 #[derive(Clone)]

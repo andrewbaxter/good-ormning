@@ -1,32 +1,32 @@
-use crate::sqlite::query::utils::Returning;
 use {
-    super::{
-        expr::{
-            check_assignable,
-            check_bool,
-            check_general_same,
-            Expr,
-            ExprType,
-            Binding,
-        },
-        utils::{
-            build_returning_values,
-            SqliteQueryCtx,
-            QueryBody,
-        },
-    },
     crate::{
         sqlite::{
+            QueryResCount,
+            query::utils::Returning,
             schema::table::TableRef,
             types::{
-                type_i64,
                 Type,
+                type_i64,
             },
-            QueryResCount,
         },
         utils::Tokens,
     },
     std::collections::HashMap,
+    super::{
+        expr::{
+            Binding,
+            Expr,
+            ExprType,
+            check_assignable,
+            check_bool,
+            check_general_same,
+        },
+        utils::{
+            QueryBody,
+            SqliteQueryCtx,
+            build_returning_values,
+        },
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -67,7 +67,9 @@ impl NamedSelectSource {
                 let table_info = match ctx.tables.get(s) {
                     Some(f) => f,
                     None => {
-                        ctx.errs.err(&path.push_back("From".to_string()), format!("No known table with id {:?}", s));
+                        ctx
+                            .errs
+                            .err(&path.push_back("From".to_string()), format!("No known table with id {:?}", s));
                         return (vec![], Tokens::new());
                     },
                 };

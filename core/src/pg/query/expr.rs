@@ -4,15 +4,17 @@ use serde::{
 };
 #[cfg(feature = "chrono")]
 use chrono::FixedOffset;
-use quote::{
-    quote,
-    format_ident,
-    ToTokens,
-};
-use std::{
-    collections::HashMap,
-    rc::Rc,
-    fmt::Display,
+use {
+    quote::{
+        ToTokens,
+        format_ident,
+        quote,
+    },
+    std::{
+        collections::HashMap,
+        fmt::Display,
+        rc::Rc,
+    },
 };
 #[cfg(feature = "chrono")]
 use chrono::{

@@ -1,42 +1,42 @@
-use std::collections::{
-    HashSet,
-    HashMap,
-};
-use crate::{
-    pg::{
-        schema::{
-            field::{
-                Field,
-                FieldRef,
-            },
-            table::TableRef,
-        },
-        types::{
-            to_sql_type,
-            Type,
-            SimpleSimpleType,
-        },
-        PgQueryCtx,
-        PgTableInfo,
-        PgFieldInfo,
-        query::{
-            expr::{
+use {
+    crate::{
+        graphmigrate::Comparison,
+        pg::{
+            PgFieldInfo,
+            PgQueryCtx,
+            PgTableInfo,
+            query::expr::{
+                Expr,
                 ExprType,
                 ExprValName,
                 check_same,
-                Expr,
+            },
+            schema::{
+                field::{
+                    Field,
+                    FieldRef,
+                },
+                table::TableRef,
+            },
+            types::{
+                SimpleSimpleType,
+                Type,
+                to_sql_type,
             },
         },
+        utils::Tokens,
     },
-    graphmigrate::Comparison,
-    utils::Tokens,
-};
-use super::{
-    GraphId,
-    NodeDataDispatch,
-    NodeData,
-    Node,
-    utils::PgMigrateCtx,
+    std::collections::{
+        HashMap,
+        HashSet,
+    },
+    super::{
+        GraphId,
+        Node,
+        NodeData,
+        NodeDataDispatch,
+        utils::PgMigrateCtx,
+    },
 };
 
 #[derive(Clone)]

@@ -1,17 +1,11 @@
-use serde::{
-    Serialize,
-    Deserialize,
-};
-use crate::{
-    pg::{
-        types::{
-            Type,
-        },
-        query::{
-            expr::{
-                SerialExpr,
-            },
-        },
+use {
+    crate::pg::{
+        query::expr::SerialExpr,
+        types::Type,
+    },
+    serde::{
+        Deserialize,
+        Serialize,
     },
 };
 
@@ -119,5 +113,4 @@ impl FieldTypeBuilder {
         self.0.type_.opt = true;
         self
     }
-
 }

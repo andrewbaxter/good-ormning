@@ -1,42 +1,42 @@
-use std::collections::{
-    HashSet,
-    HashMap,
-};
-use crate::{
-    sqlite::{
-        schema::{
-            field::{
-                Field,
-                FieldRef,
-            },
-            table::TableRef,
-        },
-        types::{
-            to_sql_type,
-            Type,
-            SimpleSimpleType,
-        },
-        SqliteQueryCtx,
-        SqliteTableInfo,
-        SqliteFieldInfo,
-        query::{
-            expr::{
-                ExprType,
+use {
+    crate::{
+        graphmigrate::Comparison,
+        sqlite::{
+            SqliteFieldInfo,
+            SqliteQueryCtx,
+            SqliteTableInfo,
+            query::expr::{
                 Binding,
-                check_same,
                 Expr,
+                ExprType,
+                check_same,
+            },
+            schema::{
+                field::{
+                    Field,
+                    FieldRef,
+                },
+                table::TableRef,
+            },
+            types::{
+                SimpleSimpleType,
+                Type,
+                to_sql_type,
             },
         },
+        utils::Tokens,
     },
-    graphmigrate::Comparison,
-    utils::Tokens,
-};
-use super::{
-    GraphId,
-    NodeDataDispatch,
-    NodeData,
-    Node,
-    utils::SqliteMigrateCtx,
+    std::collections::{
+        HashMap,
+        HashSet,
+    },
+    super::{
+        GraphId,
+        Node,
+        NodeData,
+        NodeDataDispatch,
+        utils::SqliteMigrateCtx,
+    },
 };
 
 #[derive(Clone)]

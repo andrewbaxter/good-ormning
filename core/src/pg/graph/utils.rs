@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use crate::{
-    utils::Errs,
-    pg::{
-        Version,
+use {
+    crate::{
+        pg::Version,
+        utils::Errs,
     },
+    std::collections::HashMap,
+    super::Node,
 };
-use super::Node;
 
 pub struct PgMigrateCtx {
     pub errs: Errs,

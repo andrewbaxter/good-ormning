@@ -1,22 +1,20 @@
-use std::collections::HashSet;
-use crate::{
-    pg::{
-        schema::{
-            table::{
-                Table,
-            },
+use {
+    crate::{
+        graphmigrate::Comparison,
+        pg::{
+            schema::table::Table,
+            types::to_sql_type,
         },
-        types::to_sql_type,
+        utils::Tokens,
     },
-    graphmigrate::Comparison,
-    utils::Tokens,
-};
-use super::{
-    GraphId,
-    NodeDataDispatch,
-    NodeData,
-    Node,
-    utils::PgMigrateCtx,
+    std::collections::HashSet,
+    super::{
+        GraphId,
+        Node,
+        NodeData,
+        NodeDataDispatch,
+        utils::PgMigrateCtx,
+    },
 };
 
 #[derive(Clone)]

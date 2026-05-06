@@ -1,8 +1,10 @@
-use serde::{
-    Serialize,
-    Deserialize,
+use {
+    crate::sqlite::types::Type,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
 };
-use crate::sqlite::types::Type;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomType {

@@ -1,10 +1,10 @@
-use std::{
-    cell::RefCell,
-    fmt,
-    rc::Rc,
-};
-use proc_macro2::{
-    TokenStream,
+use {
+    proc_macro2::TokenStream,
+    std::{
+        cell::RefCell,
+        fmt,
+        rc::Rc,
+    },
 };
 
 pub struct Tokens(String);

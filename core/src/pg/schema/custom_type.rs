@@ -1,8 +1,10 @@
-use serde::{
-    Serialize,
-    Deserialize,
+use {
+    crate::pg::types::Type,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
 };
-use crate::pg::types::Type;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomType {

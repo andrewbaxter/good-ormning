@@ -66,7 +66,10 @@ impl NamedSelectSource {
                     None => {
                         ctx
                             .errs
-                            .err(&path.push_back("From".to_string()), format!("No table with id {:?} in version", s));
+                            .err(
+                                &path.push_back("From".to_string()),
+                                format!("No table with id {:?} in version", s),
+                            );
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
@@ -89,7 +92,6 @@ impl NamedSelectSource {
                 vec![]
             },
         };
-
         if let Some(s) = &self.alias {
             out.s("as").id(s);
             let mut new_fields2 = vec![];

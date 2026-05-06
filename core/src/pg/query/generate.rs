@@ -51,7 +51,6 @@ pub fn generate_query_functions(
         let args_forward = ctx.query_args.split_off(0);
         *errs = ctx.errs.clone();
         drop(ctx);
-
         let (res_ident, res_def, unforward_res) = {
             fn convert_one_res(
                 errs: &mut Errs,

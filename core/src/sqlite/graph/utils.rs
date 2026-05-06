@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use crate::{
-    utils::Errs,
-    sqlite::{
-        Version,
+use {
+    crate::{
+        sqlite::Version,
+        utils::Errs,
     },
+    std::collections::HashMap,
+    super::Node,
 };
-use super::Node;
 
 pub struct SqliteMigrateCtx {
     pub errs: Errs,

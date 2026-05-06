@@ -90,7 +90,10 @@ impl NamedSelectSource {
                     None => {
                         ctx
                             .errs
-                            .err(&path.push_back("From".to_string()), format!("No table with id {:?} in version", s));
+                            .err(
+                                &path.push_back("From".to_string()),
+                                format!("No table with id {:?} in version", s),
+                            );
                         return (ExprType(vec![]), Tokens::new());
                     },
                 };
@@ -234,7 +237,8 @@ impl QueryBody for Select {
                 }
                 let (_, source_tokens): (ExprType, Tokens) = j.source.build(ctx, &path);
                 out.s(&source_tokens.to_string()).s("on");
-                let (on_t, on_tokens): (ExprType, Tokens) = j.on.build(ctx, &path.push_back("On".to_string()), &scope);
+                let (on_t, on_tokens): (ExprType, Tokens) =
+                    j.on.build(ctx, &path.push_back("On".to_string()), &scope);
                 check_bool(ctx, &path, &on_t);
                 out.s(&on_tokens.to_string());
             }

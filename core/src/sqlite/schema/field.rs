@@ -1,15 +1,11 @@
-use serde::{
-    Serialize,
-    Deserialize,
-};
-use crate::{
-    sqlite::{
-        types::{
-            Type,
-        },
-        query::expr::{
-            SerialExpr,
-        },
+use {
+    crate::sqlite::{
+        query::expr::SerialExpr,
+        types::Type,
+    },
+    serde::{
+        Deserialize,
+        Serialize,
     },
 };
 
@@ -117,5 +113,4 @@ impl FieldTypeBuilder {
         self.0.type_.opt = true;
         self
     }
-
 }

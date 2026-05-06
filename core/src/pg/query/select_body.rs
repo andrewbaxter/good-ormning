@@ -1,30 +1,32 @@
-use std::collections::HashMap;
-use crate::{
-    pg::{
-        types::Type,
-        QueryResCount,
-        query::{
-            utils::{
-                PgQueryCtx,
-                QueryBody,
-                build_returning_values,
-                Returning,
+use {
+    crate::{
+        pg::{
+            QueryResCount,
+            query::{
+                expr::{
+                    Expr,
+                    ExprType,
+                    ExprValName,
+                    check_bool,
+                    check_general_same,
+                },
+                select::{
+                    Join,
+                    NamedSelectSource,
+                    Order,
+                },
+                utils::{
+                    PgQueryCtx,
+                    QueryBody,
+                    Returning,
+                    build_returning_values,
+                },
             },
-            expr::{
-                Expr,
-                ExprType,
-                check_bool,
-                ExprValName,
-                check_general_same,
-            },
-            select::{
-                Join,
-                NamedSelectSource,
-                Order,
-            },
+            types::Type,
         },
+        utils::Tokens,
     },
-    utils::Tokens,
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug)]

@@ -1,15 +1,17 @@
-use std::{
-    collections::{
-        HashMap,
-        HashSet,
-        BTreeMap,
+use {
+    crate::graphmigrate::graph::{
+        Graph,
+        TopoWalker,
     },
-    hash::Hash,
-};
-use std::fmt::Debug;
-use crate::graphmigrate::graph::{
-    Graph,
-    TopoWalker,
+    std::{
+        collections::{
+            BTreeMap,
+            HashMap,
+            HashSet,
+        },
+        fmt::Debug,
+        hash::Hash,
+    },
 };
 
 pub mod graph;

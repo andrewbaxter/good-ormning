@@ -1,21 +1,17 @@
-use std::collections::HashSet;
-use crate::{
-    pg::{
-        schema::{
-            constraint::{
-                Constraint,
-            },
-        },
+use {
+    crate::{
+        graphmigrate::Comparison,
+        pg::schema::constraint::Constraint,
+        utils::Tokens,
     },
-    graphmigrate::Comparison,
-    utils::Tokens,
-};
-use super::{
-    GraphId,
-    NodeDataDispatch,
-    NodeData,
-    Node,
-    utils::PgMigrateCtx,
+    std::collections::HashSet,
+    super::{
+        GraphId,
+        Node,
+        NodeData,
+        NodeDataDispatch,
+        utils::PgMigrateCtx,
+    },
 };
 
 #[derive(Clone)]

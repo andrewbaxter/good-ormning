@@ -199,7 +199,12 @@ impl InsertBuilder {
         }
     }
 
-    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
         Query {
             name: name.to_string(),
             body: Box::new(self.q),
@@ -334,7 +339,12 @@ impl SelectBuilder {
         }
     }
 
-    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
         Query {
             name: name.to_string(),
             body: Box::new(self.q),
@@ -434,7 +444,12 @@ impl UpdateBuilder {
         }
     }
 
-    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
         Query {
             name: name.to_string(),
             body: Box::new(self.q),
@@ -534,7 +549,12 @@ impl DeleteBuilder {
         }
     }
 
-    pub fn build_query_named_res(self, name: impl ToString, res_count: QueryResCount, res_name: impl ToString) -> Query {
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
         Query {
             name: name.to_string(),
             body: Box::new(self.q),

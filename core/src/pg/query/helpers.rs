@@ -1,18 +1,20 @@
-use std::rc::Rc;
-use crate::pg::{
-    FieldHandle,
-    types::{
-        SimpleSimpleType,
-        SimpleType,
-        Type,
+use {
+    crate::pg::{
+        FieldHandle,
+        types::{
+            SimpleSimpleType,
+            SimpleType,
+            Type,
+        },
     },
-};
-use super::expr::{
-    Expr,
-    BinOp,
-    ComputeType,
-    ExprValName,
-    ExprType,
+    std::rc::Rc,
+    super::expr::{
+        BinOp,
+        ComputeType,
+        Expr,
+        ExprType,
+        ExprValName,
+    },
 };
 
 /// Generates a field element for instert and update statements, to set a field
