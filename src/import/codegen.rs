@@ -111,13 +111,19 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
     });
     let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
     for (table_key, table) in &version.tables {
+        for (field_id, _) in &table.fields {
+            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
+        }
+    }
+    for (table_key, table) in &version.tables {
         let tvar = format_ident!("t_{}", sanitize_ident(table_key));
         let table_id = &table.id;
         stmts.push(quote!{
             let #tvar = v.table(#table_id);
         });
         for (field_id, field) in &table.fields {
-            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            let fvar_name = field_var_map.get(&(table_key.clone(), field_id.clone())).unwrap();
             let fvar = format_ident!("{}", &fvar_name);
             let fn_ident = format_ident!("{}", pg_field_fn(&field.type_.type_.type_.type_));
             let field_id_str = &field.id;
@@ -133,7 +139,6 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
                     let #fvar = #tvar.field(#field_id_str, good_ormning:: pg:: schema:: field::#fn_ident().build());
                 });
             }
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
         }
         for constraint in table.constraints.values() {
             let constraint_id = &constraint.id;
@@ -221,13 +226,19 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
     });
     let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
     for (table_key, table) in &version.tables {
+        for (field_id, _) in &table.fields {
+            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
+        }
+    }
+    for (table_key, table) in &version.tables {
         let tvar = format_ident!("t_{}", sanitize_ident(table_key));
         let table_id = &table.id;
         stmts.push(quote!{
             let #tvar = v.table(#table_id);
         });
         for (field_id, field) in &table.fields {
-            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
+            let fvar_name = field_var_map.get(&(table_key.clone(), field_id.clone())).unwrap();
             let fvar = format_ident!("{}", &fvar_name);
             if field_id == "rowid" {
                 if field.id == "rowid" {
@@ -259,7 +270,6 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
                     });
                 }
             }
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
         }
         for constraint in table.constraints.values() {
             let constraint_id = &constraint.id;

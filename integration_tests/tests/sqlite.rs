@@ -14,19 +14,37 @@ fn test_hello_world() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_hello_world",
-        r#"insert into "hello_world_users" ( "name" , "points" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "hello_world_users" ("name", "points")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenHelloWorld1(&mut db),
         p1: string = "rust human",
         p2: i64 = 0
     )?;
     for user_id in good_ormning::sqlite::good_query_many!(
         "sqlite_gen_hello_world",
-        r#"select "hello_world_users" . "rowid" as "rowid" from "hello_world_users""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "hello_world_users"."rowid" as "rowid"
+           from
+             "hello_world_users"
+           "#;
         dbm::DbSqliteGenHelloWorld1(&mut db)
     )? {
         let user = good_ormning::sqlite::good_query_one!(
             "sqlite_gen_hello_world",
-            r#"select "hello_world_users"."name" as "name", "hello_world_users"."points" as "points" from "hello_world_users" where "hello_world_users"."rowid" = ?1 "#;
+            #[rustfmt::external("sql-formatter-sqlite")]
+            r#"select
+                 "hello_world_users"."name" as "name",
+                 "hello_world_users"."points" as "points"
+               from
+                 "hello_world_users"
+               where
+                 "hello_world_users"."rowid" = ?1
+               "#;
             dbm::DbSqliteGenHelloWorld1(&mut db),
             p1: i64 = user_id
         )?;
@@ -42,13 +60,23 @@ fn test_base_insert() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db),
         p1: string = "soy"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?, "soy");
     Ok(())
@@ -86,13 +114,23 @@ fn test_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamI321(&mut db),
         p1: i32 = 22
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamI321(&mut db)
     )?, 22);
     Ok(())
@@ -105,12 +143,24 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( $p(i32 = 22) )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ($p (i32 = 22))
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = $p(i32 = 22)"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           where
+             "bananna"."hizat" = $p (i32 = 22)
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?, 22);
     Ok(())
@@ -124,12 +174,25 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
     let val = 47;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( $p(i32 = val) )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ($p (i32 = val))
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = $p(i32 = val) and $p(bool = true)"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           where
+             "bananna"."hizat" = $p (i32 = val)
+             and $p (bool = true)
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?, 47);
     Ok(())
@@ -142,12 +205,18 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
+        #[rustfmt::external("sql-formatter-sqlite")]
         r#"insert into "bananna" ( "hizat" ) values ( $p(i32 = std::i32::MAX) )"#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?, std::i32::MAX);
     Ok(())
@@ -161,13 +230,23 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_s_chrono",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamUtctimeSChrono1(&mut db),
         p1: utctime_s_chrono = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_s_chrono",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamUtctimeSChrono1(&mut db)
     )?, ref_date);
     Ok(())
@@ -181,13 +260,23 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_ms_chrono",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamUtctimeMsChrono1(&mut db),
         p1: utctime_ms_chrono = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_ms_chrono",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamUtctimeMsChrono1(&mut db)
     )?, ref_date);
     Ok(())
@@ -206,13 +295,23 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
             .timestamp();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_s_jiff",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamUtctimeSJiff1(&mut db),
         p1: utctime_s_jiff = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_s_jiff",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamUtctimeSJiff1(&mut db)
     )?, ref_date);
     Ok(())
@@ -231,13 +330,23 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
             .timestamp();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_ms_jiff",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamUtctimeMsJiff1(&mut db),
         p1: utctime_ms_jiff = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_ms_jiff",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamUtctimeMsJiff1(&mut db)
     )?, ref_date);
     Ok(())
@@ -250,13 +359,23 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamOptI321(&mut db),
         p1: opt i32 = Some(47)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamOptI321(&mut db)
     )?, Some(47));
     Ok(())
@@ -269,12 +388,22 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32_null",
-        r#"insert into "bananna" ( "hizat" ) values ( null )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
         dbm::DbSqliteGenParamOptI32Null1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_i32_null",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamOptI32Null1(&mut db)
     )?, None);
     Ok(())
@@ -287,13 +416,30 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_arr_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamArrI321(&mut db),
         p1: i32 = 7
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_param_arr_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" in ( select value from rarray ( ?1 ) )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           where
+             "bananna"."hizat" in (
+               select
+                 value
+               from
+                 rarray (?1)
+             )
+           "#;
         dbm::DbSqliteGenParamArrI321(&mut db),
         p1: arr i32 = vec ![7]
     )?, vec![7]);
@@ -333,7 +479,25 @@ fn test_param_custom() -> Result<(), loga::Error> {
         );
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_custom",
-        r#"insert into "bananna" ( "x_0" , "x_1" , "x_2" , "x_3" , "x_4" , "x_5" , "x_6" , "x_7" , "x_8" , "x_9" , "x_10" , "x_11" ) values ( ?1 , ?2 , ?3 , ?4 , ?5 , ?6 , ?7 , ?8 , ?9 , ?10 , ?11 , ?12 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" (
+               "x_0",
+               "x_1",
+               "x_2",
+               "x_3",
+               "x_4",
+               "x_5",
+               "x_6",
+               "x_7",
+               "x_8",
+               "x_9",
+               "x_10",
+               "x_11"
+             )
+           values
+             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           "#;
         dbm::DbSqliteGenParamCustom1(&mut db),
         p1: MyBool = & x_0,
         p2: MyI32 = & x_1,
@@ -350,18 +514,23 @@ fn test_param_custom() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_custom",
-        r#"select "bananna" . "x_0" as "x_0",
-        "bananna" . "x_1" as "x_1",
-        "bananna" . "x_2" as "x_2",
-        "bananna" . "x_3" as "x_3",
-        "bananna" . "x_4" as "x_4",
-        "bananna" . "x_5" as "x_5",
-        "bananna" . "x_6" as "x_6",
-        "bananna" . "x_7" as "x_7",
-        "bananna" . "x_8" as "x_8",
-        "bananna" . "x_9" as "x_9",
-        "bananna" . "x_10" as "x_10",
-        "bananna" . "x_11" as "x_11" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."x_0" as "x_0",
+             "bananna"."x_1" as "x_1",
+             "bananna"."x_2" as "x_2",
+             "bananna"."x_3" as "x_3",
+             "bananna"."x_4" as "x_4",
+             "bananna"."x_5" as "x_5",
+             "bananna"."x_6" as "x_6",
+             "bananna"."x_7" as "x_7",
+             "bananna"."x_8" as "x_8",
+             "bananna"."x_9" as "x_9",
+             "bananna"."x_10" as "x_10",
+             "bananna"."x_11" as "x_11"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamCustom1(&mut db)
     )?;
     assert_eq!(x_0, res.x_0);
@@ -386,13 +555,23 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_custom",
-        r#"insert into "bananna" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenParamOptCustom1(&mut db),
         p1: opt MyString = Some(&MyString("higgins".into()))
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_custom",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenParamOptCustom1(&mut db)
     )?, Some(MyString("higgins".into())));
     Ok(())
@@ -405,13 +584,29 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_insert_on_conflict_do_nothing",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 ) on conflict do nothing returning 1 as "one""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           on conflict do nothing
+           returning
+             1 as "one"
+           "#;
         dbm::DbSqliteGenInsertOnConflictDoNothing1(&mut db),
         p1: string = "soy"
     )?.is_some());
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_insert_on_conflict_do_nothing",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 ) on conflict do nothing returning 1 as "one""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           on conflict do nothing
+           returning
+             1 as "one"
+           "#;
         dbm::DbSqliteGenInsertOnConflictDoNothing1(&mut db),
         p1: string = "soy"
     )?.is_none());
@@ -425,21 +620,51 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "two")
+           values
+             (?1, ?2)
+           on conflict ("hizat") do update
+           set
+             "two" = "bannanana"."two" + 1
+           returning
+             "bannanana"."two" as "two"
+           "#;
         dbm::DbSqliteGenInsertOnConflictUpdate1(&mut db),
         p1: string = "soy",
         p2: i32 = 33
     )?, 33);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "two")
+           values
+             (?1, ?2)
+           on conflict ("hizat") do update
+           set
+             "two" = "bannanana"."two" + 1
+           returning
+             "bannanana"."two" as "two"
+           "#;
         dbm::DbSqliteGenInsertOnConflictUpdate1(&mut db),
         p1: string = "soy",
         p2: i32 = 7
     )?, 34);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        r#"insert into "bannanana" ( "hizat" , "two" ) values ( ?1 , ?2 ) on conflict ( "hizat" ) do update set "two" = "bannanana" . "two" + 1 returning "bannanana" . "two" as "two""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "two")
+           values
+             (?1, ?2)
+           on conflict ("hizat") do update
+           set
+             "two" = "bannanana"."two" + 1
+           returning
+             "bannanana"."two" as "two"
+           "#;
         dbm::DbSqliteGenInsertOnConflictUpdate1(&mut db),
         p1: string = "yyyy",
         p2: i32 = 7
@@ -454,22 +679,41 @@ fn test_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
-        r#"insert into "bananna" ( "hizat" ) values ( 'yog' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ('yog')
+           "#;
         dbm::DbSqliteGenUpdate1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenUpdate1(&mut db)
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
-        r#"update "bananna" set "hizat" = 'tep'"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"update "bananna"
+           set
+             "hizat" = 'tep'
+           "#;
         dbm::DbSqliteGenUpdate1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenUpdate1(&mut db)
     )?, "tep");
     Ok(())
@@ -482,36 +726,68 @@ fn test_update_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        r#"insert into "ban" ( "hizat" ) values ( 'yog' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "ban" ("hizat")
+           values
+             ('yog')
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "ban"."hizat" as "hizat"
+           from
+             "ban"
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db)
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        r#"update "ban" set "hizat" = ?1 where "ban" . "hizat" = ?2"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"update "ban"
+           set
+             "hizat" = ?1
+           where
+             "ban"."hizat" = ?2
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db),
         p1: string = "tep",
         p2: string = "yog2"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "ban"."hizat" as "hizat"
+           from
+             "ban"
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db)
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        r#"update "ban" set "hizat" = ?1 where "ban" . "hizat" = ?2"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"update "ban"
+           set
+             "hizat" = ?1
+           where
+             "ban"."hizat" = ?2
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db),
         p1: string = "tep",
         p2: string = "yog"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        r#"select "ban" . "hizat" as "hizat" from "ban""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "ban"."hizat" as "hizat"
+           from
+             "ban"
+           "#;
         dbm::DbSqliteGenUpdateWhere1(&mut db)
     )?, "tep");
     Ok(())
@@ -524,12 +800,23 @@ fn test_update_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_returning",
-        r#"insert into "b" ( "hizat" ) values ( 'yog' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('yog')
+           "#;
         dbm::DbSqliteGenUpdateReturning1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_update_returning",
-        r#"update "b" set "hizat" = 'tep' returning "b" . "hizat" as "hizat""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"update "b"
+           set
+             "hizat" = 'tep'
+           returning
+             "b"."hizat" as "hizat"
+           "#;
         dbm::DbSqliteGenUpdateReturning1(&mut db)
     )?, Some("tep".to_string()));
     Ok(())
@@ -542,22 +829,39 @@ fn test_delete() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
-        r#"insert into "b" ( "hizat" ) values ( 'seeon' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('seeon')
+           "#;
         dbm::DbSqliteGenDelete1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         dbm::DbSqliteGenDelete1(&mut db)
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
-        r#"delete from "b""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"delete from "b"
+           "#;
         dbm::DbSqliteGenDelete1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         dbm::DbSqliteGenDelete1(&mut db)
     )?, None);
     Ok(())
@@ -570,29 +874,52 @@ fn test_delete_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        r#"insert into "ba" ( "hizat" ) values ( 'seeon' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "ba" ("hizat")
+           values
+             ('seeon')
+           "#;
         dbm::DbSqliteGenDeleteWhere1(&mut db)
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        r#"delete from "ba" where "ba" . "hizat" = ?1"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"delete from "ba"
+           where
+             "ba"."hizat" = ?1
+           "#;
         dbm::DbSqliteGenDeleteWhere1(&mut db),
         p1: string = "nozo"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_where",
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "ba"."hizat" as "hizat"
+           from
+             "ba"
+           "#;
         dbm::DbSqliteGenDeleteWhere1(&mut db)
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        r#"delete from "ba" where "ba" . "hizat" = ?1"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"delete from "ba"
+           where
+             "ba"."hizat" = ?1
+           "#;
         dbm::DbSqliteGenDeleteWhere1(&mut db),
         p1: string = "seeon"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_where",
-        r#"select "ba" . "hizat" as "hizat" from "ba""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "ba"."hizat" as "hizat"
+           from
+             "ba"
+           "#;
         dbm::DbSqliteGenDeleteWhere1(&mut db)
     )?, None);
     Ok(())
@@ -605,23 +932,42 @@ fn test_delete_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
-        r#"insert into "b" ( "hizat" ) values ( 'seeon' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('seeon')
+           "#;
         dbm::DbSqliteGenDeleteReturning1(&mut db)
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_returning",
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         dbm::DbSqliteGenDeleteReturning1(&mut db)
     )?.is_some());
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
-        r#"delete from "b" where "b" . "hizat" = ?1"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"delete from "b"
+           where
+             "b"."hizat" = ?1
+           "#;
         dbm::DbSqliteGenDeleteReturning1(&mut db),
         p1: string = "seeon"
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_returning",
-        r#"select "b" . "hizat" as "hizat" from "b""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         dbm::DbSqliteGenDeleteReturning1(&mut db)
     )?.is_none());
     Ok(())
@@ -636,12 +982,22 @@ fn test_select_join() -> Result<(), loga::Error> {
             dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
-                    r#"insert into "b" ( "hizat" , "three" ) values ( 'key' , 33 )"#;
+                    #[rustfmt::external("sql-formatter-sqlite")]
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
                     dbm::DbSqliteGenSelectJoin1(&mut *db.0)
                 )?;
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
-                    r#"insert into "select_join_two" ( "hizat" , "two" ) values ( 'key' , 'no' )"#;
+                    #[rustfmt::external("sql-formatter-sqlite")]
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'no')
+                       "#;
                     dbm::DbSqliteGenSelectJoin1(&mut *db.0)
                 )?;
             },
@@ -650,7 +1006,14 @@ fn test_select_join() -> Result<(), loga::Error> {
     }))?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_select_join",
-        r#"select "b"."three" as "three", "select_join_two"."two" as "two" from "b" left join "select_join_two" on("b"."hizat") = "select_join_two"."hizat" "#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             left join "select_join_two" on ("b"."hizat") = "select_join_two"."hizat"
+           "#;
         dbm::DbSqliteGenSelectJoin1(&mut db)
     )?;
     assert_eq!(res.three, 33);
@@ -665,35 +1028,62 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectGroupBy1(&mut db),
         p1: i32 = 1,
         p2: i32 = 7
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectGroupBy1(&mut db),
         p1: i32 = 1,
         p2: i32 = 99
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectGroupBy1(&mut db),
         p1: i32 = 2,
         p2: i32 = 3
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectGroupBy1(&mut db),
         p1: i32 = 2,
         p2: i32 = 10
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_group_by",
-        r#"select sum ( "bannanana" . "hizat2" ) as "hizat2" from "bannanana" group by "bannanana" . "hizat""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             sum("bannanana"."hizat2") as "hizat2"
+           from
+             "bannanana"
+           group by
+             "bannanana"."hizat"
+           "#;
         dbm::DbSqliteGenSelectGroupBy1(&mut db)
     )?;
     res.sort();
@@ -708,25 +1098,47 @@ fn test_select_limit() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectLimit1(&mut db),
         p1: string = "soy"
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectLimit1(&mut db),
         p1: string = "soy"
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectLimit1(&mut db),
         p1: string = "soy"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_limit",
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" limit 2"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           limit
+             2
+           "#;
         dbm::DbSqliteGenSelectLimit1(&mut db)
     )?.len(), 2);
     Ok(())
@@ -739,25 +1151,47 @@ fn test_select_order() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectOrder1(&mut db),
         p1: i32 = 0
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectOrder1(&mut db),
         p1: i32 = 12
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        r#"insert into "bannanana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenSelectOrder1(&mut db),
         p1: i32 = 9
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_order",
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" order by "bannanana" . "hizat" asc"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           order by
+             "bannanana"."hizat" asc
+           "#;
         dbm::DbSqliteGenSelectOrder1(&mut db)
     )?, vec![0, 9, 12]);
     Ok(())
@@ -773,7 +1207,12 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_add_field",
                     "0",
-                    r#"insert into "bannna" ( "hizat" ) values ( 'nizoot' )"#;
+                    #[rustfmt::external("sql-formatter-sqlite")]
+                    r#"insert into
+                         "bannna" ("hizat")
+                       values
+                         ('nizoot')
+                       "#;
                     dbm::DbSqliteGenMigrateAddField0(&mut *db.0)
                 )?;
             },
@@ -783,7 +1222,13 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
     }))?;
     match good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_migrate_add_field",
-        r#"select "bannna"."hizat" as "hizat", "bannna"."zomzom" as "zomzom" from "bannna" "#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bannna"."hizat" as "hizat",
+             "bannna"."zomzom" as "zomzom"
+           from
+             "bannna"
+           "#;
         dbm::DbSqliteGenMigrateAddField1(&mut db)
     )? {
         Some(x) => {
@@ -802,7 +1247,12 @@ fn test_migrate_rename_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_field",
-        r#"insert into "bannna" ( "hizat" ) values ( 'nizoot' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannna" ("hizat")
+           values
+             ('nizoot')
+           "#;
         dbm::DbSqliteGenMigrateRenameField1(&mut db)
     )?;
     Ok(())
@@ -815,7 +1265,12 @@ fn test_migrate_remove_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_remove_field",
-        r#"insert into "bnanaa" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bnanaa" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenMigrateRemoveField1(&mut db),
         p1: string = "yordol"
     )?;
@@ -829,7 +1284,12 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_add_table",
-        r#"insert into "migrate_add_table_two" ( "two" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "migrate_add_table_two" ("two")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenMigrateAddTable1(&mut db),
         p1: i32 = 23
     )?;
@@ -843,7 +1303,12 @@ fn test_migrate_rename_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_table",
-        r#"insert into "bana" ( "hizat" ) values ( ?1 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bana" ("hizat")
+           values
+             (?1)
+           "#;
         dbm::DbSqliteGenMigrateRenameTable1(&mut db),
         p1: string = "inset"
     )?;
@@ -868,7 +1333,12 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_pre_migration",
                     "0",
-                    r#"insert into "migrate_pre_migration_v0_two" ( "two" ) values ( 7 )"#;
+                    #[rustfmt::external("sql-formatter-sqlite")]
+                    r#"insert into
+                         "migrate_pre_migration_v0_two" ("two")
+                       values
+                         (7)
+                       "#;
                     dbm::DbSqliteGenMigratePreMigration0(&mut *db.0)
                 )?;
             },
@@ -886,21 +1356,43 @@ fn test_select_cte() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_cte",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectCte1(&mut db),
         p1: i32 = 1,
         p2: i32 = 7
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_cte",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectCte1(&mut db),
         p1: i32 = 1,
         p2: i32 = 99
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_cte",
-        r#"with "hibbo" ( "zathi" ) as ( select "bannanana" . "hizat2" as "hizat2" from "bannanana" ) select "hibbo" . "zathi" as "zathi" from "hibbo""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"with
+             "hibbo" ("zathi") as (
+               select
+                 "bannanana"."hizat2" as "hizat2"
+               from
+                 "bannanana"
+             )
+           select
+             "hibbo"."zathi" as "zathi"
+           from
+             "hibbo"
+           "#;
         dbm::DbSqliteGenSelectCte1(&mut db)
     )?;
     res.sort();
@@ -915,35 +1407,63 @@ fn test_select_window() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectWindow1(&mut db),
         p1: i32 = 1,
         p2: i32 = 7
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectWindow1(&mut db),
         p1: i32 = 1,
         p2: i32 = 99
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectWindow1(&mut db),
         p1: i32 = 2,
         p2: i32 = 3
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectWindow1(&mut db),
         p1: i32 = 2,
         p2: i32 = 10
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_window",
-        r#"select sum ( "bannanana" . "hizat2" ) over ( partition by "bannanana" . "hizat" ) as "hizat2" from "bannanana""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             sum("bannanana"."hizat2") over (
+               partition by
+                 "bannanana"."hizat"
+             ) as "hizat2"
+           from
+             "bannanana"
+           "#;
         dbm::DbSqliteGenSelectWindow1(&mut db)
     )?.into_iter().collect::<Vec<_>>();
     res.sort();
@@ -958,21 +1478,39 @@ fn test_query_filter() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_filter",
-        r#"insert into "bananna" ( "hizat" , "two" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat", "two")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenQueryFilter1(&mut db),
         p1: string = "a",
         p2: i32 = 10
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_filter",
-        r#"insert into "bananna" ( "hizat" , "two" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat", "two")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenQueryFilter1(&mut db),
         p1: string = "b",
         p2: i32 = 20
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_filter",
-        r#"select sum ( "two" ) filter ( where "hizat" = 'a' ) as "x" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             sum("two") filter (
+               where
+                 "hizat" = 'a'
+             ) as "x"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenQueryFilter1(&mut db)
     )?;
     assert_eq!(res, Some(10i32));
@@ -987,14 +1525,28 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
     for i in 1i32 ..= 3 {
         good_ormning::sqlite::good_query!(
             "sqlite_gen_query_window_frame",
-            r#"insert into "bananna" ( "hizat" , "two" ) values ( 'key' , ?1 )"#;
+            #[rustfmt::external("sql-formatter-sqlite")]
+            r#"insert into
+                 "bananna" ("hizat", "two")
+               values
+                 ('key', ?1)
+               "#;
             dbm::DbSqliteGenQueryWindowFrame1(&mut db),
             p1: i32 = i
         )?;
     }
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_query_window_frame",
-        r#"select sum ( "two" ) over ( order by "two" rows between unbounded preceding and current row ) as "x" from "bananna""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             sum("two") over (
+               order by
+                 "two" rows between unbounded preceding
+                 and current row
+             ) as "x"
+           from
+             "bananna"
+           "#;
         dbm::DbSqliteGenQueryWindowFrame1(&mut db)
     )?;
     assert_eq!(res, vec![Some(1i32), Some(3i32), Some(6i32)]);
@@ -1008,12 +1560,24 @@ fn test_query_collate() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_collate",
-        r#"insert into "bananna" ( "hizat" ) values ( 'abc' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ('abc')
+           "#;
         dbm::DbSqliteGenQueryCollate1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_collate",
-        r#"select "hizat" as "x" from "bananna" where "hizat" collate nocase = 'ABC'"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "hizat" as "x"
+           from
+             "bananna"
+           where
+             "hizat" collate nocase = 'ABC'
+           "#;
         dbm::DbSqliteGenQueryCollate1(&mut db)
     )?;
     assert_eq!(res, "abc");
@@ -1027,18 +1591,41 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_is_distinct_from",
-        r#"insert into "bananna" ( "hizat" ) values ( null )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
         dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_is_distinct_from",
-        r#"select count ( * ) as "x" from "bananna" where "hizat" is distinct from 'abc'"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             count(*) as "x"
+           from
+             "bananna"
+           where
+             "hizat" is distinct
+           from
+             'abc'
+           "#;
         dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
     )?;
     assert_eq!(res, 1i64);
     let res2 = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_is_distinct_from",
-        r#"select count ( * ) as "x" from "bananna" where "hizat" is not distinct from null"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             count(*) as "x"
+           from
+             "bananna"
+           where
+             "hizat" is not distinct
+           from
+             null
+           "#;
         dbm::DbSqliteGenQueryIsDistinctFrom1(&mut db)
     )?;
     assert_eq!(res2, 1i64);
@@ -1052,17 +1639,36 @@ fn test_query_having() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
-        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'a' , 10 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat", "two")
+           values
+             ('a', 10)
+           "#;
         dbm::DbSqliteGenQueryHaving1(&mut db)
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
-        r#"insert into "bananna" ( "hizat" , "two" ) values ( 'b' , 20 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat", "two")
+           values
+             ('b', 20)
+           "#;
         dbm::DbSqliteGenQueryHaving1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_query_having",
-        r#"select "hizat" as "x" from "bananna" group by "hizat" having sum ( "two" ) > 15"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "hizat" as "x"
+           from
+             "bananna"
+           group by
+             "hizat"
+           having
+             sum("two") > 15
+           "#;
         dbm::DbSqliteGenQueryHaving1(&mut db)
     )?;
     assert_eq!(res, vec!["b".to_string()]);
@@ -1105,12 +1711,30 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_cte_subquery",
-        r#"insert into "bananna" ( "hizat" ) values ( 'a' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ('a')
+           "#;
         dbm::DbSqliteGenQueryCteSubquery1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_cte_subquery",
-        r#"select ( with "t" as ( select 1 as "v" ) select "v" from "t" ) as "x""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             (
+               with
+                 "t" as (
+                   select
+                     1 as "v"
+                 )
+               select
+                 "v"
+               from
+                 "t"
+             ) as "x"
+           "#;
         dbm::DbSqliteGenQueryCteSubquery1(&mut db)
     )?;
     assert_eq!(res, 1i32);
@@ -1124,12 +1748,24 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_like_escape",
-        r#"insert into "bananna" ( "hizat" ) values ( 'a%b' )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ('a%b')
+           "#;
         dbm::DbSqliteGenQueryLikeEscape1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_like_escape",
-        r#"select count ( * ) as "x" from "bananna" where "hizat" like 'a!%b' escape '!'"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             count(*) as "x"
+           from
+             "bananna"
+           where
+             "hizat" like 'a!%b' escape '!'
+           "#;
         dbm::DbSqliteGenQueryLikeEscape1(&mut db)
     )?;
     assert_eq!(res, 1i64);
@@ -1143,21 +1779,41 @@ fn test_select_junction() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_junction",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectJunction1(&mut db),
         p1: i32 = 1,
         p2: i32 = 7
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_junction",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( ?1 , ?2 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             (?1, ?2)
+           "#;
         dbm::DbSqliteGenSelectJunction1(&mut db),
         p1: i32 = 2,
         p2: i32 = 3
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_junction",
-        r#"select "bannanana" . "hizat" as "hizat" from "bannanana" union select "bannanana" . "hizat2" as "hizat2" from "bannanana""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           union
+           select
+             "bannanana"."hizat2" as "hizat2"
+           from
+             "bannanana"
+           "#;
         dbm::DbSqliteGenSelectJunction1(&mut db)
     )?;
     res.sort();
@@ -1172,7 +1828,14 @@ fn test_returning_wildcard() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        r#"insert into "bannanana" ( "hizat" ) values ( 'hi' ) returning *"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat")
+           values
+             ('hi')
+           returning
+             *
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     assert_eq!(res.hizat, "hi");
@@ -1186,12 +1849,24 @@ fn test_query_between() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( 'a' , 5 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             ('a', 5)
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        r#"select count(*) as "x" from "bannanana" where "hizat2" between 1 and 10"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             count(*) as "x"
+           from
+             "bannanana"
+           where
+             "hizat2" between 1 and 10
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     assert_eq!(res, 1i64);
@@ -1205,12 +1880,25 @@ fn test_query_case() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        r#"insert into "bannanana" ( "hizat" , "hizat2" ) values ( 'a' , 5 )"#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "bannanana" ("hizat", "hizat2")
+           values
+             ('a', 5)
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        r#"select case when "hizat2" > 0 then 'positive' else 'non-positive' end as "res" from "bannanana""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             case
+               when "hizat2" > 0 then 'positive'
+               else 'non-positive'
+             end as "res"
+           from
+             "bannanana"
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     assert_eq!(res, "positive");
@@ -1225,7 +1913,16 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
     db.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_base_insert",
-        "select hizat from bannanana where (hizat, hizat2) in (('a', 1), ('c', 3)) order by hizat";
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             hizat
+           from
+             bannanana
+           where
+             (hizat, hizat2) in (('a', 1), ('c', 3))
+           order by
+             hizat
+           "#;
         dbm::DbSqliteGenBaseInsert1(&mut db)
     )?;
     assert_eq!(res.len(), 2);
@@ -1241,27 +1938,23 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
-        r#"
-                    insert into "genrerank"
-                        (
-                            "date", 
-                            "genre", 
-                            "secondary", 
-                            "sort", 
-                            "rank", 
-                            "track"
-                        )
-                        values (
-                            $date,
-                            $genre,
-                            $secondary,
-                            $sort,
-                            $rank,
-                            $track
-                        )
-                    on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $date, "rank" = $rank
-    "#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "genrerank" (
+               "date",
+               "genre",
+               "secondary",
+               "sort",
+               "rank",
+               "track"
+             )
+           values
+             ($date, $genre, $secondary, $sort, $rank, $track)
+           on conflict ("genre", "secondary", "sort", "track") do update
+           set
+             "date" = $date,
+             "rank" = $rank
+           "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db),
         date: i32 = 20260501,
         genre: string = "rock",
@@ -1272,27 +1965,23 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
-        r#"
-                    insert into "genrerank"
-                        (
-                            "date", 
-                            "genre", 
-                            "secondary", 
-                            "sort", 
-                            "rank", 
-                            "track"
-                        )
-                        values (
-                            $date,
-                            $genre,
-                            $secondary,
-                            $sort,
-                            $rank,
-                            $track
-                        )
-                    on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $date, "rank" = $rank
-    "#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"insert into
+             "genrerank" (
+               "date",
+               "genre",
+               "secondary",
+               "sort",
+               "rank",
+               "track"
+             )
+           values
+             ($date, $genre, $secondary, $sort, $rank, $track)
+           on conflict ("genre", "secondary", "sort", "track") do update
+           set
+             "date" = $date,
+             "rank" = $rank
+           "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db),
         date: i32 = 20260502,
         genre: string = "rock",
@@ -1303,12 +1992,22 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
-        r#"select "genrerank" . "date" as "date" from "genrerank""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "genrerank"."date" as "date"
+           from
+             "genrerank"
+           "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db)
     )?, 20260502);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
-        r#"select "genrerank" . "rank" as "rank" from "genrerank""#;
+        #[rustfmt::external("sql-formatter-sqlite")]
+        r#"select
+             "genrerank"."rank" as "rank"
+           from
+             "genrerank"
+           "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db)
     )?, 5);
     Ok(())
