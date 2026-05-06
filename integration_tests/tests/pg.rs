@@ -1768,7 +1768,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
                             "track"
                         )
                         values (
-                            $date,
+                            $repdate,
                             $genre,
                             $secondary,
                             $sort,
@@ -1776,10 +1776,10 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
                             $track
                         )
                     on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $date, "rank" = $rank
+                        do update set "date" = $repdate, "rank" = $rank
     "#;
         dbm::DbPgGenRepeatedParam1(&mut db),
-        date: i32 = 20260501,
+        repdate: i32 = 20260501,
         genre: string = "rock",
         secondary: string = "classic",
         sort: i32 = 1,
@@ -1800,7 +1800,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
                             "track"
                         )
                         values (
-                            $date,
+                            $repdate,
                             $genre,
                             $secondary,
                             $sort,
@@ -1808,10 +1808,10 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
                             $track
                         )
                     on conflict ("genre", "secondary", "sort", "track")
-                        do update set "date" = $date, "rank" = $rank
+                        do update set "date" = $repdate, "rank" = $rank
     "#;
         dbm::DbPgGenRepeatedParam1(&mut db),
-        date: i32 = 20260502,
+        repdate: i32 = 20260502,
         genre: string = "rock",
         secondary: string = "classic",
         sort: i32 = 1,

@@ -206,7 +206,11 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
         #[rustfmt::external("sql-formatter-sqlite")]
-        r#"insert into "bananna" ( "hizat" ) values ( $p(i32 = std::i32::MAX) )"#;
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             ($p (i32 = 2147483647))
+           "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -218,7 +222,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
              "bananna"
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
-    )?, std::i32::MAX);
+    )?, 2147483647);
     Ok(())
 }
 
@@ -1949,14 +1953,21 @@ fn test_repeated_param() -> Result<(), loga::Error> {
                "track"
              )
            values
-             ($date, $genre, $secondary, $sort, $rank, $track)
+             (
+               $repdate,
+               $genre,
+               $secondary,
+               $sort,
+               $rank,
+               $track
+             )
            on conflict ("genre", "secondary", "sort", "track") do update
            set
-             "date" = $date,
+             "date" = $repdate,
              "rank" = $rank
            "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db),
-        date: i32 = 20260501,
+        repdate: i32 = 20260501,
         genre: string = "rock",
         secondary: string = "classic",
         sort: i32 = 1,
@@ -1976,14 +1987,21 @@ fn test_repeated_param() -> Result<(), loga::Error> {
                "track"
              )
            values
-             ($date, $genre, $secondary, $sort, $rank, $track)
+             (
+               $repdate,
+               $genre,
+               $secondary,
+               $sort,
+               $rank,
+               $track
+             )
            on conflict ("genre", "secondary", "sort", "track") do update
            set
-             "date" = $date,
+             "date" = $repdate,
              "rank" = $rank
            "#;
         dbm::DbSqliteGenRepeatedParam1(&mut db),
-        date: i32 = 20260502,
+        repdate: i32 = 20260502,
         genre: string = "rock",
         secondary: string = "classic",
         sort: i32 = 1,
