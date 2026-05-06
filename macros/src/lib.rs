@@ -185,54 +185,6 @@ impl Parse for GoodQueryInput {
                     final_sql.push_str(&format!("${}", param_idx));
                     last_end = i;
                     continue;
-                } else {
-                    // Check for $p(...)
-                    let mut j = i + 1;
-                    while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
-                        j += 1;
-                    }
-                    if j > i + 1 && j < bytes.len() && bytes[j] == b'(' {
-                        let p_name = &sql[i + 1 .. j];
-                        if p_name == "p" || p_name == "param" {
-                            final_sql.push_str(&sql[last_end .. i]);
-                            let content_start = j + 1;
-                            let mut k = content_start;
-                            let mut depth = 1;
-                            while k < bytes.len() && depth > 0 {
-                                if bytes[k] == b'(' {
-                                    depth += 1;
-                                } else if bytes[k] == b')' {
-                                    depth -= 1;
-                                }
-                                k += 1;
-                            }
-                            if depth > 0 {
-                                return Err(syn::Error::new(input.span(), "Unclosed inline parameter $(..."));
-                            }
-                            let content = &sql[content_start .. k - 1];
-                            let mut split = None;
-                            for (idx, b) in content.as_bytes().iter().enumerate() {
-                                if *b == b'=' {
-                                    split = Some((&content[..idx], &content[idx + 1..]));
-                                    break;
-                                }
-                            }
-                            let (type_str, val_str) = split.ok_or_else(|| {
-                                syn::Error::new(
-                                    input.span(),
-                                    format!("Invalid inline parameter format. Expected ${}(type = value)", p_name),
-                                )
-                            })?;
-                            let (param_idx, name, pt, val) =
-                                parse_inline_param(input, type_str, val_str, params.len())?;
-                            params.push(val);
-                            param_types.push((name, pt));
-                            final_sql.push_str(&format!("${}", param_idx));
-                            i = k;
-                            last_end = i;
-                            continue;
-                        }
-                    }
                 }
             }
             i += 1;

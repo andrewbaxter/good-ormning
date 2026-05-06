@@ -147,7 +147,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
         r#"insert into
              "bananna" ("hizat")
            values
-             ($p(i32 = 22))
+             (${i32 = 22})
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
@@ -159,7 +159,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
            from
              "bananna"
            where
-             "bananna"."hizat" = $p(i32 = 22)
+             "bananna"."hizat" = ${i32 = 22}
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?, 22);
@@ -178,7 +178,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
         r#"insert into
              "bananna" ("hizat")
            values
-             ($p(i32 = val))
+             (${i32 = val})
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
@@ -190,8 +190,8 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
            from
              "bananna"
            where
-             "bananna"."hizat" = $p(i32 = val)
-             and $p(bool = true)
+             "bananna"."hizat" = ${i32 = val}
+             and ${bool = true}
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?, 47);
@@ -209,7 +209,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
         r#"insert into
              "bananna" ("hizat")
            values
-             ($p(i32 = 2147483647))
+             (${i32 = 2147483647})
            "#;
         dbm::DbSqliteGenInlineParamI321(&mut db)
     )?;
