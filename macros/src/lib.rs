@@ -142,68 +142,89 @@ impl Parse for GoodQueryInput {
         }
         let mut final_sql = String::new();
         let mut last_end = 0;
-        while let Some(start) = sql[last_end..].find("${") {
-            final_sql.push_str(&sql[last_end .. last_end + start]);
-            let start = last_end + start;
-            if let Some(end) = sql[start..].find('}') {
-                let end = start + end;
-                let content = &sql[start + 2 .. end];
-                let mut split = None;
-                let bytes = content.as_bytes();
-                let mut i = 0;
-                while i < bytes.len() {
-                    if bytes[i] == b'=' {
-                        split = Some((&content[..i], &content[i + 1..]));
-                        break;
+        let bytes = sql.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'$' {
+                if i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+                    final_sql.push_str(&sql[last_end .. i]);
+                    i += 2;
+                    let content_start = i;
+                    while i < bytes.len() && bytes[i] != b'}' {
+                        i += 1;
                     }
+                    if i >= bytes.len() {
+                        return Err(syn::Error::new(input.span(), "Unclosed inline parameter ${"));
+                    }
+                    let content = &sql[content_start .. i];
                     i += 1;
-                }
-                let (type_str, val_str) =
-                    split.ok_or_else(|| input.error("Invalid inline parameter format. Expected ${type = value}"))?;
-                let val: syn::Expr = syn::parse_str(val_str).map_err(|e| {
-                    syn::Error::new(input.span(), format!("Failed to parse inline parameter value: {}", e))
-                })?;
-                let type_tokens: proc_macro2::TokenStream = type_str.parse().map_err(|e| {
-                    syn::Error::new(input.span(), format!("Failed to parse inline parameter type tokens: {}", e))
-                })?;
-
-                use syn::parse::Parser;
-
-                let (arr_p, opt_p, base_p) = (|type_input: ParseStream| {
-                    let mut arr = false;
-                    let mut opt = false;
-                    let mut base = String::new();
-                    while type_input.peek(Ident) {
-                        let id: Ident = type_input.parse()?;
-                        if id == "arr" {
-                            arr = true;
-                        } else if id == "opt" {
-                            opt = true;
-                        } else {
-                            base = id.to_string();
+                    let mut split = None;
+                    for (idx, b) in content.as_bytes().iter().enumerate() {
+                        if *b == b'=' {
+                            split = Some((&content[..idx], &content[idx + 1..]));
                             break;
                         }
                     }
-                    Ok((arr, opt, base))
-                }).parse2(type_tokens).map_err(|e| {
-                    syn::Error::new(input.span(), format!("Failed to parse inline parameter type: {}", e))
-                })?;
-                if base_p.is_empty() {
-                    return Err(input.error("Expected base type in inline parameter"));
+                    let (type_str, val_str) = split.ok_or_else(|| {
+                        syn::Error::new(input.span(), "Invalid inline parameter format. Expected ${type = value}")
+                    })?;
+                    let (param_idx, name, pt, val) = parse_inline_param(input, type_str, val_str, params.len())?;
+                    params.push(val);
+                    param_types.push((name, pt));
+                    final_sql.push_str(&format!("${}", param_idx));
+                    last_end = i;
+                    continue;
+                } else {
+                    // Check for $p(...)
+                    let mut j = i + 1;
+                    while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                        j += 1;
+                    }
+                    if j > i + 1 && j < bytes.len() && bytes[j] == b'(' {
+                        let p_name = &sql[i + 1 .. j];
+                        if p_name == "p" || p_name == "param" {
+                            final_sql.push_str(&sql[last_end .. i]);
+                            let content_start = j + 1;
+                            let mut k = content_start;
+                            let mut depth = 1;
+                            while k < bytes.len() && depth > 0 {
+                                if bytes[k] == b'(' {
+                                    depth += 1;
+                                } else if bytes[k] == b')' {
+                                    depth -= 1;
+                                }
+                                k += 1;
+                            }
+                            if depth > 0 {
+                                return Err(syn::Error::new(input.span(), "Unclosed inline parameter $(..."));
+                            }
+                            let content = &sql[content_start .. k - 1];
+                            let mut split = None;
+                            for (idx, b) in content.as_bytes().iter().enumerate() {
+                                if *b == b'=' {
+                                    split = Some((&content[..idx], &content[idx + 1..]));
+                                    break;
+                                }
+                            }
+                            let (type_str, val_str) = split.ok_or_else(|| {
+                                syn::Error::new(
+                                    input.span(),
+                                    format!("Invalid inline parameter format. Expected ${}(type = value)", p_name),
+                                )
+                            })?;
+                            let (param_idx, name, pt, val) =
+                                parse_inline_param(input, type_str, val_str, params.len())?;
+                            params.push(val);
+                            param_types.push((name, pt));
+                            final_sql.push_str(&format!("${}", param_idx));
+                            i = k;
+                            last_end = i;
+                            continue;
+                        }
+                    }
                 }
-                let param_idx = params.len() + 1;
-                let name = format_ident!("p{}", param_idx);
-                params.push(val);
-                param_types.push((name, ParamType {
-                    arr: arr_p,
-                    opt: opt_p,
-                    base: base_p,
-                }));
-                final_sql.push_str(&format!("${}", param_idx));
-                last_end = end + 1;
-            } else {
-                return Err(input.error("Unclosed inline parameter ${"));
             }
+            i += 1;
         }
         final_sql.push_str(&sql[last_end..]);
         Ok(GoodQueryInput {
@@ -215,6 +236,52 @@ impl Parse for GoodQueryInput {
             params: params,
         })
     }
+}
+
+fn parse_inline_param(
+    input: ParseStream,
+    type_str: &str,
+    val_str: &str,
+    current_params_len: usize,
+) -> syn::Result<(usize, Ident, ParamType, syn::Expr)> {
+    let val: syn::Expr = syn::parse_str(val_str).map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter value: {}", e))
+    })?;
+    let type_tokens: proc_macro2::TokenStream = type_str.parse().map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter type tokens: {}", e))
+    })?;
+
+    use syn::parse::Parser;
+
+    let (arr_p, opt_p, base_p) = (|type_input: ParseStream| {
+        let mut arr = false;
+        let mut opt = false;
+        let mut base = String::new();
+        while type_input.peek(Ident) {
+            let id: Ident = type_input.parse()?;
+            if id == "arr" {
+                arr = true;
+            } else if id == "opt" {
+                opt = true;
+            } else {
+                base = id.to_string();
+                break;
+            }
+        }
+        Ok((arr, opt, base))
+    }).parse2(type_tokens).map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter type: {}", e))
+    })?;
+    if base_p.is_empty() {
+        return Err(input.error("Expected base type in inline parameter"));
+    }
+    let param_idx = current_params_len + 1;
+    let name = format_ident!("p{}", param_idx);
+    Ok((param_idx, name, ParamType {
+        arr: arr_p,
+        opt: opt_p,
+        base: base_p,
+    }, val))
 }
 
 fn get_db_info(_engine: &str, provided_db_name: String) -> String {

@@ -9,9 +9,7 @@ use {
 #[test]
 fn test_import_sqlite() {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    conn
-        .execute_batch(
-            "
+    conn.execute_batch("
         CREATE TABLE users (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -26,9 +24,7 @@ fn test_import_sqlite() {
         );
         CREATE INDEX idx_posts_user ON posts(user_id);
         CREATE UNIQUE INDEX idx_posts_title ON posts(title);
-    ",
-        )
-        .unwrap();
+    ").unwrap();
     let version = sqlite::read_schema(&conn).unwrap();
 
     // Verify tables
@@ -55,7 +51,7 @@ fn test_import_sqlite() {
     assert!(has_unique_idx, "posts missing unique index");
 
     // Generate code and do sanity checks
-    let code = codegen::generate_sqlite(&version, "testdb");
+    let code = codegen::generate_sqlite(&version, "testdb").unwrap();
     assert!(!code.is_empty());
     assert!(code.contains("fn main()"));
     assert!(code.contains("rowid_field"), "generated code missing rowid_field call");

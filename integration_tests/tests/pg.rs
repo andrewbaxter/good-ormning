@@ -65,13 +65,15 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_inline_param_i32",
-        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
-        dbm::DbPgGenInlineParamI321(&mut db)
+        r#"insert into "bananna" ( "hizat" ) values ( $1 )"#;
+        dbm::DbPgGenInlineParamI321(&mut db),
+        p1: i32 = 22
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_inline_param_i32",
-        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
-        dbm::DbPgGenInlineParamI321(&mut db)
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = $1"#;
+        dbm::DbPgGenInlineParamI321(&mut db),
+        p1: i32 = 22
     ).await?, 22);
     Ok(())
 }
@@ -1177,5 +1179,23 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
         r#"select "genrerank" . "rank" as "rank" from "genrerank""#;
         dbm::DbPgGenRepeatedParam1(&mut db)
     ).await?, 5);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_inline_param_i32_old_syntax() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_inline_param_i32_old");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_inline_param_i32_old",
+        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
+        dbm::DbPgGenInlineParamI32Old1(&mut db)
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        "pg_gen_inline_param_i32_old",
+        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
+        dbm::DbPgGenInlineParamI32Old1(&mut db)
+    ).await?, 22);
     Ok(())
 }

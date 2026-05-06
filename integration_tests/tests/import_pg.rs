@@ -67,7 +67,7 @@ async fn test_import_pg() {
     assert!(has_unique_idx, "posts missing unique index");
 
     // Generate code and sanity-check
-    let code = codegen::generate_pg(&version, "testpg");
+    let code = codegen::generate_pg(&version, "testpg").unwrap();
     assert!(!code.is_empty());
     assert!(code.contains("fn main()"));
     assert!(code.contains("field_auto"), "generated code missing field_auto for bigserial");

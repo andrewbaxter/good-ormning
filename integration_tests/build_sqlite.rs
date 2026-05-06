@@ -761,4 +761,14 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_i32().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_inline_param_i32_old".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }
