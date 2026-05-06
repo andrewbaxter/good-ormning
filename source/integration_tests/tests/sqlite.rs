@@ -14,7 +14,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_hello_world",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "hello_world_users" ("name", "points")
            values
@@ -26,7 +26,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
     )?;
     for user_id in good_ormning::sqlite::good_query_many!(
         "sqlite_gen_hello_world",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "hello_world_users"."rowid" as "rowid"
            from
@@ -36,7 +36,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
     )? {
         let user = good_ormning::sqlite::good_query_one!(
             "sqlite_gen_hello_world",
-            #[rustfmt::external("sql-formatter-sqlite")]
+            //# genemichaels-external: sql-formatter-sqlite
             r#"select
                  "hello_world_users"."name" as "name",
                  "hello_world_users"."points" as "points"
@@ -60,7 +60,7 @@ fn test_base_insert() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -71,7 +71,7 @@ fn test_base_insert() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -114,7 +114,7 @@ fn test_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -125,7 +125,7 @@ fn test_param_i32() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -143,7 +143,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -153,7 +153,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -174,7 +174,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
     let val = 47;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -184,7 +184,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -205,7 +205,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -215,7 +215,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -234,7 +234,7 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_s_chrono",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -245,7 +245,7 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_s_chrono",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -264,7 +264,7 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_ms_chrono",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -275,7 +275,7 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_ms_chrono",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -299,7 +299,7 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
             .timestamp();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_s_jiff",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -310,7 +310,7 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_s_jiff",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -334,7 +334,7 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
             .timestamp();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_ms_jiff",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -345,7 +345,7 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_utctime_ms_jiff",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -363,7 +363,7 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -374,7 +374,7 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -392,7 +392,7 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32_null",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -402,7 +402,7 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_i32_null",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -420,7 +420,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_arr_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -431,7 +431,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_param_arr_i32",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -483,7 +483,7 @@ fn test_param_custom() -> Result<(), loga::Error> {
         );
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_custom",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" (
                "x_0",
@@ -518,7 +518,7 @@ fn test_param_custom() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_custom",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."x_0" as "x_0",
              "bananna"."x_1" as "x_1",
@@ -559,7 +559,7 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_custom",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -570,7 +570,7 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_custom",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -588,7 +588,7 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_insert_on_conflict_do_nothing",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -602,7 +602,7 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     )?.is_some());
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_insert_on_conflict_do_nothing",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -624,7 +624,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -641,7 +641,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     )?, 33);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -658,7 +658,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     )?, 34);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -683,7 +683,7 @@ fn test_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -693,7 +693,7 @@ fn test_update() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -703,7 +703,7 @@ fn test_update() -> Result<(), loga::Error> {
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"update "bananna"
            set
              "hizat" = 'tep'
@@ -712,7 +712,7 @@ fn test_update() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -730,7 +730,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "ban" ("hizat")
            values
@@ -740,7 +740,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -750,7 +750,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"update "ban"
            set
              "hizat" = ?1
@@ -763,7 +763,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -773,7 +773,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"update "ban"
            set
              "hizat" = ?1
@@ -786,7 +786,7 @@ fn test_update_where() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -804,7 +804,7 @@ fn test_update_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "b" ("hizat")
            values
@@ -814,7 +814,7 @@ fn test_update_returning() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_update_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"update "b"
            set
              "hizat" = 'tep'
@@ -833,7 +833,7 @@ fn test_delete() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "b" ("hizat")
            values
@@ -843,7 +843,7 @@ fn test_delete() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -853,14 +853,14 @@ fn test_delete() -> Result<(), loga::Error> {
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "b"
            "#;
         dbm::DbSqliteGenDelete1(&mut db)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -878,7 +878,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "ba" ("hizat")
            values
@@ -888,7 +888,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "ba"
            where
              "ba"."hizat" = ?1
@@ -898,7 +898,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "ba"."hizat" as "hizat"
            from
@@ -908,7 +908,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "ba"
            where
              "ba"."hizat" = ?1
@@ -918,7 +918,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_where",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "ba"."hizat" as "hizat"
            from
@@ -936,7 +936,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "b" ("hizat")
            values
@@ -946,7 +946,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -956,7 +956,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
     )?.is_some());
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "b"
            where
              "b"."hizat" = ?1
@@ -966,7 +966,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -986,7 +986,7 @@ fn test_select_join() -> Result<(), loga::Error> {
             dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
-                    #[rustfmt::external("sql-formatter-sqlite")]
+                    //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "b" ("hizat", "three")
                        values
@@ -996,7 +996,7 @@ fn test_select_join() -> Result<(), loga::Error> {
                 )?;
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
-                    #[rustfmt::external("sql-formatter-sqlite")]
+                    //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "select_join_two" ("hizat", "two")
                        values
@@ -1010,7 +1010,7 @@ fn test_select_join() -> Result<(), loga::Error> {
     }))?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_select_join",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "b"."three" as "three",
              "select_join_two"."two" as "two"
@@ -1032,7 +1032,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1044,7 +1044,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1056,7 +1056,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1068,7 +1068,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1080,7 +1080,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              sum("bannanana"."hizat2") as "hizat2"
            from
@@ -1102,7 +1102,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1113,7 +1113,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1124,7 +1124,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1135,7 +1135,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_limit",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -1155,7 +1155,7 @@ fn test_select_order() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1166,7 +1166,7 @@ fn test_select_order() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1177,7 +1177,7 @@ fn test_select_order() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1188,7 +1188,7 @@ fn test_select_order() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_order",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -1211,7 +1211,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_add_field",
                     "0",
-                    #[rustfmt::external("sql-formatter-sqlite")]
+                    //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "bannna" ("hizat")
                        values
@@ -1226,7 +1226,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
     }))?;
     match good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_migrate_add_field",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bannna"."hizat" as "hizat",
              "bannna"."zomzom" as "zomzom"
@@ -1251,7 +1251,7 @@ fn test_migrate_rename_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_field",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannna" ("hizat")
            values
@@ -1269,7 +1269,7 @@ fn test_migrate_remove_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_remove_field",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bnanaa" ("hizat")
            values
@@ -1288,7 +1288,7 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_add_table",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "migrate_add_table_two" ("two")
            values
@@ -1307,7 +1307,7 @@ fn test_migrate_rename_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_table",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bana" ("hizat")
            values
@@ -1337,7 +1337,7 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_pre_migration",
                     "0",
-                    #[rustfmt::external("sql-formatter-sqlite")]
+                    //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "migrate_pre_migration_v0_two" ("two")
                        values
@@ -1360,7 +1360,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_cte",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1372,7 +1372,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_cte",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1384,7 +1384,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_cte",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"with
              "hibbo" ("zathi") as (
                select
@@ -1411,7 +1411,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1423,7 +1423,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1435,7 +1435,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1447,7 +1447,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1459,7 +1459,7 @@ fn test_select_window() -> Result<(), loga::Error> {
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_window",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              sum("bannanana"."hizat2") over (
                partition by
@@ -1482,7 +1482,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_filter",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1494,7 +1494,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_filter",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1506,7 +1506,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_filter",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              sum("two") filter (
                where
@@ -1529,7 +1529,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
     for i in 1i32 ..= 3 {
         good_ormning::sqlite::good_query!(
             "sqlite_gen_query_window_frame",
-            #[rustfmt::external("sql-formatter-sqlite")]
+            //# genemichaels-external: sql-formatter-sqlite
             r#"insert into
                  "bananna" ("hizat", "two")
                values
@@ -1541,7 +1541,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
     }
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_query_window_frame",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              sum("two") over (
                order by
@@ -1564,7 +1564,7 @@ fn test_query_collate() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_collate",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1574,7 +1574,7 @@ fn test_query_collate() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_collate",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "hizat" as "x"
            from
@@ -1595,7 +1595,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1605,7 +1605,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              count(*) as "x"
            from
@@ -1620,7 +1620,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     assert_eq!(res, 1i64);
     let res2 = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              count(*) as "x"
            from
@@ -1643,7 +1643,7 @@ fn test_query_having() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1653,7 +1653,7 @@ fn test_query_having() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1663,7 +1663,7 @@ fn test_query_having() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_query_having",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "hizat" as "x"
            from
@@ -1715,7 +1715,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_cte_subquery",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1725,7 +1725,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_cte_subquery",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              (
                with
@@ -1752,7 +1752,7 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_like_escape",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1762,7 +1762,7 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_like_escape",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              count(*) as "x"
            from
@@ -1783,7 +1783,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_junction",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1795,7 +1795,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_junction",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1807,7 +1807,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
     )?;
     let mut res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_select_junction",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -1832,7 +1832,7 @@ fn test_returning_wildcard() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1853,7 +1853,7 @@ fn test_query_between() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1863,7 +1863,7 @@ fn test_query_between() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              count(*) as "x"
            from
@@ -1884,7 +1884,7 @@ fn test_query_case() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1894,7 +1894,7 @@ fn test_query_case() -> Result<(), loga::Error> {
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              case
                when "hizat2" > 0 then 'positive'
@@ -1917,7 +1917,7 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
     db.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_base_insert",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              hizat
            from
@@ -1942,7 +1942,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "genrerank" (
                "date",
@@ -1976,7 +1976,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into
              "genrerank" (
                "date",
@@ -2010,7 +2010,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "genrerank"."date" as "date"
            from
@@ -2020,7 +2020,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
     )?, 20260502);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-sqlite")]
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select
              "genrerank"."rank" as "rank"
            from

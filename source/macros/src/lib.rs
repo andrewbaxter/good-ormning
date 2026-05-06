@@ -54,7 +54,6 @@ use {
             ParseStream,
         },
         parse_macro_input,
-        spanned::Spanned,
     },
 };
 
@@ -79,16 +78,6 @@ impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut literals = Vec::new();
         while !input.peek(Token![;]) && !input.is_empty() {
-            while input.peek(Token![#]) {
-                let attrs = input.call(syn::Attribute::parse_outer)?;
-                for attr in attrs {
-                    if attr.path().segments.first().map(|s| s.ident == "rustfmt").unwrap_or(false) {
-                        // Skip rustfmt attributes
-                    } else {
-                        return Err(syn::Error::new(attr.span(), "Unsupported attribute"));
-                    }
-                }
-            }
             literals.push(input.parse::<LitStr>()?);
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;

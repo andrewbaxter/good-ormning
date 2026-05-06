@@ -1,5 +1,0 @@
-/target
-/Cargo.lock
-/.vscode/
-/integration_tests/tests/pg_gen_*
-/integration_tests/tests/sqlite_gen_*

@@ -28,10 +28,29 @@ async fn test_import_pg() {
     let client = new_client(&server).await;
     client.simple_query("SET search_path TO public").await.unwrap();
     for stmt in [
-        "CREATE TABLE users (id bigserial PRIMARY KEY, name text NOT NULL, score double precision, active boolean NOT NULL DEFAULT true, data bytea)",
-        "CREATE TABLE posts (id bigserial PRIMARY KEY, user_id bigint NOT NULL REFERENCES users(id), title text NOT NULL, body text)",
-        "CREATE INDEX idx_posts_user ON posts(user_id)",
-        "CREATE UNIQUE INDEX idx_posts_title ON posts(title)",
+        //# genemichaels-external: sql-formatter-pg
+        r#"CREATE TABLE users (
+             id bigserial PRIMARY KEY,
+             name text NOT NULL,
+             score double precision,
+             active boolean NOT NULL DEFAULT true,
+             data bytea
+           )
+           "#,
+        //# genemichaels-external: sql-formatter-pg
+        r#"CREATE TABLE posts (
+             id bigserial PRIMARY KEY,
+             user_id bigint NOT NULL REFERENCES users (id),
+             title text NOT NULL,
+             body text
+           )
+           "#,
+        //# genemichaels-external: sql-formatter-pg
+        r#"CREATE INDEX idx_posts_user ON posts (user_id)
+           "#,
+        //# genemichaels-external: sql-formatter-pg
+        r#"CREATE UNIQUE INDEX idx_posts_title ON posts (title)
+           "#,
     ] {
         client.simple_query(stmt).await.unwrap();
     }

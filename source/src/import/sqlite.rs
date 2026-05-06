@@ -65,12 +65,20 @@ fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
 /// names, except for rowid-alias columns which use the field ID `"rowid"`.
 pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
     let table_names: Vec<String> = {
-        let mut stmt =
-            conn
-                .prepare(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '__good_%' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-                )
-                .context("Preparing table list query")?;
+        let mut stmt = conn.prepare(
+            //# genemichaels-external: sql-formatter-sqlite
+            r#"SELECT
+                 name
+               FROM
+                 sqlite_master
+               WHERE
+                 type = 'table'
+                 AND name NOT LIKE '__good_%'
+                 AND name NOT LIKE 'sqlite_%'
+               ORDER BY
+                 name
+               "#,
+        ).context("Preparing table list query")?;
         let mut out = vec![];
         let rows = stmt.query_map([], |r| r.get::<_, String>(0)).context("Querying table list")?;
         for row in rows {

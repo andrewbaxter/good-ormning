@@ -3,13 +3,13 @@
 - On [crates.io](https://crates.io/crates/good-ormning)
 - On [docs.rs](https://docs.rs/good-ormning)
 
-Good-ormning is lightweight end-to-end database management with full static type checking! Do all your development in Rust (no live test database), and know that it'll work in production always.
+Good-ormning does everything from database setup and migration to queries, with full static type checking. Do all your development in Rust (with no live database), and know that it'll work in production, always.
 
-Dynamic queries are not currently supported. If you want to assemble a query programmatically you can run it against your database connection directly.
+Dynamic queries are not currently supported (you can still run them against your db connection directly).
 
 ## Example
 
-Create this `build.rs` file:
+Define your schema versions by creating a `build.rs` file:
 
 ```rust,ignore
 use good_ormning::sqlite::{
@@ -95,22 +95,23 @@ I think these are both mostly implemented, but if there's a missing language fea
    plus maybe `chrono` or `jiff` for `DateTime` support.
 
 2. Create a `build.rs` and define your initial schema version using `Version::new()`.
+
+   There's also a `good-ormning-import` command in testing that you can run against an existing database to automatically generate a `build.rs` file.
+
 3. Call `goodormning::generate()` to output the generated code
 4. In your runtime code, call `good_module!(dbm)` to include the generated code.
 5. After creating a database connection, call `dbm::migrate(&mut db, None)`
 6. Make queries using `good_query!()`.
 
-### Schema changes
+### Schema versioning
 
 1. Copy your previous version schema, leaving the old schema version untouched. Modify the new schema as you wish.
-2. Pass both the old and new schema versions to `goodormning::generate()`, which will generate the new migration statements.
+2. Add the new schema versions to your call to `goodormning::generate()`, which will generate the new migration statements.
 3. At runtime, the `migrate` call will make sure the database is updated to the new schema version.
 
 You can get rid of old schema versions once you know there are no existing databases running that version.
 
-## Usage details
-
-### `good_query` macros
+## Making queries: the `good_query` macros
 
 These macros are used to execute type-checked queries against the database.
 
@@ -133,9 +134,11 @@ They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL
 
   You can add parameters directly in the SQL, using the syntax `${TYPE = VALUE}`. See `PARAMS` for the list of types.
 
+  Pro tip: The [genemichaels](https://github.com/andrewbaxter/genemichaels/blob/master/crates/genemichaels/readme.md) formatter can be configured with external formatters to apply to string literals, so you can use e.g. [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) to format your SQL literals! `sql-formatter` also allows you to define custom parameter syntaxes so you can use the `${TYPE = VALUE}` syntax extension above. See `source/.sql-formatter.json` for an example. This proc macro is designed to ignore expr attributes (not stable), or you can use the `//#` directive comment to indicate the formatter.
+
 - `CONN` - The database connection
 
-- `PARAM: TYPE = VALUE` - The parameter values and their types (because the proc macro doesn't receive type information...).
+- `PARAM: TYPE = VALUE` - The parameter values and their types.
 
   This is an alternative to putting the parameters directly in the SQL. It's useful if you want to use the same parameter multiple times in the query.
 
@@ -148,12 +151,10 @@ They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL
   - `utctime_s_jiff`, `utctime_ms_jiff`
   - `auto`
 
-Parameters can also be provided inline in the SQL string using `${type = value}` syntax.
-
 Example:
 
 ```rust,ignore
-good_query!("insert into users (name, points) values (${string = \"rust human\"}, ${i64 = 0})"; dbm::Db(&mut db)).unwrap();
+good_query!(r#"insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"#; dbm::Db(&mut db)).unwrap();
 ```
 
 ### Features

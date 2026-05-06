@@ -27,7 +27,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -38,7 +38,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -56,7 +56,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -67,7 +67,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -85,7 +85,7 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -96,7 +96,7 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_inline_param_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -118,7 +118,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_utctime_chrono",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -129,7 +129,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_utctime_chrono",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -147,7 +147,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_like",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -158,7 +158,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_query_like",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -179,7 +179,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_is_null",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -190,7 +190,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_query_is_null",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              count(*) as "count"
            from
@@ -210,7 +210,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_concat",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -221,7 +221,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_query_concat",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" || ' world' as "out"
            from
@@ -239,7 +239,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_row_number",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -250,7 +250,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_row_number",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -261,7 +261,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_query_row_number",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat",
              row_number() over (
@@ -288,7 +288,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -299,7 +299,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_opt_i32",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -317,7 +317,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_i32_null",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -327,7 +327,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_opt_i32_null",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -371,7 +371,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
         );
     good_ormning::pg::good_query!(
         "pg_gen_param_custom",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" (
                "x_0",
@@ -406,7 +406,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_param_custom",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."x_0" as "x_0",
              "bananna"."x_1" as "x_1",
@@ -447,7 +447,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_custom",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -458,7 +458,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_opt_custom",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -476,7 +476,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_insert_on_conflict_do_nothing",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -490,7 +490,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     ).await?.is_some());
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_insert_on_conflict_do_nothing",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -512,7 +512,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -529,7 +529,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     ).await?, 33);
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -546,7 +546,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     ).await?, 34);
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_insert_on_conflict_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "two")
            values
@@ -571,7 +571,7 @@ async fn test_update() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -581,7 +581,7 @@ async fn test_update() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -591,7 +591,7 @@ async fn test_update() -> Result<(), loga::Error> {
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"update "bananna"
            set
              "hizat" = 'tep'
@@ -600,7 +600,7 @@ async fn test_update() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bananna"."hizat" as "hizat"
            from
@@ -618,7 +618,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "ban" ("hizat")
            values
@@ -628,7 +628,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -638,7 +638,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"update "ban"
            set
              "hizat" = $1
@@ -651,7 +651,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -661,7 +661,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"update "ban"
            set
              "hizat" = $1
@@ -674,7 +674,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "ban"."hizat" as "hizat"
            from
@@ -692,7 +692,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "b" ("hizat")
            values
@@ -702,7 +702,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_update_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"update "b"
            set
              "hizat" = 'tep'
@@ -721,7 +721,7 @@ async fn test_delete() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "b" ("hizat")
            values
@@ -731,7 +731,7 @@ async fn test_delete() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -741,14 +741,14 @@ async fn test_delete() -> Result<(), loga::Error> {
     ).await?, Some("seeon".to_string()));
     good_ormning::pg::good_query!(
         "pg_gen_delete",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"delete from "b"
            "#;
         dbm::DbPgGenDelete1(&mut db)
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -766,7 +766,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "ba" ("hizat")
            values
@@ -776,7 +776,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"delete from "ba"
            where
              "ba"."hizat" = $1
@@ -786,7 +786,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "ba"."hizat" as "hizat"
            from
@@ -796,7 +796,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
     ).await?, Some("seeon".to_string()));
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"delete from "ba"
            where
              "ba"."hizat" = $1
@@ -806,7 +806,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_where",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "ba"."hizat" as "hizat"
            from
@@ -824,7 +824,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "b" ("hizat")
            values
@@ -834,7 +834,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
     ).await?;
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -844,7 +844,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
     ).await?.is_some());
     good_ormning::pg::good_query!(
         "pg_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"delete from "b"
            where
              "b"."hizat" = $1
@@ -854,7 +854,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
     ).await?;
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_returning",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "b"."hizat" as "hizat"
            from
@@ -874,7 +874,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
                 good_ormning::pg::good_query!(
                     "pg_gen_select_join",
-                    #[rustfmt::external("sql-formatter-pg")]
+                    //# genemichaels-external: sql-formatter-pg
                     r#"insert into
                          "b" ("hizat", "three")
                        values
@@ -884,7 +884,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
                 ).await?;
                 good_ormning::pg::good_query!(
                     "pg_gen_select_join",
-                    #[rustfmt::external("sql-formatter-pg")]
+                    //# genemichaels-external: sql-formatter-pg
                     r#"insert into
                          "select_join_two" ("hizat", "two")
                        values
@@ -898,7 +898,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
     }))).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_select_join",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "b"."three" as "three",
              "select_join_two"."two" as "two"
@@ -920,7 +920,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -932,7 +932,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -944,7 +944,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -956,7 +956,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -968,7 +968,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
     ).await?;
     let mut res = good_ormning::pg::good_query_many!(
         "pg_gen_select_group_by",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              sum("bannanana"."hizat2") as "hizat2"
            from
@@ -990,7 +990,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_limit",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1001,7 +1001,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_limit",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1012,7 +1012,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_limit",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1023,7 +1023,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_many!(
         "pg_gen_select_limit",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -1043,7 +1043,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_order",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1054,7 +1054,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_order",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1065,7 +1065,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_order",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1076,7 +1076,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_many!(
         "pg_gen_select_order",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bannanana"."hizat" as "hizat"
            from
@@ -1099,7 +1099,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
                 good_ormning::pg::good_query!(
                     "pg_gen_migrate_add_field",
                     "0",
-                    #[rustfmt::external("sql-formatter-pg")]
+                    //# genemichaels-external: sql-formatter-pg
                     r#"insert into
                          "bannna" ("hizat")
                        values
@@ -1114,7 +1114,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
     }))).await?;
     match good_ormning::pg::good_query_opt!(
         "pg_gen_migrate_add_field",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "bannna"."hizat" as "hizat",
              "bannna"."zomzom" as "zomzom"
@@ -1139,7 +1139,7 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_rename_field",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannna" ("hizat")
            values
@@ -1157,7 +1157,7 @@ async fn test_migrate_remove_field() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_remove_field",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bnanaa" ("hizat")
            values
@@ -1176,7 +1176,7 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_add_table",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "migrate_add_table_two" ("two")
            values
@@ -1195,7 +1195,7 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_rename_table",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bana" ("hizat")
            values
@@ -1222,7 +1222,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_cte",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_cte_bannanana" ("hizat", "hizat2")
            values
@@ -1234,7 +1234,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_cte",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_cte_bannanana" ("hizat", "hizat2")
            values
@@ -1246,7 +1246,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
     ).await?;
     let mut res = good_ormning::pg::good_query_many!(
         "pg_gen_select_cte",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"with
              "hibbo" ("zathi") as (
                select
@@ -1273,7 +1273,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_window",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_window_bannanana" ("hizat", "hizat2")
            values
@@ -1285,7 +1285,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_window",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_window_bannanana" ("hizat", "hizat2")
            values
@@ -1297,7 +1297,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_window",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_window_bannanana" ("hizat", "hizat2")
            values
@@ -1309,7 +1309,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_window",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "select_window_bannanana" ("hizat", "hizat2")
            values
@@ -1321,7 +1321,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
     ).await?;
     let mut res = good_ormning::pg::good_query_many!(
         "pg_gen_select_window",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              sum("select_window_bannanana"."hizat2") over (
                partition by
@@ -1352,7 +1352,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_filter",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1364,7 +1364,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_filter",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1376,7 +1376,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_filter",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              sum("two") filter (
                where
@@ -1399,7 +1399,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
     for i in 1 ..= 3 {
         good_ormning::pg::good_query!(
             "pg_gen_query_window_frame",
-            #[rustfmt::external("sql-formatter-pg")]
+            //# genemichaels-external: sql-formatter-pg
             r#"insert into
                  "bananna" ("hizat", "two")
                values
@@ -1411,7 +1411,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
     }
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_query_window_frame",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              sum("two") over (
                order by
@@ -1434,7 +1434,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_collate",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1444,7 +1444,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_collate",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "hizat" as "x"
            from
@@ -1465,7 +1465,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1475,7 +1475,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              count(*) as "x"
            from
@@ -1488,7 +1488,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     assert_eq!(res, 1i64);
     let res2 = good_ormning::pg::good_query_one!(
         "pg_gen_query_is_distinct_from",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              count(*) as "x"
            from
@@ -1509,7 +1509,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_having",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1519,7 +1519,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_having",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat", "two")
            values
@@ -1529,7 +1529,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_query_having",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "hizat" as "x"
            from
@@ -1552,7 +1552,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_cte_subquery",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1562,7 +1562,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_cte_subquery",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              (
                with
@@ -1589,7 +1589,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_like_escape",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bananna" ("hizat")
            values
@@ -1599,7 +1599,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_like_escape",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              count(*) as "x"
            from
@@ -1620,7 +1620,7 @@ async fn test_query_union() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query_many!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "hizat" as "hizat"
            from
@@ -1643,7 +1643,7 @@ async fn test_returning_wildcard() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat")
            values
@@ -1664,7 +1664,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1674,7 +1674,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              count(*) as "x"
            from
@@ -1695,7 +1695,7 @@ async fn test_query_case() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "bannanana" ("hizat", "hizat2")
            values
@@ -1705,7 +1705,7 @@ async fn test_query_case() -> Result<(), loga::Error> {
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              case
                when "hizat2" > 0 then 'positive'
@@ -1731,7 +1731,7 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
         .map_err(loga::err)?;
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_base_insert",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              hizat
            from
@@ -1756,7 +1756,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     dbm::migrate(&mut db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "genrerank" (
                "date",
@@ -1783,7 +1783,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"insert into
              "genrerank" (
                "date",
@@ -1810,7 +1810,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "genrerank"."date" as "date"
            from
@@ -1820,7 +1820,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
     ).await?, 20260502);
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
-        #[rustfmt::external("sql-formatter-pg")]
+        //# genemichaels-external: sql-formatter-pg
         r#"select
              "genrerank"."rank" as "rank"
            from

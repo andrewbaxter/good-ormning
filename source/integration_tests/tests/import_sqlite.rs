@@ -9,22 +9,27 @@ use {
 #[test]
 fn test_import_sqlite() {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    conn.execute_batch("
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            score REAL,
-            data BLOB
-        );
-        CREATE TABLE posts (
-            post_id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-        CREATE INDEX idx_posts_user ON posts(user_id);
-        CREATE UNIQUE INDEX idx_posts_title ON posts(title);
-    ").unwrap();
+    conn.execute_batch(
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"CREATE TABLE users (
+             id INTEGER PRIMARY KEY,
+             name TEXT NOT NULL,
+             score REAL,
+             data BLOB
+           );
+           
+           CREATE TABLE posts (
+             post_id INTEGER PRIMARY KEY,
+             user_id INTEGER NOT NULL,
+             title TEXT NOT NULL,
+             FOREIGN KEY (user_id) REFERENCES users (id)
+           );
+           
+           CREATE INDEX idx_posts_user ON posts (user_id);
+           
+           CREATE UNIQUE INDEX idx_posts_title ON posts (title);
+           "#,
+    ).unwrap();
     let version = sqlite::read_schema(&conn).unwrap();
 
     // Verify tables
