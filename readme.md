@@ -3,7 +3,7 @@
 - On [crates.io](https://crates.io/crates/good-ormning)
 - On [docs.rs](https://docs.rs/good-ormning)
 
-Good-ormning does everything from database setup and migration to queries, with full static type checking. Do all your development in Rust (with no live database), and know that it'll work in production, always.
+Good-ormning does everything from database setup and migration to queries, with full static type checking. Do all your development in Rust (with no live database) and know that it'll work in production, always.
 
 Dynamic queries are not currently supported (you can still run them against your db connection directly).
 
@@ -157,7 +157,7 @@ Example:
 good_query!(r#"insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"#; dbm::Db(&mut db)).unwrap();
 ```
 
-### Features
+### Rust features
 
 - `pg` - enables generating code for PostgreSQL
 - `sqlite` - enables generating code for Sqlite
