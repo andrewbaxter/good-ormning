@@ -20,7 +20,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: string = "rust human",
         p2: i64 = 0
     )?;
@@ -32,7 +32,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
            from
              "hello_world_users"
            "#;
-        db
+        &mut db
     )? {
         let user = good_ormning::sqlite::good_query_one!(
             "sqlite_gen_hello_world",
@@ -45,7 +45,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
                where
                  "hello_world_users"."rowid" = ?1
                "#;
-            db,
+            &mut db,
             p1: i64 = user_id
         )?;
         println!("User {}: {}", user_id, user.name);
@@ -66,7 +66,7 @@ fn test_base_insert() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -77,7 +77,7 @@ fn test_base_insert() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        db
+        &mut db
     )?, "soy");
     Ok(())
 }
@@ -120,7 +120,7 @@ fn test_param_i32() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 22
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -131,7 +131,7 @@ fn test_param_i32() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, 22);
     Ok(())
 }
@@ -149,7 +149,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
            values
              (${i32 = 22})
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
@@ -161,7 +161,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
            where
              "bananna"."hizat" = ${i32 = 22}
            "#;
-        db
+        &mut db
     )?, 22);
     Ok(())
 }
@@ -180,7 +180,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
            values
              (${i32 = val})
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
@@ -193,7 +193,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
              "bananna"."hizat" = ${i32 = val}
              and ${bool = true}
            "#;
-        db
+        &mut db
     )?, 47);
     Ok(())
 }
@@ -211,7 +211,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
            values
              (${i32 = 2147483647})
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32",
@@ -221,7 +221,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, 2147483647);
     Ok(())
 }
@@ -240,7 +240,7 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: utctime_s_chrono = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -251,7 +251,7 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, ref_date);
     Ok(())
 }
@@ -270,7 +270,7 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: utctime_ms_chrono = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -281,7 +281,7 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, ref_date);
     Ok(())
 }
@@ -305,7 +305,7 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: utctime_s_jiff = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -316,7 +316,7 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, ref_date);
     Ok(())
 }
@@ -340,7 +340,7 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: utctime_ms_jiff = ref_date
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -351,7 +351,7 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, ref_date);
     Ok(())
 }
@@ -369,7 +369,7 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: opt i32 = Some(47)
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -380,7 +380,7 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, Some(47));
     Ok(())
 }
@@ -398,7 +398,7 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
            values
              (null)
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_param_opt_i32_null",
@@ -408,7 +408,7 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, None);
     Ok(())
 }
@@ -426,7 +426,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 7
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
@@ -444,7 +444,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
                  rarray (?1)
              )
            "#;
-        db,
+        &mut db,
         p1: arr i32 = vec ![7]
     )?, vec![7]);
     Ok(())
@@ -502,7 +502,7 @@ fn test_param_custom() -> Result<(), loga::Error> {
            values
              (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
            "#;
-        db,
+        &mut db,
         p1: MyBool = & x_0,
         p2: MyI32 = & x_1,
         p3: MyI64 = & x_2,
@@ -535,7 +535,7 @@ fn test_param_custom() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);
@@ -565,7 +565,7 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: opt MyString = Some(&MyString("higgins".into()))
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
@@ -576,7 +576,7 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, Some(MyString("higgins".into())));
     Ok(())
 }
@@ -597,7 +597,7 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
            returning
              1 as "one"
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?.is_some());
     assert!(good_ormning::sqlite::good_query_opt!(
@@ -611,7 +611,7 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
            returning
              1 as "one"
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?.is_none());
     Ok(())
@@ -635,7 +635,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        db,
+        &mut db,
         p1: string = "soy",
         p2: i32 = 33
     )?, 33);
@@ -652,7 +652,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        db,
+        &mut db,
         p1: string = "soy",
         p2: i32 = 7
     )?, 34);
@@ -669,7 +669,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        db,
+        &mut db,
         p1: string = "yyyy",
         p2: i32 = 7
     )?, 7);
@@ -689,7 +689,7 @@ fn test_update() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
@@ -699,7 +699,7 @@ fn test_update() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
@@ -708,7 +708,7 @@ fn test_update() -> Result<(), loga::Error> {
            set
              "hizat" = 'tep'
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update",
@@ -718,7 +718,7 @@ fn test_update() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?, "tep");
     Ok(())
 }
@@ -736,7 +736,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_update_where",
@@ -746,7 +746,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        db
+        &mut db
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
@@ -757,7 +757,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            where
              "ban"."hizat" = ?2
            "#;
-        db,
+        &mut db,
         p1: string = "tep",
         p2: string = "yog2"
     )?;
@@ -769,7 +769,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        db
+        &mut db
     )?, "yog");
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
@@ -780,7 +780,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            where
              "ban"."hizat" = ?2
            "#;
-        db,
+        &mut db,
         p1: string = "tep",
         p2: string = "yog"
     )?;
@@ -792,7 +792,7 @@ fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        db
+        &mut db
     )?, "tep");
     Ok(())
 }
@@ -810,7 +810,7 @@ fn test_update_returning() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_update_returning",
@@ -821,7 +821,7 @@ fn test_update_returning() -> Result<(), loga::Error> {
            returning
              "b"."hizat" as "hizat"
            "#;
-        db
+        &mut db
     )?, Some("tep".to_string()));
     Ok(())
 }
@@ -839,7 +839,7 @@ fn test_delete() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
@@ -849,14 +849,14 @@ fn test_delete() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        db
+        &mut db
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
         //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "b"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete",
@@ -866,7 +866,7 @@ fn test_delete() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        db
+        &mut db
     )?, None);
     Ok(())
 }
@@ -884,7 +884,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        db
+        &mut db
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
@@ -893,7 +893,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
            where
              "ba"."hizat" = ?1
            "#;
-        db,
+        &mut db,
         p1: string = "nozo"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
@@ -904,7 +904,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
            from
              "ba"
            "#;
-        db
+        &mut db
     )?, Some("seeon".to_string()));
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
@@ -913,7 +913,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
            where
              "ba"."hizat" = ?1
            "#;
-        db,
+        &mut db,
         p1: string = "seeon"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
@@ -924,7 +924,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
            from
              "ba"
            "#;
-        db
+        &mut db
     )?, None);
     Ok(())
 }
@@ -942,7 +942,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        db
+        &mut db
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_returning",
@@ -952,7 +952,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        db
+        &mut db
     )?.is_some());
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
@@ -961,7 +961,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
            where
              "b"."hizat" = ?1
            "#;
-        db,
+        &mut db,
         p1: string = "seeon"
     )?;
     assert!(good_ormning::sqlite::good_query_opt!(
@@ -972,7 +972,7 @@ fn test_delete_returning() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        db
+        &mut db
     )?.is_none());
     Ok(())
 }
@@ -992,7 +992,7 @@ fn test_select_join() -> Result<(), loga::Error> {
                        values
                          ('key', 33)
                        "#;
-                    dbm::DbSqliteGenSelectJoin1(&mut db.0)
+                    db
                 )?;
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_select_join",
@@ -1002,7 +1002,7 @@ fn test_select_join() -> Result<(), loga::Error> {
                        values
                          ('key', 'no')
                        "#;
-                    dbm::DbSqliteGenSelectJoin1(&mut db.0)
+                    db
                 )?;
             },
         }
@@ -1018,7 +1018,7 @@ fn test_select_join() -> Result<(), loga::Error> {
              "b"
              left join "select_join_two" on ("b"."hizat") = "select_join_two"."hizat"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res.three, 33);
     assert_eq!(res.two, Some("no".into()));
@@ -1038,7 +1038,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 7
     )?;
@@ -1050,7 +1050,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 99
     )?;
@@ -1062,7 +1062,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 2,
         p2: i32 = 3
     )?;
@@ -1074,7 +1074,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 2,
         p2: i32 = 10
     )?;
@@ -1088,7 +1088,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
            group by
              "bannanana"."hizat"
            "#;
-        db
+        &mut db
     )?;
     res.sort();
     assert_eq!(res, vec![Some(13i32), Some(106i32)]);
@@ -1108,7 +1108,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?;
     good_ormning::sqlite::good_query!(
@@ -1119,7 +1119,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?;
     good_ormning::sqlite::good_query!(
@@ -1130,7 +1130,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "soy"
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
@@ -1143,7 +1143,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
            limit
              2
            "#;
-        db
+        &mut db
     )?.len(), 2);
     Ok(())
 }
@@ -1161,7 +1161,7 @@ fn test_select_order() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 0
     )?;
     good_ormning::sqlite::good_query!(
@@ -1172,7 +1172,7 @@ fn test_select_order() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 12
     )?;
     good_ormning::sqlite::good_query!(
@@ -1183,7 +1183,7 @@ fn test_select_order() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 9
     )?;
     assert_eq!(good_ormning::sqlite::good_query_many!(
@@ -1196,7 +1196,7 @@ fn test_select_order() -> Result<(), loga::Error> {
            order by
              "bannanana"."hizat" asc
            "#;
-        db
+        &mut db
     )?, vec![0, 9, 12]);
     Ok(())
 }
@@ -1216,8 +1216,8 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
                          "bannna" ("hizat")
                        values
                          ('nizoot')
-                       "#;
-                    dbm::DbSqliteGenMigrateAddField0(&mut db.0)
+                   "#;
+                    db
                 )?;
             },
             _ => { },
@@ -1233,7 +1233,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
            from
              "bannna"
            "#;
-        db
+        &mut db
     )? {
         Some(x) => {
             assert_eq!(x.zomzom, true);
@@ -1257,7 +1257,7 @@ fn test_migrate_rename_field() -> Result<(), loga::Error> {
            values
              ('nizoot')
            "#;
-        db
+        &mut db
     )?;
     Ok(())
 }
@@ -1275,7 +1275,7 @@ fn test_migrate_remove_field() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "yordol"
     )?;
     Ok(())
@@ -1294,7 +1294,7 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: i32 = 23
     )?;
     Ok(())
@@ -1313,7 +1313,7 @@ fn test_migrate_rename_table() -> Result<(), loga::Error> {
            values
              (?1)
            "#;
-        db,
+        &mut db,
         p1: string = "inset"
     )?;
     Ok(())
@@ -1342,8 +1342,8 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
                          "migrate_pre_migration_v0_two" ("two")
                        values
                          (7)
-                       "#;
-                    dbm::DbSqliteGenMigratePreMigration0(&mut db.0)
+                   "#;
+                    db
                 )?;
             },
             _ => { },
@@ -1366,7 +1366,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 7
     )?;
@@ -1378,7 +1378,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 99
     )?;
@@ -1397,7 +1397,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
            from
              "hibbo"
            "#;
-        db
+        &mut db
     )?;
     res.sort();
     assert_eq!(res, vec![7, 99]);
@@ -1417,7 +1417,7 @@ fn test_select_window() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 7
     )?;
@@ -1429,7 +1429,7 @@ fn test_select_window() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 99
     )?;
@@ -1441,7 +1441,7 @@ fn test_select_window() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 2,
         p2: i32 = 3
     )?;
@@ -1453,7 +1453,7 @@ fn test_select_window() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 2,
         p2: i32 = 10
     )?;
@@ -1468,7 +1468,7 @@ fn test_select_window() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        db
+        &mut db
     )?.into_iter().collect::<Vec<_>>();
     res.sort();
     assert_eq!(res, vec![Some(13i32), Some(13i32), Some(106i32), Some(106i32)]);
@@ -1488,7 +1488,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: string = "a",
         p2: i32 = 10
     )?;
@@ -1500,7 +1500,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: string = "b",
         p2: i32 = 20
     )?;
@@ -1515,7 +1515,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, Some(10i32));
     return Ok(());
@@ -1535,7 +1535,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
                values
                  ('key', ?1)
                "#;
-            db,
+            &mut db,
             p1: i32 = i
         )?;
     }
@@ -1551,7 +1551,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, vec![Some(1i32), Some(3i32), Some(6i32)]);
     return Ok(());
@@ -1570,7 +1570,7 @@ fn test_query_collate() -> Result<(), loga::Error> {
            values
              ('abc')
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_collate",
@@ -1582,7 +1582,7 @@ fn test_query_collate() -> Result<(), loga::Error> {
            where
              "hizat" collate nocase = 'ABC'
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, "abc");
     return Ok(());
@@ -1601,7 +1601,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            values
              (null)
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_is_distinct_from",
@@ -1615,7 +1615,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            from
              'abc'
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, 1i64);
     let res2 = good_ormning::sqlite::good_query_one!(
@@ -1630,7 +1630,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            from
              null
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res2, 1i64);
     return Ok(());
@@ -1649,7 +1649,7 @@ fn test_query_having() -> Result<(), loga::Error> {
            values
              ('a', 10)
            "#;
-        db
+        &mut db
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
@@ -1659,7 +1659,7 @@ fn test_query_having() -> Result<(), loga::Error> {
            values
              ('b', 20)
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_query_having",
@@ -1673,7 +1673,7 @@ fn test_query_having() -> Result<(), loga::Error> {
            having
              sum("two") > 15
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, vec!["b".to_string()]);
     return Ok(());
@@ -1721,7 +1721,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
            values
              ('a')
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_cte_subquery",
@@ -1739,7 +1739,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
                  "t"
              ) as "x"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, 1i32);
     return Ok(());
@@ -1758,7 +1758,7 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
            values
              ('a%b')
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_query_like_escape",
@@ -1770,7 +1770,7 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
            where
              "hizat" like 'a!%b' escape '!'
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, 1i64);
     return Ok(());
@@ -1789,7 +1789,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 1,
         p2: i32 = 7
     )?;
@@ -1801,7 +1801,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
            values
              (?1, ?2)
            "#;
-        db,
+        &mut db,
         p1: i32 = 2,
         p2: i32 = 3
     )?;
@@ -1818,7 +1818,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        db
+        &mut db
     )?;
     res.sort();
     assert_eq!(res, vec![1, 2, 3, 7]);
@@ -1840,7 +1840,7 @@ fn test_returning_wildcard() -> Result<(), loga::Error> {
            returning
              *
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res.hizat, "hi");
     Ok(())
@@ -1859,7 +1859,7 @@ fn test_query_between() -> Result<(), loga::Error> {
            values
              ('a', 5)
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
@@ -1871,7 +1871,7 @@ fn test_query_between() -> Result<(), loga::Error> {
            where
              "hizat2" between 1 and 10
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, 1i64);
     Ok(())
@@ -1890,7 +1890,7 @@ fn test_query_case() -> Result<(), loga::Error> {
            values
              ('a', 5)
            "#;
-        db
+        &mut db
     )?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
@@ -1903,7 +1903,7 @@ fn test_query_case() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res, "positive");
     Ok(())
@@ -1927,7 +1927,7 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
            order by
              hizat
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res.len(), 2);
     assert_eq!(res[0], "a");
@@ -1953,7 +1953,7 @@ fn test_query_tuple_cmp() -> Result<(), loga::Error> {
            order by
              hizat
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res.len(), 2);
     assert_eq!(res[0], "a");
@@ -1968,7 +1968,7 @@ fn test_query_tuple_cmp() -> Result<(), loga::Error> {
            where
              (hizat, hizat2) = ('b', 2)
            "#;
-        db
+        &mut db
     )?;
     assert_eq!(res2.len(), 1);
     assert_eq!(res2[0], "b");
@@ -2006,7 +2006,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
              "date" = $repdate,
              "rank" = $rank
            "#;
-        db,
+        &mut db,
         repdate: i32 = 20260501,
         genre: string = "rock",
         secondary: string = "classic",
@@ -2040,7 +2040,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
              "date" = $repdate,
              "rank" = $rank
            "#;
-        db,
+        &mut db,
         repdate: i32 = 20260502,
         genre: string = "rock",
         secondary: string = "classic",
@@ -2056,7 +2056,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
            from
              "genrerank"
            "#;
-        db
+        &mut db
     )?, 20260502);
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_repeated_param",
@@ -2066,7 +2066,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
            from
              "genrerank"
            "#;
-        db
+        &mut db
     )?, 5);
     Ok(())
 }
@@ -2079,12 +2079,12 @@ fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32_common",
         r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
-        db
+        &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32_common",
         r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
-        db
+        &mut db
     )?, 22);
     Ok(())
 }
@@ -2097,7 +2097,7 @@ fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query",
         r#"insert into "bananna" ("hizat") values (?1)"#;
-        db,
+        &mut db,
         p1: string = "hello"
     )?;
     let results = dbm::hist_list_all(&mut db)?;

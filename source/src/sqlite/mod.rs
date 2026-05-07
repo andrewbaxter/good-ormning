@@ -172,9 +172,13 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     db.execute(query, (#version_i,)).to_good_error_query(query) ?;
                 }
                 if let Some(callback) = & callback {
-                    let mut wrapper = #newtype_name(db);
-                    callback(#enum_name::#enum_variant(&mut wrapper)) ?;
-                    db = wrapper.0;
+                    let wrapper = #newtype_name(db);
+                    let mut enum_val = #enum_name::#enum_variant(wrapper);
+                    callback(&mut enum_val)?;
+                    db = match enum_val {
+                        #enum_name::#enum_variant(wrapper) => wrapper.0,
+                        _ => panic!("Migration callback returned wrong version enum variant"),
+                    };
                 }
             }
         });
@@ -193,7 +197,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
-        enum_variants.push(quote!(#enum_variant(&'a mut #newtype_name <C>)));
+        enum_variants.push(quote!(#enum_variant(#newtype_name <C>)));
         db_types.push(quote!{
             pub struct #newtype_name <C: good_ormning::runtime::sqlite::SqliteConnection>(pub C);
         });
@@ -215,7 +219,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
-        #(#db_types) * pub enum #enum_name <'a,
+        #(#db_types) * pub enum #enum_name <
         C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
             #(#enum_variants,) *
         }
@@ -237,7 +241,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         }
         pub fn migrate < C: good_ormning:: runtime:: sqlite:: SqliteConnection >(
             mut db: C,
-            callback: Option <&(dyn Fn(#enum_name <'_, C >) -> Result <(), GoodError >) >
+            callback: Option <&(dyn Fn(&mut #enum_name <C>) -> Result <(), GoodError >) >
         ) -> Result <#latest_newtype_name<C>,
         GoodError > {
             init_db(&mut db)?;
