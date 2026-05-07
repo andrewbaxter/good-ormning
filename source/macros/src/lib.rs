@@ -325,24 +325,12 @@ fn parse_and_generate_pg(
         );
     let conn = &input.conn;
     let args = &input.params;
-    let has_dbm_prefix = match conn {
-        syn::Expr::Call(c) => match &*c.func {
-            syn::Expr::Path(p) => p.path.segments.first().map(|s| s.ident == "dbm").unwrap_or(false),
-            _ => false,
-        },
-        _ => false,
-    };
-    let call = if has_dbm_prefix {
-        quote!(#query_name(& mut #conn, #(#args,) *))
-    } else {
-        quote!(#query_name(#conn, #(#args,) *))
-    };
     quote!{
         {
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::pg::PgConnection;
-            #(#generated) * #call
+            #(#generated) * #query_name(#conn, #(#args,) *)
         }
     }
 }
@@ -433,24 +421,12 @@ fn parse_and_generate_sqlite(
         );
     let conn = &input.conn;
     let args = &input.params;
-    let has_dbm_prefix = match conn {
-        syn::Expr::Call(c) => match &*c.func {
-            syn::Expr::Path(p) => p.path.segments.first().map(|s| s.ident == "dbm").unwrap_or(false),
-            _ => false,
-        },
-        _ => false,
-    };
-    let call = if has_dbm_prefix {
-        quote!(#query_name(& mut #conn, #(#args,) *))
-    } else {
-        quote!(#query_name(#conn, #(#args,) *))
-    };
     quote!{
         {
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::sqlite::SqliteConnection;
-            #(#generated) * #call
+            #(#generated) * #query_name(#conn, #(#args,) *)
         }
     }
 }
