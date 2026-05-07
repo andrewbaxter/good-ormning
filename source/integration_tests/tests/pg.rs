@@ -24,7 +24,7 @@ async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error>
 async fn test_base_insert() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
         //# genemichaels-external: sql-formatter-pg
@@ -33,7 +33,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db),
+        db,
         p1: string = "soy"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -44,7 +44,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?, "soy");
     Ok(())
 }
@@ -53,7 +53,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
 async fn test_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_i32");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_i32",
         //# genemichaels-external: sql-formatter-pg
@@ -62,7 +62,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenParamI321(&mut db),
+        db,
         p1: i32 = 22
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -73,7 +73,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamI321(&mut db)
+        db
     ).await?, 22);
     Ok(())
 }
@@ -82,7 +82,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
 async fn test_inline_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_inline_param_i32");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_inline_param_i32",
         //# genemichaels-external: sql-formatter-pg
@@ -91,7 +91,7 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenInlineParamI321(&mut db),
+        db,
         p1: i32 = 22
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -104,7 +104,7 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
            where
              "bananna"."hizat" = $1
            "#;
-        dbm::DbPgGenInlineParamI321(&mut db),
+        db,
         p1: i32 = 22
     ).await?, 22);
     Ok(())
@@ -115,7 +115,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_utctime_chrono");
     let (mut db, _cont) = db().await?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_utctime_chrono",
         //# genemichaels-external: sql-formatter-pg
@@ -124,7 +124,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenParamUtctimeChrono1(&mut db),
+        db,
         p1: utctime_s_chrono = ref_date
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -135,7 +135,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamUtctimeChrono1(&mut db)
+        db
     ).await?, ref_date);
     Ok(())
 }
@@ -144,7 +144,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
 async fn test_query_like() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_like");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_like",
         //# genemichaels-external: sql-formatter-pg
@@ -153,7 +153,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenQueryLike1(&mut db),
+        db,
         p1: string = "apple pie"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -166,7 +166,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
            where
              "bananna"."hizat" like $1
            "#;
-        dbm::DbPgGenQueryLike1(&mut db),
+        db,
         p1: string = "apple%"
     ).await?, "apple pie");
     Ok(())
@@ -176,7 +176,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
 async fn test_query_is_null() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_is_null");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_is_null",
         //# genemichaels-external: sql-formatter-pg
@@ -185,7 +185,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenQueryIsNull1(&mut db),
+        db,
         p1: string = "not null"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -198,7 +198,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
            where
              "bananna"."hizat" is not null
            "#;
-        dbm::DbPgGenQueryIsNull1(&mut db)
+        db
     ).await?, 1i64);
     Ok(())
 }
@@ -207,7 +207,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
 async fn test_query_concat() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_concat");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_concat",
         //# genemichaels-external: sql-formatter-pg
@@ -216,7 +216,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenQueryConcat1(&mut db),
+        db,
         p1: string = "hello"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -227,7 +227,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenQueryConcat1(&mut db)
+        db
     ).await?, "hello world");
     Ok(())
 }
@@ -236,7 +236,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
 async fn test_query_row_number() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_row_number");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_row_number",
         //# genemichaels-external: sql-formatter-pg
@@ -245,7 +245,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenQueryRowNumber1(&mut db),
+        db,
         p1: string = "a"
     ).await?;
     good_ormning::pg::good_query!(
@@ -256,7 +256,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenQueryRowNumber1(&mut db),
+        db,
         p1: string = "b"
     ).await?;
     let res = good_ormning::pg::good_query_many!(
@@ -271,7 +271,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenQueryRowNumber1(&mut db)
+        db
     ).await?;
     assert_eq!(res.len(), 2);
     assert_eq!(res[0].hizat, "a");
@@ -285,7 +285,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
 async fn test_param_opt_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_i32");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_i32",
         //# genemichaels-external: sql-formatter-pg
@@ -294,7 +294,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenParamOptI321(&mut db),
+        db,
         p1: opt i32 = Some(47)
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -305,7 +305,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamOptI321(&mut db)
+        db
     ).await?, Some(47));
     Ok(())
 }
@@ -314,7 +314,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
 async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_i32_null");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_i32_null",
         //# genemichaels-external: sql-formatter-pg
@@ -323,7 +323,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
            values
              (null)
            "#;
-        dbm::DbPgGenParamOptI32Null1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_param_opt_i32_null",
@@ -333,7 +333,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamOptI32Null1(&mut db)
+        db
     ).await?, None);
     Ok(())
 }
@@ -342,7 +342,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 async fn test_param_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_custom");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     let x_0 = integration_tests::MyBool(true);
     let x_1 = integration_tests::MyI32(13);
     let x_2 = integration_tests::MyI64(-22);
@@ -390,7 +390,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
            values
              ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            "#;
-        dbm::DbPgGenParamCustom1(&mut db),
+        db,
         p1: MyBool = & x_0,
         p2: MyI32 = & x_1,
         p3: MyI64 = & x_2,
@@ -423,7 +423,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamCustom1(&mut db)
+        db
     ).await?;
     assert_eq!(x_0, res.x_0);
     assert_eq!(x_1, res.x_1);
@@ -444,7 +444,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
 async fn test_param_opt_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_custom");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_param_opt_custom",
         //# genemichaels-external: sql-formatter-pg
@@ -453,7 +453,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenParamOptCustom1(&mut db),
+        db,
         p1: opt MyString = Some(&MyString("higgins".into()))
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
@@ -464,7 +464,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenParamOptCustom1(&mut db)
+        db
     ).await?, Some(MyString("higgins".into())));
     Ok(())
 }
@@ -473,7 +473,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
 async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_insert_on_conflict_do_nothing");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_insert_on_conflict_do_nothing",
         //# genemichaels-external: sql-formatter-pg
@@ -485,7 +485,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
            returning
              1 as "one"
            "#;
-        dbm::DbPgGenInsertOnConflictDoNothing1(&mut db),
+        db,
         p1: string = "soy"
     ).await?.is_some());
     assert!(good_ormning::pg::good_query_opt!(
@@ -499,7 +499,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
            returning
              1 as "one"
            "#;
-        dbm::DbPgGenInsertOnConflictDoNothing1(&mut db),
+        db,
         p1: string = "soy"
     ).await?.is_none());
     Ok(())
@@ -509,7 +509,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
 async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_insert_on_conflict_update");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_insert_on_conflict_update",
         //# genemichaels-external: sql-formatter-pg
@@ -523,7 +523,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        dbm::DbPgGenInsertOnConflictUpdate1(&mut db),
+        db,
         p1: string = "soy",
         p2: i32 = 33
     ).await?, 33);
@@ -540,7 +540,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        dbm::DbPgGenInsertOnConflictUpdate1(&mut db),
+        db,
         p1: string = "soy",
         p2: i32 = 7
     ).await?, 34);
@@ -557,7 +557,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
            returning
              "bannanana"."two" as "two"
            "#;
-        dbm::DbPgGenInsertOnConflictUpdate1(&mut db),
+        db,
         p1: string = "yyyy",
         p2: i32 = 7
     ).await?, 7);
@@ -568,7 +568,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
 async fn test_update() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update",
         //# genemichaels-external: sql-formatter-pg
@@ -577,7 +577,7 @@ async fn test_update() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        dbm::DbPgGenUpdate1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update",
@@ -587,7 +587,7 @@ async fn test_update() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenUpdate1(&mut db)
+        db
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update",
@@ -596,7 +596,7 @@ async fn test_update() -> Result<(), loga::Error> {
            set
              "hizat" = 'tep'
            "#;
-        dbm::DbPgGenUpdate1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update",
@@ -606,7 +606,7 @@ async fn test_update() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenUpdate1(&mut db)
+        db
     ).await?, "tep");
     Ok(())
 }
@@ -615,7 +615,7 @@ async fn test_update() -> Result<(), loga::Error> {
 async fn test_update_where() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update_where");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
         //# genemichaels-external: sql-formatter-pg
@@ -624,7 +624,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_update_where",
@@ -634,7 +634,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db)
+        db
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
@@ -645,7 +645,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            where
              "ban"."hizat" = $2
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db),
+        db,
         p1: string = "tep",
         p2: string = "yog2"
     ).await?;
@@ -657,7 +657,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db)
+        db
     ).await?, "yog");
     good_ormning::pg::good_query!(
         "pg_gen_update_where",
@@ -668,7 +668,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            where
              "ban"."hizat" = $2
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db),
+        db,
         p1: string = "tep",
         p2: string = "yog"
     ).await?;
@@ -680,7 +680,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
            from
              "ban"
            "#;
-        dbm::DbPgGenUpdateWhere1(&mut db)
+        db
     ).await?, "tep");
     Ok(())
 }
@@ -689,7 +689,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
 async fn test_update_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update_returning");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_update_returning",
         //# genemichaels-external: sql-formatter-pg
@@ -698,7 +698,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
            values
              ('yog')
            "#;
-        dbm::DbPgGenUpdateReturning1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_update_returning",
@@ -709,7 +709,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
            returning
              "b"."hizat" as "hizat"
            "#;
-        dbm::DbPgGenUpdateReturning1(&mut db)
+        db
     ).await?, Some("tep".to_string()));
     Ok(())
 }
@@ -718,7 +718,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
 async fn test_delete() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete",
         //# genemichaels-external: sql-formatter-pg
@@ -727,7 +727,7 @@ async fn test_delete() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        dbm::DbPgGenDelete1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete",
@@ -737,14 +737,14 @@ async fn test_delete() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        dbm::DbPgGenDelete1(&mut db)
+        db
     ).await?, Some("seeon".to_string()));
     good_ormning::pg::good_query!(
         "pg_gen_delete",
         //# genemichaels-external: sql-formatter-pg
         r#"delete from "b"
            "#;
-        dbm::DbPgGenDelete1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete",
@@ -754,7 +754,7 @@ async fn test_delete() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        dbm::DbPgGenDelete1(&mut db)
+        db
     ).await?, None);
     Ok(())
 }
@@ -763,7 +763,7 @@ async fn test_delete() -> Result<(), loga::Error> {
 async fn test_delete_where() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete_where");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
         //# genemichaels-external: sql-formatter-pg
@@ -772,7 +772,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        dbm::DbPgGenDeleteWhere1(&mut db)
+        db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
@@ -781,7 +781,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
            where
              "ba"."hizat" = $1
            "#;
-        dbm::DbPgGenDeleteWhere1(&mut db),
+        db,
         p1: string = "nozo"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
@@ -792,7 +792,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
            from
              "ba"
            "#;
-        dbm::DbPgGenDeleteWhere1(&mut db)
+        db
     ).await?, Some("seeon".to_string()));
     good_ormning::pg::good_query!(
         "pg_gen_delete_where",
@@ -801,7 +801,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
            where
              "ba"."hizat" = $1
            "#;
-        dbm::DbPgGenDeleteWhere1(&mut db),
+        db,
         p1: string = "seeon"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
@@ -812,7 +812,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
            from
              "ba"
            "#;
-        dbm::DbPgGenDeleteWhere1(&mut db)
+        db
     ).await?, None);
     Ok(())
 }
@@ -821,7 +821,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
 async fn test_delete_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete_returning");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_returning",
         //# genemichaels-external: sql-formatter-pg
@@ -830,7 +830,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
            values
              ('seeon')
            "#;
-        dbm::DbPgGenDeleteReturning1(&mut db)
+        db
     ).await?;
     assert!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_returning",
@@ -840,7 +840,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        dbm::DbPgGenDeleteReturning1(&mut db)
+        db
     ).await?.is_some());
     good_ormning::pg::good_query!(
         "pg_gen_delete_returning",
@@ -849,7 +849,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
            where
              "b"."hizat" = $1
            "#;
-        dbm::DbPgGenDeleteReturning1(&mut db),
+        db,
         p1: string = "seeon"
     ).await?;
     assert!(good_ormning::pg::good_query_opt!(
@@ -860,7 +860,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
            from
              "b"
            "#;
-        dbm::DbPgGenDeleteReturning1(&mut db)
+        db
     ).await?.is_none());
     Ok(())
 }
@@ -869,7 +869,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
 async fn test_select_join() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, Some(&|v| Box::pin(async move {
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
                 good_ormning::pg::good_query!(
@@ -880,7 +880,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
                        values
                          ('key', 33)
                        "#;
-                    dbm::DbPgGenSelectJoin1(&mut *db.0)
+                    dbm::DbPgGenSelectJoin1(&mut db.0)
                 ).await?;
                 good_ormning::pg::good_query!(
                     "pg_gen_select_join",
@@ -890,7 +890,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
                        values
                          ('key', 'no')
                        "#;
-                    dbm::DbPgGenSelectJoin1(&mut *db.0)
+                    dbm::DbPgGenSelectJoin1(&mut db.0)
                 ).await?;
             },
         }
@@ -906,7 +906,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
              "b"
              left join "select_join_two" on ("b"."hizat"::text) = "select_join_two"."hizat"
            "#;
-        dbm::DbPgGenSelectJoin1(&mut db)
+        db
     ).await?;
     assert_eq!(res.three, 33);
     assert_eq!(res.two, Some("no".into()));
@@ -917,7 +917,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
 async fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_group_by");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_group_by",
         //# genemichaels-external: sql-formatter-pg
@@ -926,7 +926,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectGroupBy1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 7
     ).await?;
@@ -938,7 +938,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectGroupBy1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 99
     ).await?;
@@ -950,7 +950,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectGroupBy1(&mut db),
+        db,
         p1: i32 = 2,
         p2: i32 = 3
     ).await?;
@@ -962,7 +962,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectGroupBy1(&mut db),
+        db,
         p1: i32 = 2,
         p2: i32 = 10
     ).await?;
@@ -976,7 +976,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
            group by
              "bannanana"."hizat"
            "#;
-        dbm::DbPgGenSelectGroupBy1(&mut db)
+        db
     ).await?;
     res.sort();
     assert_eq!(res, vec![Some(13i64), Some(106i64)]);
@@ -987,7 +987,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
 async fn test_select_limit() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_limit");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_limit",
         //# genemichaels-external: sql-formatter-pg
@@ -996,7 +996,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectLimit1(&mut db),
+        db,
         p1: string = "soy"
     ).await?;
     good_ormning::pg::good_query!(
@@ -1007,7 +1007,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectLimit1(&mut db),
+        db,
         p1: string = "soy"
     ).await?;
     good_ormning::pg::good_query!(
@@ -1018,7 +1018,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectLimit1(&mut db),
+        db,
         p1: string = "soy"
     ).await?;
     assert_eq!(good_ormning::pg::good_query_many!(
@@ -1031,7 +1031,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
            limit
              2
            "#;
-        dbm::DbPgGenSelectLimit1(&mut db)
+        db
     ).await?.len(), 2);
     Ok(())
 }
@@ -1040,7 +1040,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
 async fn test_select_order() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_order");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_order",
         //# genemichaels-external: sql-formatter-pg
@@ -1049,7 +1049,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectOrder1(&mut db),
+        db,
         p1: i32 = 0
     ).await?;
     good_ormning::pg::good_query!(
@@ -1060,7 +1060,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectOrder1(&mut db),
+        db,
         p1: i32 = 12
     ).await?;
     good_ormning::pg::good_query!(
@@ -1071,7 +1071,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenSelectOrder1(&mut db),
+        db,
         p1: i32 = 9
     ).await?;
     assert_eq!(good_ormning::pg::good_query_many!(
@@ -1084,7 +1084,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
            order by
              "bannanana"."hizat" asc
            "#;
-        dbm::DbPgGenSelectOrder1(&mut db)
+        db
     ).await?, vec![0, 9, 12]);
     Ok(())
 }
@@ -1093,7 +1093,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
 async fn test_migrate_add_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_add_field");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, Some(&|v| Box::pin(async move {
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenMigrateAddFieldVersions::V0(db) => {
                 good_ormning::pg::good_query!(
@@ -1105,7 +1105,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
                        values
                          ('nizoot')
                        "#;
-                    dbm::DbPgGenMigrateAddField0(&mut *db.0)
+                    dbm::DbPgGenMigrateAddField0(&mut db.0)
                 ).await?;
             },
             _ => { },
@@ -1121,7 +1121,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
            from
              "bannna"
            "#;
-        dbm::DbPgGenMigrateAddField1(&mut db)
+        db
     ).await? {
         Some(x) => {
             assert_eq!(x.zomzom, true);
@@ -1136,7 +1136,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
 async fn test_migrate_rename_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_rename_field");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_rename_field",
         //# genemichaels-external: sql-formatter-pg
@@ -1145,7 +1145,7 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
            values
              ('nizoot')
            "#;
-        dbm::DbPgGenMigrateRenameField1(&mut db)
+        db
     ).await?;
     Ok(())
 }
@@ -1154,7 +1154,7 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
 async fn test_migrate_remove_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_remove_field");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_remove_field",
         //# genemichaels-external: sql-formatter-pg
@@ -1163,7 +1163,7 @@ async fn test_migrate_remove_field() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenMigrateRemoveField1(&mut db),
+        db,
         p1: string = "yordol"
     ).await?;
     Ok(())
@@ -1173,7 +1173,7 @@ async fn test_migrate_remove_field() -> Result<(), loga::Error> {
 async fn test_migrate_add_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_add_table");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_add_table",
         //# genemichaels-external: sql-formatter-pg
@@ -1182,7 +1182,7 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenMigrateAddTable1(&mut db),
+        db,
         p1: i32 = 23
     ).await?;
     Ok(())
@@ -1192,7 +1192,7 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
 async fn test_migrate_rename_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_rename_table");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_migrate_rename_table",
         //# genemichaels-external: sql-formatter-pg
@@ -1201,7 +1201,7 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
            values
              ($1)
            "#;
-        dbm::DbPgGenMigrateRenameTable1(&mut db),
+        db,
         p1: string = "inset"
     ).await?;
     Ok(())
@@ -1211,7 +1211,7 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
 async fn test_migrate_remove_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_remove_table");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     Ok(())
 }
 
@@ -1219,7 +1219,7 @@ async fn test_migrate_remove_table() -> Result<(), loga::Error> {
 async fn test_select_cte() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_cte");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_cte",
         //# genemichaels-external: sql-formatter-pg
@@ -1228,7 +1228,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectCte1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 7
     ).await?;
@@ -1240,7 +1240,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectCte1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 99
     ).await?;
@@ -1259,7 +1259,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
            from
              "hibbo"
            "#;
-        dbm::DbPgGenSelectCte1(&mut db)
+        db
     ).await?;
     res.sort();
     assert_eq!(res, vec![7, 99]);
@@ -1270,7 +1270,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
 async fn test_select_window() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_window");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_select_window",
         //# genemichaels-external: sql-formatter-pg
@@ -1279,7 +1279,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectWindow1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 7
     ).await?;
@@ -1291,7 +1291,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectWindow1(&mut db),
+        db,
         p1: i32 = 1,
         p2: i32 = 99
     ).await?;
@@ -1303,7 +1303,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectWindow1(&mut db),
+        db,
         p1: i32 = 2,
         p2: i32 = 3
     ).await?;
@@ -1315,7 +1315,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenSelectWindow1(&mut db),
+        db,
         p1: i32 = 2,
         p2: i32 = 10
     ).await?;
@@ -1330,7 +1330,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
            from
              "select_window_bannanana"
            "#;
-        dbm::DbPgGenSelectWindow1(&mut db)
+        db
     ).await?.into_iter().collect::<Vec<_>>();
     res.sort();
     assert_eq!(res, vec![Some(13i64), Some(13i64), Some(106i64), Some(106i64)]);
@@ -1341,7 +1341,7 @@ async fn test_select_window() -> Result<(), loga::Error> {
 async fn test_migrate_make_field_optional() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_make_field_optional");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     Ok(())
 }
 
@@ -1349,7 +1349,7 @@ async fn test_migrate_make_field_optional() -> Result<(), loga::Error> {
 async fn test_query_filter() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_filter");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_filter",
         //# genemichaels-external: sql-formatter-pg
@@ -1358,7 +1358,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenQueryFilter1(&mut db),
+        db,
         p1: string = "a",
         p2: i32 = 10
     ).await?;
@@ -1370,7 +1370,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
            values
              ($1, $2)
            "#;
-        dbm::DbPgGenQueryFilter1(&mut db),
+        db,
         p1: string = "b",
         p2: i32 = 20
     ).await?;
@@ -1385,7 +1385,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenQueryFilter1(&mut db)
+        db
     ).await?;
     assert_eq!(res, Some(10i64));
     Ok(())
@@ -1395,7 +1395,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
 async fn test_query_window_frame() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_window_frame");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     for i in 1 ..= 3 {
         good_ormning::pg::good_query!(
             "pg_gen_query_window_frame",
@@ -1405,7 +1405,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
                values
                  ('key', $1)
                "#;
-            dbm::DbPgGenQueryWindowFrame1(&mut db),
+            db,
             p1: i32 = i
         ).await?;
     }
@@ -1421,7 +1421,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
            from
              "bananna"
            "#;
-        dbm::DbPgGenQueryWindowFrame1(&mut db)
+        db
     ).await?;
     assert_eq!(res, vec![Some(1i64), Some(3i64), Some(6i64)]);
     Ok(())
@@ -1431,7 +1431,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
 async fn test_query_collate() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_collate");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_collate",
         //# genemichaels-external: sql-formatter-pg
@@ -1440,7 +1440,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
            values
              ('abc')
            "#;
-        dbm::DbPgGenQueryCollate1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_collate",
@@ -1452,7 +1452,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
            where
              "hizat" collate "C" = 'abc'
            "#;
-        dbm::DbPgGenQueryCollate1(&mut db)
+        db
     ).await?;
     assert_eq!(res, "abc");
     Ok(())
@@ -1462,7 +1462,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
 async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_is_distinct_from");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_is_distinct_from",
         //# genemichaels-external: sql-formatter-pg
@@ -1471,7 +1471,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            values
              (null)
            "#;
-        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_is_distinct_from",
@@ -1483,7 +1483,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            where
              "hizat" is distinct from 'abc'
            "#;
-        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+        db
     ).await?;
     assert_eq!(res, 1i64);
     let res2 = good_ormning::pg::good_query_one!(
@@ -1496,7 +1496,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
            where
              "hizat" is not distinct from null
            "#;
-        dbm::DbPgGenQueryIsDistinctFrom1(&mut db)
+        db
     ).await?;
     assert_eq!(res2, 1i64);
     Ok(())
@@ -1506,7 +1506,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
 async fn test_query_having() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_having");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_having",
         //# genemichaels-external: sql-formatter-pg
@@ -1515,7 +1515,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
            values
              ('a', 10)
            "#;
-        dbm::DbPgGenQueryHaving1(&mut db)
+        db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_having",
@@ -1525,7 +1525,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
            values
              ('b', 20)
            "#;
-        dbm::DbPgGenQueryHaving1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_query_having",
@@ -1539,7 +1539,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
            having
              sum("two") > 15
            "#;
-        dbm::DbPgGenQueryHaving1(&mut db)
+        db
     ).await?;
     assert_eq!(res, vec!["b".to_string()]);
     Ok(())
@@ -1549,7 +1549,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
 async fn test_query_cte_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_cte_subquery");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_cte_subquery",
         //# genemichaels-external: sql-formatter-pg
@@ -1558,7 +1558,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
            values
              ('a')
            "#;
-        dbm::DbPgGenQueryCteSubquery1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_cte_subquery",
@@ -1576,7 +1576,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
                  "t"
              ) as "x"
            "#;
-        dbm::DbPgGenQueryCteSubquery1(&mut db)
+        db
     ).await?;
     assert_eq!(res, 1i32);
     Ok(())
@@ -1586,7 +1586,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
 async fn test_query_like_escape() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_like_escape");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_like_escape",
         //# genemichaels-external: sql-formatter-pg
@@ -1595,7 +1595,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
            values
              ('a%b')
            "#;
-        dbm::DbPgGenQueryLikeEscape1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_query_like_escape",
@@ -1607,7 +1607,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
            where
              "hizat" like 'a!%b' escape '!'
            "#;
-        dbm::DbPgGenQueryLikeEscape1(&mut db)
+        db
     ).await?;
     assert_eq!(res, 1i64);
     Ok(())
@@ -1617,7 +1617,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
 async fn test_query_union() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query_many!(
         "pg_gen_base_insert",
         //# genemichaels-external: sql-formatter-pg
@@ -1631,7 +1631,7 @@ async fn test_query_union() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     Ok(())
 }
@@ -1640,7 +1640,7 @@ async fn test_query_union() -> Result<(), loga::Error> {
 async fn test_returning_wildcard() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
         //# genemichaels-external: sql-formatter-pg
@@ -1651,7 +1651,7 @@ async fn test_returning_wildcard() -> Result<(), loga::Error> {
            returning
              *
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res.hizat, "hi");
     Ok(())
@@ -1661,7 +1661,7 @@ async fn test_returning_wildcard() -> Result<(), loga::Error> {
 async fn test_query_between() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
         //# genemichaels-external: sql-formatter-pg
@@ -1670,7 +1670,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
            values
              ('a', 5)
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
@@ -1682,7 +1682,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
            where
              "hizat2" between 1 and 10
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res, 1i64);
     Ok(())
@@ -1692,7 +1692,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
 async fn test_query_case() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_base_insert",
         //# genemichaels-external: sql-formatter-pg
@@ -1701,7 +1701,7 @@ async fn test_query_case() -> Result<(), loga::Error> {
            values
              ('a', 5)
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     let res = good_ormning::pg::good_query_one!(
         "pg_gen_base_insert",
@@ -1714,7 +1714,7 @@ async fn test_query_case() -> Result<(), loga::Error> {
            from
              "bannanana"
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res, "positive");
     Ok(())
@@ -1724,8 +1724,8 @@ async fn test_query_case() -> Result<(), loga::Error> {
 async fn test_query_tuple_in() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
-    db
+    let mut db = dbm::migrate(db, None).await?;
+    db.0
         .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
         .await
         .map_err(loga::err)?;
@@ -1741,7 +1741,7 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
            order by
              hizat
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res.len(), 2);
     assert_eq!(res[0], "a");
@@ -1753,8 +1753,8 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
 async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
-    db
+    let mut db = dbm::migrate(db, None).await?;
+    db.0
         .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
         .await
         .map_err(loga::err)?;
@@ -1770,7 +1770,7 @@ async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
            order by
              hizat
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res.len(), 2);
     assert_eq!(res[0], "a");
@@ -1785,7 +1785,7 @@ async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
            where
              (hizat, hizat2) = ('b', 2)
            "#;
-        dbm::DbPgGenBaseInsert1(&mut db)
+        db
     ).await?;
     assert_eq!(res2.len(), 1);
     assert_eq!(res2[0], "b");
@@ -1796,7 +1796,7 @@ async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
 async fn test_repeated_param() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_repeated_param");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_repeated_param",
         //# genemichaels-external: sql-formatter-pg
@@ -1816,7 +1816,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
              "date" = $1,
              "rank" = $5
            "#;
-        dbm::DbPgGenRepeatedParam1(&mut db),
+        db,
         p1: i32 = 20260501,
         p2: string = "rock",
         p3: string = "classic",
@@ -1843,7 +1843,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
              "date" = $1,
              "rank" = $5
            "#;
-        dbm::DbPgGenRepeatedParam1(&mut db),
+        db,
         p1: i32 = 20260502,
         p2: string = "rock",
         p3: string = "classic",
@@ -1859,7 +1859,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
            from
              "genrerank"
            "#;
-        dbm::DbPgGenRepeatedParam1(&mut db)
+        db
     ).await?, 20260502);
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_repeated_param",
@@ -1869,7 +1869,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
            from
              "genrerank"
            "#;
-        dbm::DbPgGenRepeatedParam1(&mut db)
+        db
     ).await?, 5);
     Ok(())
 }
@@ -1878,16 +1878,16 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
 async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_inline_param_i32_common");
     let (mut db, _cont) = db().await?;
-    dbm::migrate(&mut db, None).await?;
+    let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         "pg_gen_inline_param_i32_common",
         r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
-        dbm::DbPgGenInlineParamI32Common1(&mut db)
+        db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_inline_param_i32_common",
         r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
-        dbm::DbPgGenInlineParamI32Common1(&mut db)
+        db
     ).await?, 22);
     Ok(())
 }

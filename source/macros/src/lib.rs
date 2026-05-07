@@ -310,10 +310,10 @@ fn parse_and_generate_pg(
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name <'_ >)
+        quote!(dbm::#name <impl ::good_ormning::runtime::pg::PgConnection>)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name <'_ >)
+        quote!(dbm::#name <impl ::good_ormning::runtime::pg::PgConnection>)
     };
     let generated =
         good_ormning_core::pg::query::generate::generate_query_functions(
@@ -406,10 +406,10 @@ fn parse_and_generate_sqlite(
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name <'_, impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(dbm::#name <impl ::good_ormning::runtime::sqlite::SqliteConnection>)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name <'_, impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(dbm::#name <impl ::good_ormning::runtime::sqlite::SqliteConnection>)
     };
     let generated =
         good_ormning_core::sqlite::query::generate::generate_query_functions(

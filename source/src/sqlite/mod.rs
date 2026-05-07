@@ -172,7 +172,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     db.execute(query, (#version_i,)).to_good_error_query(query) ?;
                 }
                 if let Some(callback) = & callback {
-                    callback(#enum_name::#enum_variant(#newtype_name(db))) ?;
+                    let mut wrapper = #newtype_name(db);
+                    callback(#enum_name::#enum_variant(&mut wrapper)) ?;
+                    db = wrapper.0;
                 }
             }
         });
@@ -191,10 +193,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
-        enum_variants.push(quote!(#enum_variant(#newtype_name <'a, C >)));
+        enum_variants.push(quote!(#enum_variant(&'a mut #newtype_name <C>)));
         db_types.push(quote!{
-            pub struct #newtype_name <'a,
-            C: good_ormning:: runtime:: sqlite:: SqliteConnection >(pub &'a mut C);
+            pub struct #newtype_name <C: good_ormning::runtime::sqlite::SqliteConnection>(pub C);
         });
     }
     let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
@@ -207,7 +208,6 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             "",
             quote!(
                 #latest_newtype_name <
-                    '_,
                     impl good_ormning::runtime::sqlite::SqliteConnection,
                 >
             ),
@@ -236,11 +236,11 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             Ok(())
         }
         pub fn migrate < C: good_ormning:: runtime:: sqlite:: SqliteConnection >(
-            db: & mut C,
+            mut db: C,
             callback: Option <&(dyn Fn(#enum_name <'_, C >) -> Result <(), GoodError >) >
-        ) -> Result <(),
+        ) -> Result <#latest_newtype_name<C>,
         GoodError > {
-            init_db(db)?;
+            init_db(&mut db)?;
             loop {
                 let query = "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
                 let version = match db.query(query, (), |r| {
@@ -268,7 +268,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     let query = "update __good_version set lock = 0";
                     db.execute(query, ()).to_good_error_query(query)?;
                 }
-                return Ok(());
+                return Ok(#latest_newtype_name(db));
             }
         }
         pub fn get_schema_version(

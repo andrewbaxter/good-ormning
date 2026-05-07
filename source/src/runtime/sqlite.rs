@@ -79,6 +79,23 @@ impl SqliteConnection for rusqlite::Transaction<'_> {
     }
 }
 
+impl<T: SqliteConnection + ?Sized> SqliteConnection for &mut T {
+    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> rusqlite::Result<usize> {
+        (**self).execute(query, params)
+    }
+
+    fn query<
+        T2,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T2>,
+    >(&mut self, query: &str, params: impl rusqlite::Params, f: F) -> rusqlite::Result<Vec<T2>> {
+        (**self).query(query, params, f)
+    }
+
+    fn load_array_module(&mut self) -> rusqlite::Result<()> {
+        (**self).load_array_module()
+    }
+}
+
 pub enum GoodOrmningSqliteTimestamp {
     String(String),
     I64(i64),

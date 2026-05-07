@@ -177,7 +177,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     ).await.to_good_error_query(query) ?;
                 }
                 if let Some(callback) = & callback {
-                    callback(#enum_name::#enum_variant(#newtype_name(&mut txn))).await ?;
+                    let mut wrapper = #newtype_name(txn);
+                    callback(#enum_name::#enum_variant(&mut wrapper)).await ?;
+                    txn = wrapper.0;
                 }
             }
         });
@@ -196,9 +198,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
-        enum_variants.push(quote!(#enum_variant(#newtype_name <'a >)));
+        enum_variants.push(quote!(#enum_variant(&'a mut #newtype_name <C>)));
         db_types.push(quote!{
-            pub struct #newtype_name <'a >(pub &'a mut dyn good_ormning:: runtime:: pg:: PgConnection);
+            pub struct #newtype_name <C: good_ormning::runtime::pg::PgConnection>(pub C);
         });
     }
     let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
@@ -209,12 +211,12 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             field_lookup,
             args.queries,
             "",
-            quote!(#latest_newtype_name),
+            quote!(#latest_newtype_name<impl good_ormning::runtime::pg::PgConnection>),
         );
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
-        #(#db_types) * pub enum #enum_name <'a > {
+        #(#db_types) * pub enum #enum_name <'a, C: good_ormning::runtime::pg::PgConnection> {
             #(#enum_variants,) *
         }
         pub use #latest_newtype_name as #db_alias_name;
@@ -236,16 +238,16 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             doc =
                 "(Initialize and) migrate the database to the latest schema version. Optionally takes a callback which is run after each version, so custom post-schema change code can be run. Use `good_query!` macros with the version parameter to do migrations."
         ] pub async fn migrate(
-            db: & mut tokio_postgres:: Client,
+            mut db: tokio_postgres:: Client,
             callback: Option <&(
-                dyn for <'b > Fn(
-                    #enum_name <'b >
+                dyn for <'b, 'c > Fn(
+                    #enum_name <'b, tokio_postgres::Transaction<'c>>
                 ) -> std:: pin:: Pin < Box < dyn std:: future:: Future < Output = Result <(),
                 GoodError >> + Send + 'b >> + Send + Sync
             ) >
-        ) -> Result <(),
+        ) -> Result <#latest_newtype_name<tokio_postgres::Client>,
         GoodError > {
-            init_db(db).await?;
+            init_db(&mut db).await?;
             loop {
                 let mut txn = db.transaction().await.to_good_error(|| "Failed to start transaction".to_string())?;
                 let migrated = {
@@ -289,7 +291,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                 };
                 if migrated {
                     txn.commit().await.to_good_error(|| "Failed to commit transaction".to_string())?;
-                    return Ok(());
+                    return Ok(#latest_newtype_name(db));
                 }
                 else {
                     txn.rollback().await.to_good_error(|| "Failed to rollback transaction".to_string())?;

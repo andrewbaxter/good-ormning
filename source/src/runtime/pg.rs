@@ -79,6 +79,25 @@ impl PgConnection for tokio_postgres::Transaction<'_> {
     }
 }
 
+#[async_trait]
+impl<T: PgConnection + ?Sized> PgConnection for &mut T {
+    async fn execute(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, tokio_postgres::Error> {
+        (**self).execute(query, params).await
+    }
+
+    async fn query(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
+        (**self).query(query, params).await
+    }
+}
+
 pub trait GoodOrmningCustomAuto<T> {
     fn to_sql(value: &T) -> i64;
     fn from_sql(value: i64) -> Result<T, String>;
