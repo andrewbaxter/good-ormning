@@ -1210,7 +1210,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
             dbm::DbSqliteGenMigrateAddFieldVersions::V0(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_add_field",
-                    "0",
+                    0,
                     //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "bannna" ("hizat")
@@ -1336,7 +1336,7 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
             dbm::DbSqliteGenMigratePreMigrationVersions::V0(db) => {
                 good_ormning::sqlite::good_query!(
                     "sqlite_gen_migrate_pre_migration",
-                    "0",
+                    0,
                     //# genemichaels-external: sql-formatter-sqlite
                     r#"insert into
                          "migrate_pre_migration_v0_two" ("two")

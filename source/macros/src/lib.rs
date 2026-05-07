@@ -47,6 +47,7 @@ use {
     },
     syn::{
         Ident,
+        LitInt,
         LitStr,
         Token,
         parse::{
@@ -76,33 +77,33 @@ struct GoodQueryInput {
 
 impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut literals = Vec::new();
-        while !input.peek(Token![;]) && !input.is_empty() {
-            literals.push(input.parse::<LitStr>()?);
-            if input.peek(Token![,]) {
+        let (db_name, version, sql) = {
+            let first: LitStr = input.parse()?;
+
+            if input.peek(Token![;]) {
+                input.parse::<Token![;]>()?;
+                ("".to_string(), None, first.value())
+            } else {
                 input.parse::<Token![,]>()?;
-            } else if !input.peek(Token![;]) {
-                return Err(input.error("Expected , or ; after literal"));
+
+                let lookahead = input.lookahead1();
+                if lookahead.peek(LitInt) {
+                    let version_lit: LitInt = input.parse()?;
+                    let version = version_lit.base10_parse::<usize>()?;
+                    input.parse::<Token![,]>()?;
+                    let sql_lit: LitStr = input.parse()?;
+                    let sql = sql_lit.value();
+                    input.parse::<Token![;]>()?;
+                    (first.value(), Some(version), sql)
+                } else if lookahead.peek(LitStr) {
+                    let sql_lit: LitStr = input.parse()?;
+                    let sql = sql_lit.value();
+                    input.parse::<Token![;]>()?;
+                    (first.value(), None, sql)
+                } else {
+                    return Err(lookahead.error());
+                }
             }
-        }
-        input.parse::<Token![;]>()?;
-        let (db_name, version, sql) = match literals.len() {
-            1 => ("".to_string(), None, literals[0].value()),
-            2 => (literals[0].value(), None, literals[1].value()),
-            3 => {
-                let v_str = literals[1].value();
-                let v = v_str.parse::<usize>().map_err(|_| {
-                    syn::Error::new(literals[1].span(), "Version must be a positive integer")
-                })?;
-                (literals[0].value(), Some(v), literals[2].value())
-            },
-            _ => {
-                return Err(
-                    input.error(
-                        "Expected 1, 2, or 3 literals before semicolon (sql, [db_name, sql], or [db_name, version, sql])",
-                    ),
-                );
-            },
         };
         let conn: syn::Expr = input.parse()?;
         let mut param_types = Vec::new();

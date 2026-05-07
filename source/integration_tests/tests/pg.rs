@@ -1098,7 +1098,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
             dbm::DbPgGenMigrateAddFieldVersions::V0(db) => {
                 good_ormning::pg::good_query!(
                     "pg_gen_migrate_add_field",
-                    "0",
+                    0,
                     //# genemichaels-external: sql-formatter-pg
                     r#"insert into
                          "bannna" ("hizat")
