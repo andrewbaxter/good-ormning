@@ -574,8 +574,21 @@ impl Expr {
         match self {
             Expr::LitArray(res) => {
                 let mut out = Tokens::new();
-                let is_in = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
-                if is_in {
+                let is_paren =
+                    matches!(
+                        ctx.op_stack.last(),
+                        Some(
+                            BinOp::In | BinOp::NotIn | BinOp::Equals | BinOp::NotEquals | BinOp::LessThan |
+                                BinOp::LessThanEqualTo |
+                                BinOp::GreaterThan |
+                                BinOp::GreaterThanEqualTo |
+                                BinOp::Is |
+                                BinOp::IsNot |
+                                BinOp::IsDistinctFrom |
+                                BinOp::IsNotDistinctFrom
+                        )
+                    );
+                if is_paren {
                     out.s("(");
                 } else {
                     out.s("[");
@@ -589,7 +602,7 @@ impl Expr {
                     out.s(&tokens.to_string());
                     types.push(t);
                 }
-                if is_in {
+                if is_paren {
                     out.s(")");
                 } else {
                     out.s("]");
@@ -1283,6 +1296,64 @@ fn do_bin_op(
                 arr: false,
             })]), out);
         },
+        BinOp::Equals |
+        BinOp::NotEquals |
+        BinOp::LessThan |
+        BinOp::LessThanEqualTo |
+        BinOp::GreaterThan |
+        BinOp::GreaterThanEqualTo |
+        BinOp::Is |
+        BinOp::IsNot |
+        BinOp::IsDistinctFrom |
+        BinOp::IsNotDistinctFrom => {
+            if exprs.len() != 2 {
+                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
+                return (ExprType(vec![]), Tokens::new());
+            }
+            let token = match op {
+                BinOp::Equals => "=",
+                BinOp::NotEquals => "<>",
+                BinOp::LessThan => "<",
+                BinOp::LessThanEqualTo => "<=",
+                BinOp::GreaterThan => ">",
+                BinOp::GreaterThanEqualTo => ">=",
+                BinOp::Is => "is",
+                BinOp::IsNot => "is not",
+                BinOp::IsDistinctFrom => "is distinct from",
+                BinOp::IsNotDistinctFrom => "is not distinct from",
+                _ => unreachable!(),
+            };
+            ctx.op_stack.push(op.clone());
+            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
+            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
+            ctx.op_stack.pop();
+            if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                if left_t.0.len() == right_t.0.len() {
+                    check_general_same(ctx, path, &left_t, &right_t);
+                } else {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                op,
+                                left_t.0.len(),
+                                right_t.0.len()
+                            ),
+                        );
+                }
+            }
+            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
+            return (ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::Bool,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]), out);
+        },
         BinOp::Plus => {
             token = "+";
         },
@@ -1300,30 +1371,6 @@ fn do_bin_op(
         },
         BinOp::Or => {
             token = "or";
-        },
-        BinOp::Equals => {
-            token = "=";
-        },
-        BinOp::NotEquals => {
-            token = "<>";
-        },
-        BinOp::Is => {
-            token = "is";
-        },
-        BinOp::IsNot => {
-            token = "is not";
-        },
-        BinOp::LessThan => {
-            token = "<";
-        },
-        BinOp::LessThanEqualTo => {
-            token = "<=";
-        },
-        BinOp::GreaterThan => {
-            token = ">";
-        },
-        BinOp::GreaterThanEqualTo => {
-            token = ">=";
         },
         BinOp::Like => {
             token = "like";
@@ -1348,12 +1395,6 @@ fn do_bin_op(
         },
         BinOp::BitwiseShiftRight => {
             token = ">>";
-        },
-        BinOp::IsDistinctFrom => {
-            token = "is distinct from";
-        },
-        BinOp::IsNotDistinctFrom => {
-            token = "is not distinct from";
         },
         BinOp::Glob => {
             token = "glob";
@@ -1448,20 +1489,7 @@ fn do_bin_op(
         out.s(&tokens.to_string());
     }
     let res_t = match op {
-        BinOp::Equals |
-        BinOp::NotEquals |
-        BinOp::Is |
-        BinOp::IsNot |
-        BinOp::LessThan |
-        BinOp::LessThanEqualTo |
-        BinOp::GreaterThan |
-        BinOp::GreaterThanEqualTo |
-        BinOp::Like |
-        BinOp::IsDistinctFrom |
-        BinOp::IsNotDistinctFrom |
-        BinOp::Glob |
-        BinOp::Regexp |
-        BinOp::Match => Type {
+        BinOp::Like | BinOp::Glob | BinOp::Regexp | BinOp::Match => Type {
             type_: SimpleType {
                 type_: SimpleSimpleType::Bool,
                 custom: None,

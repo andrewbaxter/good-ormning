@@ -1750,6 +1750,49 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_base_insert");
+    let (mut db, _cont) = db().await?;
+    dbm::migrate(&mut db, None).await?;
+    db
+        .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
+        .await
+        .map_err(loga::err)?;
+    let res = good_ormning::pg::good_query_many!(
+        "pg_gen_base_insert",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             hizat
+           from
+             bannanana
+           where
+             (hizat, hizat2) < ('b', 3)
+           order by
+             hizat
+           "#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0], "a");
+    assert_eq!(res[1], "b");
+    let res2 = good_ormning::pg::good_query_many!(
+        "pg_gen_base_insert",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             hizat
+           from
+             bannanana
+           where
+             (hizat, hizat2) = ('b', 2)
+           "#;
+        dbm::DbPgGenBaseInsert1(&mut db)
+    ).await?;
+    assert_eq!(res2.len(), 1);
+    assert_eq!(res2[0], "b");
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_repeated_param() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_repeated_param");
     let (mut db, _cont) = db().await?;

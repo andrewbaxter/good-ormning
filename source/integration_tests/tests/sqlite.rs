@@ -1936,6 +1936,46 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_query_tuple_cmp() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_base_insert");
+    let mut db = rusqlite::Connection::open_in_memory().map_err(loga::err)?;
+    dbm::migrate(&mut db, None)?;
+    db.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
+    let res = good_ormning::sqlite::good_query_many!(
+        "sqlite_gen_base_insert",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             hizat
+           from
+             bannanana
+           where
+             (hizat, hizat2) < ('b', 3)
+           order by
+             hizat
+           "#;
+        dbm::DbSqliteGenBaseInsert1(&mut db)
+    )?;
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0], "a");
+    assert_eq!(res[1], "b");
+    let res2 = good_ormning::sqlite::good_query_many!(
+        "sqlite_gen_base_insert",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             hizat
+           from
+             bannanana
+           where
+             (hizat, hizat2) = ('b', 2)
+           "#;
+        dbm::DbSqliteGenBaseInsert1(&mut db)
+    )?;
+    assert_eq!(res2.len(), 1);
+    assert_eq!(res2[0], "b");
+    Ok(())
+}
+
+#[test]
 fn test_repeated_param() -> Result<(), loga::Error> {
     good_ormning::good_module!(dbm, "sqlite_gen_repeated_param");
     let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;

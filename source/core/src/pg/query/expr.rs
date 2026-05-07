@@ -647,8 +647,21 @@ impl Expr {
             Expr::LitArray(v) => {
                 let mut out = Tokens::new();
                 let mut res_types = vec![];
-                let is_in = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
-                if is_in {
+                let is_paren =
+                    matches!(
+                        ctx.op_stack.last(),
+                        Some(
+                            BinOp::In | BinOp::NotIn | BinOp::Equals | BinOp::NotEquals | BinOp::LessThan |
+                                BinOp::LessThanEqualTo |
+                                BinOp::GreaterThan |
+                                BinOp::GreaterThanEqualTo |
+                                BinOp::Is |
+                                BinOp::IsNot |
+                                BinOp::IsDistinctFrom |
+                                BinOp::IsNotDistinctFrom
+                        )
+                    );
+                if is_paren {
                     out.s("(");
                 } else {
                     out.s("array [");
@@ -661,7 +674,7 @@ impl Expr {
                     out.s(&res.1.to_string());
                     res_types.push(res.0);
                 }
-                if is_in {
+                if is_paren {
                     out.s(")");
                 } else {
                     out.s("]");
@@ -1102,9 +1115,47 @@ impl Expr {
                         token = "match";
                     },
                 }
+                let is_tuple_cmp =
+                    matches!(
+                        op,
+                        BinOp::Equals | BinOp::NotEquals | BinOp::LessThan | BinOp::LessThanEqualTo |
+                            BinOp::GreaterThan |
+                            BinOp::GreaterThanEqualTo |
+                            BinOp::Is |
+                            BinOp::IsNot |
+                            BinOp::IsDistinctFrom |
+                            BinOp::IsNotDistinctFrom
+                    );
+                if is_tuple_cmp {
+                    ctx.op_stack.push(op.clone());
+                }
                 let l_res = left.build(ctx, &path.push_back("Bin op left".into()), scope);
                 let r_res = right.build(ctx, &path.push_back("Bin op right".into()), scope);
-                let t = check_same(&mut ctx.errs, path, &l_res.0, &r_res.0);
+                if is_tuple_cmp {
+                    ctx.op_stack.pop();
+                }
+                let t = if is_tuple_cmp && (l_res.0.0.len() > 1 || r_res.0.0.len() > 1) {
+                    if !l_res.0.0.is_empty() && !r_res.0.0.is_empty() {
+                        if l_res.0.0.len() == r_res.0.0.len() {
+                            check_general_same(ctx, path, &l_res.0, &r_res.0);
+                        } else {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!(
+                                        "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                        op,
+                                        l_res.0.0.len(),
+                                        r_res.0.0.len()
+                                    ),
+                                );
+                        }
+                    }
+                    None
+                } else {
+                    check_same(&mut ctx.errs, path, &l_res.0, &r_res.0)
+                };
                 out.s(&l_res.1.to_string()).s(token).s(&r_res.1.to_string());
                 let mut res_t = t.unwrap_or(Type {
                     type_: SimpleType {

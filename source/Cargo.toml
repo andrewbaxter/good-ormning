@@ -1,5 +1,5 @@
 [workspace]
-members = ["integration_tests", "macros"]
+members = ["integration_tests", "macros", "core"]
 package.license = "ISC"
 package.description = "Maybe an ORM"
 package.homepage = "https://github.com/andrewbaxter/good-ormning"
