@@ -205,7 +205,12 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             field_lookup,
             args.queries,
             "",
-            quote!(#latest_newtype_name <'_, C >),
+            quote!(
+                #latest_newtype_name <
+                    '_,
+                    impl good_ormning::runtime::sqlite::SqliteConnection,
+                >
+            ),
         );
     let tokens = quote!{
         use good_ormning::runtime::GoodError;

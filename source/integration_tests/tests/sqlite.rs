@@ -2088,3 +2088,20 @@ fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     )?, 22);
     Ok(())
 }
+
+#[test]
+fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    dbm::migrate(&mut db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query",
+        r#"insert into "bananna" ("hizat") values (?1)"#;
+        dbm::DbSqliteGenQuery1(&mut db),
+        p1: string = "hello"
+    )?;
+    let results = dbm::hist_list_all(&mut dbm::DbSqliteGenQuery1(&mut db))?;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0], "hello");
+    Ok(())
+}

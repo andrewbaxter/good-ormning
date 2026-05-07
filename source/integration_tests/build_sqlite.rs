@@ -771,4 +771,24 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+
+    // # Generated query functions compile test
+    // This ensures query functions generated in build.rs use valid generic syntax.
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        let hizat = bananna.field("hizat", field_str().build());
+        let body = new_select_body(&bananna).return_field(&hizat).build();
+        let query = good_ormning::sqlite::Query {
+            name: "hist_list_all".to_string(),
+            body: Box::new(body),
+            res_count: good_ormning::QueryResCount::Many,
+            res_name: None,
+        };
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_query".to_string()),
+            versions: vec![(1usize, v.build())],
+            queries: vec![query],
+        }).unwrap();
+    }
 }
