@@ -179,10 +179,10 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                 if let Some(callback) = & callback {
                     let wrapper = #newtype_name(txn);
                     let mut enum_val = #enum_name::#enum_variant(wrapper);
-                    callback(&mut enum_val).await ?;
+                    callback(&mut enum_val).await?;
                     txn = match enum_val {
                         #enum_name::#enum_variant(wrapper) => wrapper.0,
-                        _ => panic!("Migration callback returned wrong version enum variant"),
+                        _ => panic !("Migration callback returned wrong version enum variant"),
                     };
                 }
             }
@@ -202,9 +202,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
-        enum_variants.push(quote!(#enum_variant(#newtype_name <C>)));
+        enum_variants.push(quote!(#enum_variant(#newtype_name < C >)));
         db_types.push(quote!{
-            pub struct #newtype_name <C: good_ormning::runtime::pg::PgConnection>(pub C);
+            pub struct #newtype_name < C: good_ormning:: runtime:: pg:: PgConnection >(pub C);
         });
     }
     let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
@@ -215,12 +215,12 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             field_lookup,
             args.queries,
             "",
-            quote!(#latest_newtype_name<impl good_ormning::runtime::pg::PgConnection>),
+            quote!(#latest_newtype_name < impl good_ormning:: runtime:: pg:: PgConnection >),
         );
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
-        #(#db_types) * pub enum #enum_name <C: good_ormning::runtime::pg::PgConnection> {
+        #(#db_types) * pub enum #enum_name < C: good_ormning:: runtime:: pg:: PgConnection > {
             #(#enum_variants,) *
         }
         pub use #latest_newtype_name as #db_alias_name;
@@ -244,12 +244,13 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         ] pub async fn migrate(
             mut db: tokio_postgres:: Client,
             callback: Option <&(
-                dyn for <'a, 'c > Fn(
-                    &'a mut #enum_name <tokio_postgres::Transaction<'c>>
+                dyn for <'a,
+                'c > Fn(
+                    &'a mut #enum_name < tokio_postgres:: Transaction <'c >>
                 ) -> std:: pin:: Pin < Box < dyn std:: future:: Future < Output = Result <(),
                 GoodError >> + Send + 'a >> + Send + Sync
             ) >
-        ) -> Result <#latest_newtype_name<tokio_postgres::Client>,
+        ) -> Result <#latest_newtype_name < tokio_postgres:: Client >,
         GoodError > {
             init_db(&mut db).await?;
             loop {

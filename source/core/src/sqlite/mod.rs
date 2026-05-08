@@ -464,6 +464,11 @@ pub struct DeleteBuilder {
 }
 
 impl DeleteBuilder {
+    pub fn with(mut self, w: crate::sqlite::query::utils::With) -> Self {
+        self.q.with = Some(w);
+        self
+    }
+
     pub fn where_(mut self, v: Expr) -> Self {
         self.q.where_ = Some(v);
         self
@@ -815,6 +820,7 @@ impl UpdateBuilder {
 
 pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
     DeleteBuilder { q: Delete {
+        with: None,
         table: table.to_ref(),
         returning: vec![],
         where_: None,

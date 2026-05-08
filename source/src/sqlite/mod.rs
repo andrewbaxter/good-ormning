@@ -177,7 +177,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     callback(&mut enum_val)?;
                     db = match enum_val {
                         #enum_name::#enum_variant(wrapper) => wrapper.0,
-                        _ => panic!("Migration callback returned wrong version enum variant"),
+                        _ => panic !("Migration callback returned wrong version enum variant"),
                     };
                 }
             }
@@ -197,9 +197,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     for (version_i, _) in &args.versions {
         let newtype_name = format_ident!("Db{}{}", pascal_db_name, version_i);
         let enum_variant = format_ident!("V{}", version_i);
-        enum_variants.push(quote!(#enum_variant(#newtype_name <C>)));
+        enum_variants.push(quote!(#enum_variant(#newtype_name < C >)));
         db_types.push(quote!{
-            pub struct #newtype_name <C: good_ormning::runtime::sqlite::SqliteConnection>(pub C);
+            pub struct #newtype_name < C: good_ormning:: runtime:: sqlite:: SqliteConnection >(pub C);
         });
     }
     let latest_newtype_name = format_ident!("Db{}{}", pascal_db_name, last_version_i as usize);
@@ -210,17 +210,12 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             field_lookup,
             args.queries,
             "",
-            quote!(
-                #latest_newtype_name <
-                    impl good_ormning::runtime::sqlite::SqliteConnection,
-                >
-            ),
+            quote!(#latest_newtype_name < impl good_ormning:: runtime:: sqlite:: SqliteConnection, >),
         );
     let tokens = quote!{
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
-        #(#db_types) * pub enum #enum_name <
-        C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
+        #(#db_types) * pub enum #enum_name < C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
             #(#enum_variants,) *
         }
         pub use #latest_newtype_name as #db_alias_name;
@@ -241,8 +236,8 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         }
         pub fn migrate < C: good_ormning:: runtime:: sqlite:: SqliteConnection >(
             mut db: C,
-            callback: Option <&(dyn Fn(&mut #enum_name <C>) -> Result <(), GoodError >) >
-        ) -> Result <#latest_newtype_name<C>,
+            callback: Option <&(dyn Fn(& mut #enum_name < C >) -> Result <(), GoodError >) >
+        ) -> Result <#latest_newtype_name < C >,
         GoodError > {
             init_db(&mut db)?;
             loop {

@@ -211,6 +211,7 @@ pub struct SqliteQueryCtx {
     pub rust_args: Vec<TokenStream>,
     pub query_args: Vec<TokenStream>,
     pub op_stack: Vec<BinOp>,
+    pub outer_scopes: Vec<HashMap<Binding, Type>>,
 }
 
 #[derive(Clone, Debug)]
@@ -228,6 +229,7 @@ impl SqliteQueryCtx {
             rust_args: Default::default(),
             query_args: Default::default(),
             op_stack: Default::default(),
+            outer_scopes: Default::default(),
         }
     }
 }

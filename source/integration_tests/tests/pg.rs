@@ -1725,7 +1725,8 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
-    db.0
+    db
+        .0
         .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
         .await
         .map_err(loga::err)?;
@@ -1754,7 +1755,8 @@ async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
     let (mut db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
-    db.0
+    db
+        .0
         .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", &[])
         .await
         .map_err(loga::err)?;
@@ -1889,5 +1891,35 @@ async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
         r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
         &mut db
     ).await?, 22);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_correlated_subquery() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_query_correlated_subquery");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_correlated_subquery",
+        r#"insert into "b" ("hizat") values ('seeon')"#;
+        &mut db
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_correlated_subquery",
+        r#"insert into "snap" ("hizat") values ('seeon')"#;
+        &mut db
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_query_correlated_subquery",
+        r#"delete from "b" where exists (
+            select 1 from "snap" where "b"."hizat" = "snap"."hizat"
+        )"#;
+        &mut db
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_opt!(
+        "pg_gen_query_correlated_subquery",
+        r#"select "b"."hizat" as "hizat" from "b""#;
+        &mut db
+    ).await?, None);
     Ok(())
 }

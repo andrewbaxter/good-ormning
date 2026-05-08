@@ -79,13 +79,11 @@ impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let (db_name, version, sql) = {
             let first: LitStr = input.parse()?;
-
             if input.peek(Token![;]) {
                 input.parse::<Token![;]>()?;
                 ("".to_string(), None, first.value())
             } else {
                 input.parse::<Token![,]>()?;
-
                 let lookahead = input.lookahead1();
                 if lookahead.peek(LitInt) {
                     let version_lit: LitInt = input.parse()?;
@@ -311,10 +309,10 @@ fn parse_and_generate_pg(
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name <impl ::good_ormning::runtime::pg::PgConnection>)
+        quote!(dbm::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name <impl ::good_ormning::runtime::pg::PgConnection>)
+        quote!(dbm::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
     };
     let generated =
         good_ormning_core::pg::query::generate::generate_query_functions(
@@ -407,10 +405,10 @@ fn parse_and_generate_sqlite(
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name <impl ::good_ormning::runtime::sqlite::SqliteConnection>)
+        quote!(dbm::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name <impl ::good_ormning::runtime::sqlite::SqliteConnection>)
+        quote!(dbm::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     };
     let generated =
         good_ormning_core::sqlite::query::generate::generate_query_functions(

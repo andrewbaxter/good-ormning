@@ -79,8 +79,6 @@ impl PgConnection for tokio_postgres::Transaction<'_> {
     }
 }
 
-
-
 pub trait GoodOrmningCustomAuto<T> {
     fn to_sql(value: &T) -> i64;
     fn from_sql(value: i64) -> Result<T, String>;

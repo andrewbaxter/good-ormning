@@ -289,6 +289,32 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Delete CTE
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("b");
+        bananna.field("hizat", field_str().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_delete_cte".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # Correlated Subquery
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("b");
+        bananna.field("hizat", field_str().build());
+        let snapshot = v.table("snap");
+        snapshot.field("hizat", field_str().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_query_correlated_subquery".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Delete, where
     {
         let v = PgVersion::new();

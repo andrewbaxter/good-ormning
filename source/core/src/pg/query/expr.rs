@@ -920,19 +920,40 @@ impl Expr {
             },
             Expr::Field(x) => {
                 let name = ExprValName::field(x);
-                let t = match scope.get(&name) {
+                let mut found = scope.get(&name).cloned();
+                if found.is_none() {
+                    for outer in ctx.outer_scopes.iter().rev() {
+                        if let Some(t) = outer.get(&name) {
+                            found = Some(t.clone());
+                            break;
+                        }
+                    }
+                }
+                let t = match found {
                     Some(t) => t.clone(),
                     None => {
                         if x.table_id.is_empty() {
-                            let mut found = vec![];
+                            let mut found_list = vec![];
                             for (k, v) in scope {
                                 if k.id == x.field_id {
-                                    found.push(v.clone());
+                                    found_list.push(v.clone());
                                 }
                             }
-                            if found.len() == 1 {
-                                found[0].clone()
-                            } else if found.len() > 1 {
+                            if found_list.is_empty() {
+                                for outer in ctx.outer_scopes.iter().rev() {
+                                    for (k, v) in outer {
+                                        if k.id == x.field_id {
+                                            found_list.push(v.clone());
+                                        }
+                                    }
+                                    if !found_list.is_empty() {
+                                        break;
+                                    }
+                                }
+                            }
+                            if found_list.len() == 1 {
+                                found_list[0].clone()
+                            } else if found_list.len() > 1 {
                                 ctx
                                     .errs
                                     .err(
@@ -1310,7 +1331,9 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
+                ctx.outer_scopes.push(scope.clone());
                 let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
+                ctx.outer_scopes.pop();
                 out.s(&tokens.to_string()).s(")");
                 return (t, out);
             },
@@ -1329,7 +1352,9 @@ impl Expr {
             Expr::Exists(s) => {
                 let mut out = Tokens::new();
                 out.s("exists (");
+                ctx.outer_scopes.push(scope.clone());
                 let (_, tokens) = s.build(ctx, &path.push_back("Exists".into()), crate::QueryResCount::Many);
+                ctx.outer_scopes.pop();
                 out.s(&tokens.to_string()).s(")");
                 return (ExprType(vec![(ExprValName::empty(), Type {
                     type_: SimpleType {

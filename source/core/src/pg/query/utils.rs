@@ -170,6 +170,7 @@ pub struct PgQueryCtx {
     pub rust_args: Vec<TokenStream>,
     pub query_args: Vec<TokenStream>,
     pub op_stack: Vec<BinOp>,
+    pub outer_scopes: Vec<HashMap<ExprValName, Type>>,
 }
 
 impl PgQueryCtx {
@@ -181,6 +182,7 @@ impl PgQueryCtx {
             rust_args: Default::default(),
             query_args: Default::default(),
             op_stack: Default::default(),
+            outer_scopes: Default::default(),
         }
     }
 }

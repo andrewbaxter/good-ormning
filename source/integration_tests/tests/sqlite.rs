@@ -11,7 +11,7 @@ use {
 fn test_hello_world() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_hello_world");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_hello_world",
         //# genemichaels-external: sql-formatter-sqlite
@@ -57,7 +57,7 @@ fn test_hello_world() -> Result<(), loga::Error> {
 fn test_base_insert() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -94,7 +94,7 @@ fn test_get_version_premigrate() -> Result<(), loga::Error> {
 fn test_get_version_postmigrate() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     assert_eq!(dbm::get_schema_version(&mut db.0)?, Some(1));
     Ok(())
 }
@@ -103,7 +103,7 @@ fn test_get_version_postmigrate() -> Result<(), loga::Error> {
 fn test_constraint() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     Ok(())
 }
 
@@ -111,7 +111,7 @@ fn test_constraint() -> Result<(), loga::Error> {
 fn test_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_i32",
         //# genemichaels-external: sql-formatter-sqlite
@@ -140,7 +140,7 @@ fn test_param_i32() -> Result<(), loga::Error> {
 fn test_inline_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_inline_param_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
         //# genemichaels-external: sql-formatter-sqlite
@@ -170,7 +170,7 @@ fn test_inline_param_i32() -> Result<(), loga::Error> {
 fn test_inline_param_complex() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_inline_param_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let val = 47;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
@@ -202,7 +202,7 @@ fn test_inline_param_complex() -> Result<(), loga::Error> {
 fn test_inline_param_with_path() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_inline_param_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32",
         //# genemichaels-external: sql-formatter-sqlite
@@ -230,7 +230,7 @@ fn test_inline_param_with_path() -> Result<(), loga::Error> {
 fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_utctime_s_chrono");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_s_chrono",
@@ -260,7 +260,7 @@ fn test_param_utctime_s_chrono() -> Result<(), loga::Error> {
 fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_utctime_ms_chrono");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_utctime_ms_chrono",
@@ -290,7 +290,7 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
 fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_utctime_s_jiff");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let ref_date =
         jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
             .unwrap()
@@ -325,7 +325,7 @@ fn test_param_utctime_s_jiff() -> Result<(), loga::Error> {
 fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_utctime_ms_jiff");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let ref_date =
         jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
             .unwrap()
@@ -360,7 +360,7 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
 fn test_param_opt_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_opt_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32",
         //# genemichaels-external: sql-formatter-sqlite
@@ -389,7 +389,7 @@ fn test_param_opt_i32() -> Result<(), loga::Error> {
 fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_opt_i32_null");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_i32_null",
         //# genemichaels-external: sql-formatter-sqlite
@@ -417,7 +417,7 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 fn test_param_arr_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_arr_i32");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_arr_i32",
         //# genemichaels-external: sql-formatter-sqlite
@@ -454,7 +454,7 @@ fn test_param_arr_i32() -> Result<(), loga::Error> {
 fn test_param_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_custom");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let x_0 = integration_tests::MyBool(true);
     let x_1 = integration_tests::MyI32(13);
     let x_2 = integration_tests::MyI64(-22);
@@ -556,7 +556,7 @@ fn test_param_custom() -> Result<(), loga::Error> {
 fn test_param_opt_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_opt_custom");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_param_opt_custom",
         //# genemichaels-external: sql-formatter-sqlite
@@ -585,7 +585,7 @@ fn test_param_opt_custom() -> Result<(), loga::Error> {
 fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_insert_on_conflict_do_nothing");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     assert!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_insert_on_conflict_do_nothing",
         //# genemichaels-external: sql-formatter-sqlite
@@ -621,7 +621,7 @@ fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
 fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_insert_on_conflict_update");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_insert_on_conflict_update",
         //# genemichaels-external: sql-formatter-sqlite
@@ -680,7 +680,7 @@ fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
 fn test_update() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_update");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update",
         //# genemichaels-external: sql-formatter-sqlite
@@ -727,7 +727,7 @@ fn test_update() -> Result<(), loga::Error> {
 fn test_update_where() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_update_where");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_where",
         //# genemichaels-external: sql-formatter-sqlite
@@ -801,7 +801,7 @@ fn test_update_where() -> Result<(), loga::Error> {
 fn test_update_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_update_returning");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_update_returning",
         //# genemichaels-external: sql-formatter-sqlite
@@ -830,7 +830,7 @@ fn test_update_returning() -> Result<(), loga::Error> {
 fn test_delete() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_delete");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete",
         //# genemichaels-external: sql-formatter-sqlite
@@ -875,7 +875,7 @@ fn test_delete() -> Result<(), loga::Error> {
 fn test_delete_where() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_delete_where");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_where",
         //# genemichaels-external: sql-formatter-sqlite
@@ -933,7 +933,7 @@ fn test_delete_where() -> Result<(), loga::Error> {
 fn test_delete_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_delete_returning");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_returning",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1029,7 +1029,7 @@ fn test_select_join() -> Result<(), loga::Error> {
 fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_group_by");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_group_by",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1099,7 +1099,7 @@ fn test_select_group_by() -> Result<(), loga::Error> {
 fn test_select_limit() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_limit");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_limit",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1152,7 +1152,7 @@ fn test_select_limit() -> Result<(), loga::Error> {
 fn test_select_order() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_order");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_order",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1216,7 +1216,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
                          "bannna" ("hizat")
                        values
                          ('nizoot')
-                   "#;
+                       "#;
                     db
                 )?;
             },
@@ -1248,7 +1248,7 @@ fn test_migrate_add_field() -> Result<(), loga::Error> {
 fn test_migrate_rename_field() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_rename_field");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_field",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1266,7 +1266,7 @@ fn test_migrate_rename_field() -> Result<(), loga::Error> {
 fn test_migrate_remove_field() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_remove_field");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_remove_field",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1285,7 +1285,7 @@ fn test_migrate_remove_field() -> Result<(), loga::Error> {
 fn test_migrate_add_table() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_add_table");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_add_table",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1304,7 +1304,7 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
 fn test_migrate_rename_table() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_rename_table");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_migrate_rename_table",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1323,7 +1323,7 @@ fn test_migrate_rename_table() -> Result<(), loga::Error> {
 fn test_migrate_remove_table() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_remove_table");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     Ok(())
 }
 
@@ -1342,7 +1342,7 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
                          "migrate_pre_migration_v0_two" ("two")
                        values
                          (7)
-                   "#;
+                       "#;
                     db
                 )?;
             },
@@ -1357,7 +1357,7 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
 fn test_select_cte() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_cte");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_cte",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1408,7 +1408,7 @@ fn test_select_cte() -> Result<(), loga::Error> {
 fn test_select_window() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_window");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_window",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1479,7 +1479,7 @@ fn test_select_window() -> Result<(), loga::Error> {
 fn test_query_filter() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_filter");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_filter",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1525,7 +1525,7 @@ fn test_query_filter() -> Result<(), loga::Error> {
 fn test_query_window_frame() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_window_frame");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     for i in 1i32 ..= 3 {
         good_ormning::sqlite::good_query!(
             "sqlite_gen_query_window_frame",
@@ -1561,7 +1561,7 @@ fn test_query_window_frame() -> Result<(), loga::Error> {
 fn test_query_collate() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_collate");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_collate",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1592,7 +1592,7 @@ fn test_query_collate() -> Result<(), loga::Error> {
 fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_is_distinct_from");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_is_distinct_from",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1640,7 +1640,7 @@ fn test_query_is_distinct_from() -> Result<(), loga::Error> {
 fn test_query_having() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_having");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_having",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1683,7 +1683,7 @@ fn test_query_having() -> Result<(), loga::Error> {
 fn test_query_glob() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_glob");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'world' )"#, [])?;
     let count: i64 =
@@ -1696,14 +1696,16 @@ fn test_query_glob() -> Result<(), loga::Error> {
 fn test_query_indexed_by() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_indexed_by");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
     let res: String =
-        db.0.query_row(
-            r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
-            [],
-            |row| row.get(0),
-        )?;
+        db
+            .0
+            .query_row(
+                r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
+                [],
+                |row| row.get(0),
+            )?;
     assert_eq!(res, "hello");
     return Ok(());
 }
@@ -1712,7 +1714,7 @@ fn test_query_indexed_by() -> Result<(), loga::Error> {
 fn test_query_cte_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_cte_subquery");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_cte_subquery",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1749,7 +1751,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
 fn test_query_like_escape() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_like_escape");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_like_escape",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1780,7 +1782,7 @@ fn test_query_like_escape() -> Result<(), loga::Error> {
 fn test_select_junction() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_junction");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_select_junction",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1829,7 +1831,7 @@ fn test_select_junction() -> Result<(), loga::Error> {
 fn test_returning_wildcard() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     let res = good_ormning::sqlite::good_query_one!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1850,7 +1852,7 @@ fn test_returning_wildcard() -> Result<(), loga::Error> {
 fn test_query_between() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1881,7 +1883,7 @@ fn test_query_between() -> Result<(), loga::Error> {
 fn test_query_case() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1913,8 +1915,11 @@ fn test_query_case() -> Result<(), loga::Error> {
 fn test_query_tuple_in() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory().map_err(loga::err)?;
-    let mut db = dbm::migrate(db, None) ?;
-    db.0.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
+    let mut db = dbm::migrate(db, None)?;
+    db
+        .0
+        .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", [])
+        .map_err(loga::err)?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1939,8 +1944,11 @@ fn test_query_tuple_in() -> Result<(), loga::Error> {
 fn test_query_tuple_cmp() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_base_insert");
     let mut db = rusqlite::Connection::open_in_memory().map_err(loga::err)?;
-    let mut db = dbm::migrate(db, None) ?;
-    db.0.execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", []).map_err(loga::err)?;
+    let mut db = dbm::migrate(db, None)?;
+    db
+        .0
+        .execute("insert into bannanana (hizat, hizat2) values ('a', 1), ('b', 2), ('c', 3)", [])
+        .map_err(loga::err)?;
     let res = good_ormning::sqlite::good_query_many!(
         "sqlite_gen_base_insert",
         //# genemichaels-external: sql-formatter-sqlite
@@ -1979,7 +1987,7 @@ fn test_query_tuple_cmp() -> Result<(), loga::Error> {
 fn test_repeated_param() -> Result<(), loga::Error> {
     good_ormning::good_module!(dbm, "sqlite_gen_repeated_param");
     let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_repeated_param",
         //# genemichaels-external: sql-formatter-sqlite
@@ -2075,7 +2083,7 @@ fn test_repeated_param() -> Result<(), loga::Error> {
 fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_inline_param_i32_common");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32_common",
         r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
@@ -2093,7 +2101,7 @@ fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
 fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query");
     let mut db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None) ?;
+    let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query",
         r#"insert into "bananna" ("hizat") values (?1)"#;
@@ -2103,5 +2111,35 @@ fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
     let results = dbm::hist_list_all(&mut db)?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0], "hello");
+    Ok(())
+}
+
+#[test]
+fn test_query_correlated_subquery() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_query_correlated_subquery");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_correlated_subquery",
+        r#"insert into "b" ("hizat") values ('seeon')"#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_correlated_subquery",
+        r#"insert into "snap" ("hizat") values ('seeon')"#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_query_correlated_subquery",
+        r#"delete from "b" where exists (
+            select 1 from "snap" where "b"."hizat" = "snap"."hizat"
+        )"#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_opt!(
+        "sqlite_gen_query_correlated_subquery",
+        r#"select "b"."hizat" as "hizat" from "b""#;
+        &mut db
+    )?, None);
     Ok(())
 }

@@ -446,6 +446,7 @@ fn convert_delete(
         _ => unimplemented!("Delete table factor"),
     };
     return Delete {
+        with: None,
         table: table_ref.clone(),
         where_: delete.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         returning: convert_returning(

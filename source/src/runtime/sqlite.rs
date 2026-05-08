@@ -79,8 +79,6 @@ impl SqliteConnection for rusqlite::Transaction<'_> {
     }
 }
 
-
-
 pub enum GoodOrmningSqliteTimestamp {
     String(String),
     I64(i64),

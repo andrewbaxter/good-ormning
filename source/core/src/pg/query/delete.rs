@@ -25,6 +25,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Delete {
+    pub with: Option<crate::pg::query::utils::With>,
     pub table: TableRef,
     pub where_: Option<Expr>,
     pub returning: Vec<Returning>,
@@ -52,6 +53,9 @@ impl QueryBody for Delete {
 
         // Build query
         let mut out = Tokens::new();
+        if let Some(with) = &self.with {
+            out.s(&crate::pg::query::utils::build_with(ctx, path, with).to_string());
+        }
         out.s("delete from").id(&table_info.sql_name);
         if let Some(where_) = &self.where_ {
             out.s("where");
