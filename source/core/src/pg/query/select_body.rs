@@ -34,7 +34,9 @@ pub enum SelectJunctionOperator {
     Union,
     UnionAll,
     Intersect,
+    IntersectAll,
     Except,
+    ExceptAll,
 }
 
 #[derive(Clone, Debug)]
@@ -195,7 +197,9 @@ impl SelectBody {
                 SelectJunctionOperator::Union => out.s("union"),
                 SelectJunctionOperator::UnionAll => out.s("union all"),
                 SelectJunctionOperator::Intersect => out.s("intersect"),
+                SelectJunctionOperator::IntersectAll => out.s("intersect all"),
                 SelectJunctionOperator::Except => out.s("except"),
+                SelectJunctionOperator::ExceptAll => out.s("except all"),
             };
             let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
             check_general_same(ctx, &path, &out_type, &j_body_type);

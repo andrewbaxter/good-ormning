@@ -33,7 +33,6 @@ use {
                     QueryBody,
                     Returning,
                     SqliteTableInfo,
-                    With,
                 },
             },
             schema::{
@@ -186,7 +185,7 @@ pub fn convert_query(
         sql::Statement::Delete(delete) => Box::new(
             convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
         ),
-        _ => unimplemented!("Unsupported statement type: {:?}", statement),
+        _ => unimplemented!("Not implemented in good-ormning"),
     };
     for (ident, _) in &input.param_types {
         let s = ident.to_string();
@@ -241,15 +240,21 @@ fn convert_select_query_expr(
                 },
                 sql::SetOperator::Intersect => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        unimplemented!("INTERSECT ALL not supported in SQLite")
+                        unimplemented!("Not supported by database engine")
                     } else {
                         good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect
                     }
                 },
-                sql::SetOperator::Minus => unimplemented!(),
+                sql::SetOperator::Minus => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        unimplemented!("Not supported by database engine")
+                    } else {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
                 sql::SetOperator::Except => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        unimplemented!("EXCEPT ALL not supported in SQLite")
+                        unimplemented!("Not supported by database engine")
                     } else {
                         good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
                     }
@@ -261,7 +266,7 @@ fn convert_select_query_expr(
             });
             return l;
         },
-        _ => unimplemented!("Unsupported SetExpr type: {:?}", expr),
+        _ => unimplemented!("Not implemented in good-ormning"),
     }
 }
 
@@ -318,9 +323,7 @@ fn convert_returning(
                 sql::SelectItem::QualifiedWildcard(
                     sql::SelectItemQualifiedWildcardKind::Expr(_),
                     _,
-                ) => unimplemented!(
-                    "Wildcard on expression"
-                ),
+                ) => unimplemented!("Not supported by database engine"),
             }
         }
     }
@@ -351,7 +354,7 @@ fn convert_insert(
                 }
             }
         } else {
-            unimplemented!("Only values supported for insert")
+            unimplemented!("Not implemented in good-ormning")
         }
     }
     let on_conflict = if let Some(on) = &insert.on {
@@ -366,7 +369,7 @@ fn convert_insert(
                                 sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
                                 _ => panic!("Unsupported"),
                             },
-                            _ => unimplemented!("Assignment target in ON CONFLICT"),
+                            _ => unimplemented!("Not implemented in good-ormning"),
                         };
                         let field = FieldRef {
                             table_id: table.0.clone(),
@@ -430,7 +433,7 @@ fn convert_update(
         sql::TableFactor::Table { name, .. } => {
             get_table_ref(name)
         },
-        _ => unimplemented!("Update table factor"),
+        _ => unimplemented!("Not implemented in good-ormning"),
     };
     let mut values = vec![];
     for a in assignments {
@@ -439,7 +442,7 @@ fn convert_update(
                 sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
                 _ => panic!("Unsupported"),
             },
-            _ => unimplemented!("Assignment target"),
+            _ => unimplemented!("Not implemented in good-ormning"),
         };
         let field = FieldRef {
             table_id: table_ref.0.clone(),
@@ -471,7 +474,7 @@ fn convert_delete(
         sql::TableFactor::Table { name, .. } => {
             get_table_ref(name)
         },
-        _ => unimplemented!("Delete table factor"),
+        _ => unimplemented!("Not implemented in good-ormning"),
     };
     return Delete {
         with: None,
@@ -534,7 +537,7 @@ fn convert_select(
                                         .as_ref()
                                         .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                                     group: match &s.group_by {
-                                        sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
+                                        sql::GroupByExpr::All(_) => unimplemented!("Not implemented in good-ormning"),
                                         sql::GroupByExpr::Expressions(exprs, _) => exprs
                                             .iter()
                                             .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
@@ -575,20 +578,20 @@ fn convert_select(
                     sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
                         convert_expr(input, e, used_params, custom_types, field_lookup)
                     },
-                    _ => unimplemented!("Unsupported function arg in table function: {:?}", a),
+                    _ => unimplemented!("Not implemented in good-ormning"),
                 }).collect()),
                 alias: alias.as_ref().map(|a| a.name.value.clone()),
                 index_hint: None,
             },
-            sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction table factor"),
-            sql::TableFactor::UNNEST { .. } => unimplemented!("UNNEST table factor"),
-            sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable table factor"),
-            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin table factor"),
-            sql::TableFactor::Pivot { .. } => unimplemented!("Pivot table factor"),
-            sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot table factor"),
-            sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize table factor"),
+            sql::TableFactor::TableFunction { .. } => unimplemented!("Not implemented in good-ormning"),
+            sql::TableFactor::UNNEST { .. } => unimplemented!("Not implemented in good-ormning"),
+            sql::TableFactor::JsonTable { .. } => unimplemented!("Not implemented in good-ormning"),
+            sql::TableFactor::NestedJoin { .. } => unimplemented!("Not implemented in good-ormning"),
+            sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
+            sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
+            sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
             sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
-                "Unsupported table factor"
+                "Not supported by database engine"
             ),
         }
     };
@@ -620,33 +623,33 @@ fn convert_select(
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
                             convert_expr(input, e, used_params, custom_types, field_lookup)
                         },
-                        _ => unimplemented!("Unsupported function arg in join table function: {:?}", a),
+                        _ => unimplemented!("Not implemented in good-ormning"),
                     }).collect()),
                     alias: alias.as_ref().map(|a| a.name.value.clone()),
                     index_hint: None,
                 },
-                sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction join factor"),
-                sql::TableFactor::UNNEST { .. } => unimplemented!("UNNEST join factor"),
-                sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable join factor"),
-                sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin join factor"),
-                sql::TableFactor::Pivot { .. } => unimplemented!("Pivot join factor"),
-                sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot join factor"),
-                sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize join factor"),
+                sql::TableFactor::TableFunction { .. } => unimplemented!("Not implemented in good-ormning"),
+                sql::TableFactor::UNNEST { .. } => unimplemented!("Not implemented in good-ormning"),
+                sql::TableFactor::JsonTable { .. } => unimplemented!("Not implemented in good-ormning"),
+                sql::TableFactor::NestedJoin { .. } => unimplemented!("Not implemented in good-ormning"),
+                sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
+                sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
+                sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
-                    "Unsupported table factor"
+                    "Not supported by database engine"
                 ),
             };
             let type_ = match j.join_operator {
                 sql::JoinOperator::Left(_) | sql::JoinOperator::LeftOuter(_) => JoinType::Left,
                 sql::JoinOperator::Inner(_) => JoinType::Inner,
-                _ => unimplemented!("Join type: {:?}", j.join_operator),
+                _ => unimplemented!("Not implemented in good-ormning"),
             };
             let on = match &j.join_operator {
                 sql::JoinOperator::Left(constraint) |
                 sql::JoinOperator::LeftOuter(constraint) |
                 sql::JoinOperator::Inner(constraint) => match constraint {
                     sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types, field_lookup),
-                    _ => unimplemented!("Join constraint"),
+                    _ => unimplemented!("Not implemented in good-ormning"),
                 },
                 _ => unreachable!(),
             };
@@ -690,7 +693,7 @@ fn convert_select(
         join,
         where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         group: match &s.group_by {
-            sql::GroupByExpr::All(_) => unimplemented!("Group by all"),
+            sql::GroupByExpr::All(_) => unimplemented!("Not implemented in good-ormning"),
             sql::GroupByExpr::Expressions(exprs, _) => exprs
                 .iter()
                 .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
@@ -736,7 +739,7 @@ fn convert_expr(
                     } else if let Ok(i) = n.parse::<i64>() {
                         return Expr::LitI64(i);
                     } else {
-                        unimplemented!("Number parsing")
+                        unimplemented!("Not implemented in good-ormning")
                     }
                 },
                 sql::Value::SingleQuotedString(s) => return Expr::LitString(s.clone()),
@@ -769,7 +772,7 @@ fn convert_expr(
                     type_: SimpleSimpleType::I32,
                     custom: None,
                 }),
-                _ => unimplemented!("Value type: {:?}", v),
+                _ => unimplemented!("Not implemented in good-ormning"),
             }
         },
         sql::Expr::BinaryOp { left, op, right } => {
@@ -795,7 +798,7 @@ fn convert_expr(
                 sql::BinaryOperator::BitwiseXor => BinOp::BitwiseXor,
                 sql::BinaryOperator::PGBitwiseShiftLeft => BinOp::BitwiseShiftLeft,
                 sql::BinaryOperator::PGBitwiseShiftRight => BinOp::BitwiseShiftRight,
-                _ => unimplemented!("Binary operator: {:?}", op),
+                _ => unimplemented!("Not implemented in good-ormning"),
             };
             return Expr::BinOp {
                 left: Box::new(l),
@@ -809,7 +812,7 @@ fn convert_expr(
                 sql::UnaryOperator::Minus => PrefixOp::Minus,
                 sql::UnaryOperator::Not => PrefixOp::Not,
                 sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
-                _ => unimplemented!("Unary operator: {:?}", op),
+                _ => unimplemented!("Not implemented in good-ormning"),
             };
             return Expr::PrefixOp {
                 op,
@@ -988,7 +991,7 @@ fn convert_expr(
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Wildcard) => {
                             args.push(Expr::LitI32(1));
                         },
-                        _ => unimplemented!("Function argument type not supported"),
+                        _ => unimplemented!("Not implemented in good-ormning"),
                     }
                 }
             }
@@ -1007,7 +1010,7 @@ fn convert_expr(
                     "row_number" => fn_row_number(),
                     "rank" => fn_rank(),
                     "dense_rank" => fn_dense_rank(),
-                    _ => unimplemented!("Function {} not supported in window", name),
+                    _ => unimplemented!("Not implemented in good-ormning"),
                 };
                 if let Expr::Call { filter: ref mut f_opt, .. } = e {
                     *f_opt = filter;
@@ -1084,7 +1087,7 @@ fn convert_expr(
                             frame,
                         };
                     },
-                    sql::WindowType::NamedWindow(_) => unimplemented!("Named windows not supported"),
+                    sql::WindowType::NamedWindow(_) => unimplemented!("Not implemented in good-ormning"),
                 }
             }
             let mut e = match name.as_str() {
@@ -1093,14 +1096,14 @@ fn convert_expr(
                 "min" => fn_min(args.pop().expect("min requires 1 arg")),
                 "max" => fn_max(args.pop().expect("max requires 1 arg")),
                 "avg" => fn_avg(args.pop().expect("avg requires 1 arg")),
-                _ => unimplemented!("Function {} not supported", name),
+                _ => unimplemented!("Not implemented in good-ormning"),
             };
             if let Expr::Call { filter: ref mut f_opt, .. } = e {
                 *f_opt = filter;
             }
             return e;
         },
-        _ => unimplemented!("Expression type not supported: {:?}", e),
+        _ => unimplemented!("Not implemented in good-ormning"),
     }
 }
 

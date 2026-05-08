@@ -260,7 +260,9 @@ impl QueryBody for Select {
                 super::select_body::SelectJunctionOperator::Union => out.s("union"),
                 super::select_body::SelectJunctionOperator::UnionAll => out.s("union all"),
                 super::select_body::SelectJunctionOperator::Intersect => out.s("intersect"),
+                super::select_body::SelectJunctionOperator::IntersectAll => out.s("intersect all"),
                 super::select_body::SelectJunctionOperator::Except => out.s("except"),
+                super::select_body::SelectJunctionOperator::ExceptAll => out.s("except all"),
             };
             let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
             check_general_same(ctx, &path, &out_type, &j_body_type);

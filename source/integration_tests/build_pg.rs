@@ -713,4 +713,14 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("b");
+        bananna.field("hizat", field_str().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_set_ops_all".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }

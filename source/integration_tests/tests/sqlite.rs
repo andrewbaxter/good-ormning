@@ -1684,9 +1684,12 @@ fn test_query_glob() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_glob");
     let mut db = rusqlite::Connection::open_in_memory()?;
     let mut db = dbm::migrate(db, None)?;
+    //# genemichaels-external: sql-formatter-sqlite
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
+    //# genemichaels-external: sql-formatter-sqlite
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'world' )"#, [])?;
     let count: i64 =
+        //# genemichaels-external: sql-formatter-sqlite
         db.0.query_row(r#"select count(*) from "bananna" where "hizat" glob 'hel*'"#, [], |row| row.get(0))?;
     assert_eq!(count, 1);
     return Ok(());
@@ -1697,11 +1700,13 @@ fn test_query_indexed_by() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_indexed_by");
     let mut db = rusqlite::Connection::open_in_memory()?;
     let mut db = dbm::migrate(db, None)?;
+    //# genemichaels-external: sql-formatter-sqlite
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'hello' )"#, [])?;
     let res: String =
         db
             .0
             .query_row(
+                //# genemichaels-external: sql-formatter-sqlite
                 r#"select "hizat" from "bananna" indexed by "bananna_hizat" where "hizat" = 'hello'"#,
                 [],
                 |row| row.get(0),
@@ -2086,11 +2091,13 @@ fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_inline_param_i32_common",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
         &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_one!(
         "sqlite_gen_inline_param_i32_common",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
         &mut db
     )?, 22);
@@ -2104,6 +2111,7 @@ fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
     let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into "bananna" ("hizat") values (?1)"#;
         &mut db,
         p1: string = "hello"
@@ -2121,17 +2129,20 @@ fn test_delete_cte_macro() -> Result<(), loga::Error> {
     let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_cte",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into "b" ("hizat") values ('seeon')"#;
         &mut db
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_delete_cte",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"with "hibbo" ("zathi") as (select "b"."hizat" as "zathi" from "b")
            delete from "b" where exists (select "hibbo"."zathi" as "zathi" from "hibbo" where "hibbo"."zathi" = "b"."hizat")"#;
         &mut db
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_delete_cte",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select "b"."hizat" as "hizat" from "b""#;
         &mut db
     )?, None);
@@ -2145,16 +2156,19 @@ fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     let mut db = dbm::migrate(db, None)?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_correlated_subquery",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into "b" ("hizat") values ('seeon')"#;
         &mut db
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_correlated_subquery",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"insert into "snap" ("hizat") values ('seeon')"#;
         &mut db
     )?;
     good_ormning::sqlite::good_query!(
         "sqlite_gen_query_correlated_subquery",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"delete from "b" where exists (
             select 1 from "snap" where "b"."hizat" = "snap"."hizat"
         )"#;
@@ -2162,6 +2176,7 @@ fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     )?;
     assert_eq!(good_ormning::sqlite::good_query_opt!(
         "sqlite_gen_query_correlated_subquery",
+        //# genemichaels-external: sql-formatter-sqlite
         r#"select "b"."hizat" as "hizat" from "b""#;
         &mut db
     )?, None);
