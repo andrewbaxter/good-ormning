@@ -1884,13 +1884,23 @@ async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     good_ormning::pg::good_query!(
         "pg_gen_inline_param_i32_common",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "bananna" ( "hizat" ) values ( ${i32 = 22} )"#;
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (${i32 = 22})
+           "#;
         &mut db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         "pg_gen_inline_param_i32_common",
         //# genemichaels-external: sql-formatter-pg
-        r#"select "bananna" . "hizat" as "hizat" from "bananna" where "bananna" . "hizat" = ${i32 = 22}"#;
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           where
+             "bananna"."hizat" = ${i32 = 22}
+           "#;
         &mut db
     ).await?, 22);
     Ok(())
@@ -1904,20 +1914,44 @@ async fn test_delete_cte_macro() -> Result<(), loga::Error> {
     good_ormning::pg::good_query!(
         "pg_gen_delete_cte",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "b" ("hizat") values ('seeon')"#;
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('seeon')
+           "#;
         &mut db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_delete_cte",
         //# genemichaels-external: sql-formatter-pg
-        r#"with "hibbo" ("zathi") as (select "b"."hizat" as "zathi" from "b")
-           delete from "b" where exists (select "hibbo"."zathi" as "zathi" from "hibbo" where "hibbo"."zathi" = "b"."hizat")"#;
+        r#"with
+             "hibbo" ("zathi") as (
+               select
+                 "b"."hizat" as "zathi"
+               from
+                 "b"
+             )
+           delete from "b"
+           where
+             exists (
+               select
+                 "hibbo"."zathi" as "zathi"
+               from
+                 "hibbo"
+               where
+                 "hibbo"."zathi" = "b"."hizat"
+             )
+           "#;
         &mut db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_delete_cte",
         //# genemichaels-external: sql-formatter-pg
-        r#"select "b"."hizat" as "hizat" from "b""#;
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         &mut db
     ).await?, None);
     Ok(())
@@ -1931,27 +1965,47 @@ async fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     good_ormning::pg::good_query!(
         "pg_gen_query_correlated_subquery",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "b" ("hizat") values ('seeon')"#;
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('seeon')
+           "#;
         &mut db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_correlated_subquery",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "snap" ("hizat") values ('seeon')"#;
+        r#"insert into
+             "snap" ("hizat")
+           values
+             ('seeon')
+           "#;
         &mut db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_query_correlated_subquery",
         //# genemichaels-external: sql-formatter-pg
-        r#"delete from "b" where exists (
-            select 1 from "snap" where "b"."hizat" = "snap"."hizat"
-        )"#;
+        r#"delete from "b"
+           where
+             exists (
+               select
+                 1
+               from
+                 "snap"
+               where
+                 "b"."hizat" = "snap"."hizat"
+             )
+           "#;
         &mut db
     ).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         "pg_gen_query_correlated_subquery",
         //# genemichaels-external: sql-formatter-pg
-        r#"select "b"."hizat" as "hizat" from "b""#;
+        r#"select
+             "b"."hizat" as "hizat"
+           from
+             "b"
+           "#;
         &mut db
     ).await?, None);
     Ok(())
@@ -1965,19 +2019,31 @@ async fn test_set_ops_all() -> Result<(), loga::Error> {
     good_ormning::pg::good_query!(
         "pg_gen_set_ops_all",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "b" ("hizat") values ('a')"#;
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('a')
+           "#;
         &mut db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_set_ops_all",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "b" ("hizat") values ('a')"#;
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('a')
+           "#;
         &mut db
     ).await?;
     good_ormning::pg::good_query!(
         "pg_gen_set_ops_all",
         //# genemichaels-external: sql-formatter-pg
-        r#"insert into "b" ("hizat") values ('b')"#;
+        r#"insert into
+             "b" ("hizat")
+           values
+             ('b')
+           "#;
         &mut db
     ).await?;
 
@@ -1985,7 +2051,14 @@ async fn test_set_ops_all() -> Result<(), loga::Error> {
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_set_ops_all",
         //# genemichaels-external: sql-formatter-pg
-        r#"select 'a' as "h" intersect all select "b"."hizat" as "h" from "b""#;
+        r#"select
+             'a' as "h"
+           intersect all
+           select
+             "b"."hizat" as "h"
+           from
+             "b"
+           "#;
         &mut db
     ).await?;
     assert_eq!(res.len(), 1);
@@ -1994,10 +2067,16 @@ async fn test_set_ops_all() -> Result<(), loga::Error> {
     let res = good_ormning::pg::good_query_many!(
         "pg_gen_set_ops_all",
         //# genemichaels-external: sql-formatter-pg
-        r#"select "b"."hizat" as "h" from "b" except all select 'a' as "h""#;
+        r#"select
+             "b"."hizat" as "h"
+           from
+             "b"
+           except all
+           select
+             'a' as "h"
+           "#;
         &mut db
     ).await?;
     assert_eq!(res.len(), 2);
-
     Ok(())
 }

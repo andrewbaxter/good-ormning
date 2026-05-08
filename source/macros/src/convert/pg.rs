@@ -313,7 +313,9 @@ fn convert_returning(
                 sql::SelectItem::QualifiedWildcard(
                     sql::SelectItemQualifiedWildcardKind::Expr(_),
                     _,
-                ) => unimplemented!("Not implemented in good-ormning"),
+                ) => unimplemented!(
+                    "Not implemented in good-ormning"
+                ),
             }
         }
     }
@@ -677,12 +679,20 @@ fn convert_expr(
                         return Expr::LitI32(i);
                     } else if let Ok(i) = n.parse::<i64>() {
                         return Expr::LitI64(i);
+                    } else if let Ok(f) = n.parse::<f32>() {
+                        return Expr::LitF32(f);
+                    } else if let Ok(f) = n.parse::<f64>() {
+                        return Expr::LitF64(f);
                     } else {
                         unimplemented!("Not implemented in good-ormning")
                     }
                 },
                 sql::Value::SingleQuotedString(s) => return Expr::LitString(s.clone()),
+                sql::Value::DoubleQuotedString(s) => return Expr::LitString(s.clone()),
                 sql::Value::Boolean(b) => return Expr::LitBool(*b),
+                sql::Value::HexStringLiteral(h) => {
+                    return Expr::LitBytes(hex::decode(h).expect("Invalid hex string literal"));
+                },
                 sql::Value::Placeholder(p) => {
                     let placeholder_name = p.trim_start_matches(|c| c == '$' || c == '?' || c == ':' || c == '@');
                     let param_name = if let Ok(idx) = placeholder_name.parse::<usize>() {
@@ -711,7 +721,7 @@ fn convert_expr(
                     type_: SimpleSimpleType::I32,
                     custom: None,
                 }),
-                _ => unimplemented!("Not implemented in good-ormning"),
+                _ => unimplemented!("Not implemented in good-ormning: Value {:?}", v),
             }
         },
         sql::Expr::BinaryOp { left, op, right } => {
@@ -739,7 +749,22 @@ fn convert_expr(
                 sql::BinaryOperator::BitwiseXor => BinOp::BitwiseXor,
                 sql::BinaryOperator::PGBitwiseShiftLeft => BinOp::BitwiseShiftLeft,
                 sql::BinaryOperator::PGBitwiseShiftRight => BinOp::BitwiseShiftRight,
-                _ => unimplemented!("Not implemented in good-ormning"),
+                sql::BinaryOperator::PGCustomBinaryOperator(os) => match os
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .as_str() {
+                    "~" => BinOp::Regexp,
+                    "~*" => BinOp::Regexp,
+                    "~~" => BinOp::Like,
+                    "~~*" => BinOp::ILike,
+                    // Not really supported by BinOp directly if it's negated
+                    "!~" => BinOp::Regexp,
+                    "!~*" => BinOp::Regexp,
+                    _ => unimplemented!("Not implemented in good-ormning: Operator {:?}", op),
+                },
+                _ => unimplemented!("Not implemented in good-ormning: Operator {:?}", op),
             };
             return Expr::BinOp {
                 left: Box::new(l),
@@ -753,11 +778,59 @@ fn convert_expr(
                 sql::UnaryOperator::Minus => PrefixOp::Minus,
                 sql::UnaryOperator::Not => PrefixOp::Not,
                 sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
-                _ => unimplemented!("Not implemented in good-ormning"),
+                _ => unimplemented!("Not implemented in good-ormning: UnaryOperator {:?}", op),
             };
             return Expr::PrefixOp {
                 op,
                 right: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+            };
+        },
+        sql::Expr::IsTrue(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::Is,
+                right: Box::new(Expr::LitBool(true)),
+            };
+        },
+        sql::Expr::IsNotTrue(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::IsNot,
+                right: Box::new(Expr::LitBool(true)),
+            };
+        },
+        sql::Expr::IsFalse(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::Is,
+                right: Box::new(Expr::LitBool(false)),
+            };
+        },
+        sql::Expr::IsNotFalse(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::IsNot,
+                right: Box::new(Expr::LitBool(false)),
+            };
+        },
+        sql::Expr::IsUnknown(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::Is,
+                right: Box::new(Expr::LitNull(SimpleType {
+                    type_: SimpleSimpleType::I32,
+                    custom: None,
+                })),
+            };
+        },
+        sql::Expr::IsNotUnknown(expr) => {
+            return Expr::BinOp {
+                left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                op: BinOp::IsNot,
+                right: Box::new(Expr::LitNull(SimpleType {
+                    type_: SimpleSimpleType::I32,
+                    custom: None,
+                })),
             };
         },
         sql::Expr::Between { expr, negated, low, high } => {
@@ -862,6 +935,11 @@ fn convert_expr(
                 right: Box::new(convert_expr(input, right, used_params, custom_types, field_lookup)),
             };
         },
+        sql::Expr::Array(sql::Array { elem, .. }) => {
+            return Expr::LitArray(
+                elem.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
+            );
+        },
         sql::Expr::Tuple(exprs) => {
             return Expr::LitArray(
                 exprs.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
@@ -951,7 +1029,7 @@ fn convert_expr(
                         sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Wildcard) => {
                             args.push(Expr::LitI32(1));
                         },
-                        _ => unimplemented!("Not implemented in good-ormning"),
+                        _ => unimplemented!("Not implemented in good-ormning: FunctionArg {:?}", arg),
                     }
                 }
             }
@@ -970,7 +1048,7 @@ fn convert_expr(
                     "row_number" => fn_row_number(),
                     "rank" => fn_rank(),
                     "dense_rank" => fn_dense_rank(),
-                    _ => unimplemented!("Not implemented in good-ormning"),
+                    _ => unimplemented!("Not implemented in good-ormning: Window Function {:?}", name),
                 };
                 if let Expr::Call { filter: ref mut f_opt, .. } = e {
                     *f_opt = filter;
@@ -1047,7 +1125,7 @@ fn convert_expr(
                             frame,
                         };
                     },
-                    sql::WindowType::NamedWindow(_) => unimplemented!("Not implemented in good-ormning"),
+                    sql::WindowType::NamedWindow(_) => unimplemented!("Not implemented in good-ormning: NamedWindow"),
                 }
             }
             let mut e = match name.as_str() {
@@ -1056,14 +1134,14 @@ fn convert_expr(
                 "min" => fn_min(args.pop().expect("min requires 1 arg")),
                 "max" => fn_max(args.pop().expect("max requires 1 arg")),
                 "avg" => fn_avg(args.pop().expect("avg requires 1 arg")),
-                _ => unimplemented!("Not implemented in good-ormning"),
+                _ => unimplemented!("Not implemented in good-ormning: Function {:?}", name),
             };
             if let Expr::Call { filter: ref mut f_opt, .. } = e {
                 *f_opt = filter;
             }
             return e;
         },
-        _ => unimplemented!("Not implemented in good-ormning"),
+        _ => unimplemented!("Not implemented in good-ormning: Expr {:?}", e),
     }
 }
 
