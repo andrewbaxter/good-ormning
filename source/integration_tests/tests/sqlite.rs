@@ -2115,6 +2115,30 @@ fn test_generated_query_functions_compile() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_delete_cte_macro() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_delete_cte");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_delete_cte",
+        r#"insert into "b" ("hizat") values ('seeon')"#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        "sqlite_gen_delete_cte",
+        r#"with "hibbo" ("zathi") as (select "b"."hizat" as "zathi" from "b")
+           delete from "b" where exists (select "hibbo"."zathi" as "zathi" from "hibbo" where "hibbo"."zathi" = "b"."hizat")"#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_opt!(
+        "sqlite_gen_delete_cte",
+        r#"select "b"."hizat" as "hizat" from "b""#;
+        &mut db
+    )?, None);
+    Ok(())
+}
+
+#[test]
 fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_query_correlated_subquery");
     let mut db = rusqlite::Connection::open_in_memory()?;

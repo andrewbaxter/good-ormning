@@ -1895,6 +1895,30 @@ async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_delete_cte_macro() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_delete_cte");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, None).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_delete_cte",
+        r#"insert into "b" ("hizat") values ('seeon')"#;
+        &mut db
+    ).await?;
+    good_ormning::pg::good_query!(
+        "pg_gen_delete_cte",
+        r#"with "hibbo" ("zathi") as (select "b"."hizat" as "zathi" from "b")
+           delete from "b" where exists (select "hibbo"."zathi" as "zathi" from "hibbo" where "hibbo"."zathi" = "b"."hizat")"#;
+        &mut db
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_opt!(
+        "pg_gen_delete_cte",
+        r#"select "b"."hizat" as "hizat" from "b""#;
+        &mut db
+    ).await?, None);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_correlated_subquery");
     let (mut db, _cont) = db().await?;

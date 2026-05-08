@@ -147,9 +147,17 @@ pub fn convert_query(
 ) -> Query {
     let mut used_params = HashSet::new();
     let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => Box::new(
-            convert_select_query(input, q, &mut used_params, custom_types, field_lookup),
-        ),
+        sql::Statement::Query(q) => {
+            if let sql::SetExpr::Delete(sql::Statement::Delete(d)) = &*q.body {
+                let mut del = convert_delete(input, d, &mut used_params, custom_types, field_lookup);
+                if let Some(with) = &q.with {
+                    del.with = Some(convert_with(input, with, &mut used_params, custom_types, field_lookup));
+                }
+                Box::new(del)
+            } else {
+                Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup))
+            }
+        },
         sql::Statement::Insert(insert) => Box::new(
             convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
         ),
@@ -195,27 +203,7 @@ fn convert_select_query(
 ) -> Select {
     let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
     if let Some(with) = &q.with {
-        let mut ctes = vec![];
-        for cte in &with.cte_tables {
-            let name = cte.alias.name.value.clone();
-            let query = convert_select_query(input, &cte.query, used_params, custom_types, field_lookup);
-            let mut builder = CteBuilder::new(name, Box::new(query.clone()));
-            if !cte.alias.columns.is_empty() {
-                for col in &cte.alias.columns {
-                    builder = builder.column(col.value.clone(), good_ormning_core::pg::types::type_i32().build());
-                }
-            } else {
-                for r in &query.returning {
-                    let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
-                    builder = builder.column(r_name, good_ormning_core::pg::types::type_i32().build());
-                }
-            }
-            ctes.push(good_ormning_core::pg::query::utils::Cte::from(builder));
-        }
-        sel.with = Some(With {
-            recursive: with.recursive,
-            ctes,
-        });
+        sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
     }
     return sel;
 }
@@ -248,6 +236,7 @@ fn convert_select_query_expr(
                         good_ormning_core::pg::query::select_body::SelectJunctionOperator::Intersect
                     }
                 },
+                sql::SetOperator::Minus => unimplemented!(),
                 sql::SetOperator::Except => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
                         unimplemented!("EXCEPT ALL not supported")
@@ -267,7 +256,10 @@ fn convert_select_query_expr(
 }
 
 fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    return TableRef(name.0.last().expect("ObjectName should not be empty").value.clone());
+    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
+        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+        _ => panic!("Unsupported"),
+    });
 }
 
 fn convert_returning(
@@ -300,8 +292,11 @@ fn convert_returning(
                         });
                     }
                 },
-                sql::SelectItem::QualifiedWildcard(name, _) => {
-                    let table_ref = TableRef(name.0.last().unwrap().value.clone());
+                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
+                    let table_ref = TableRef(match name.0.last().unwrap() {
+                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                        _ => panic!("Unsupported"),
+                    });
                     let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
                     for (field_ref, field_info) in &table_info.fields {
                         out.push(Returning {
@@ -310,6 +305,12 @@ fn convert_returning(
                         });
                     }
                 },
+                sql::SelectItem::QualifiedWildcard(
+                    sql::SelectItemQualifiedWildcardKind::Expr(_),
+                    _,
+                ) => unimplemented!(
+                    "Wildcard on expression"
+                ),
             }
         }
     }
@@ -323,7 +324,10 @@ fn convert_insert(
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
     field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Insert {
-    let table = get_table_ref(&insert.table_name);
+    let table = get_table_ref(match &insert.table {
+        sqlparser::ast::TableObject::TableName(n) => n,
+        _ => panic!("Unsupported table object"),
+    });
     let mut values = vec![];
     if let Some(q) = &insert.source {
         if let sql::SetExpr::Values(v) = &*q.body {
@@ -348,7 +352,10 @@ fn convert_insert(
                     let mut updates = vec![];
                     for a in &du.assignments {
                         let target_name = match &a.target {
-                            sql::AssignmentTarget::ColumnName(name) => name.0.last().unwrap().value.clone(),
+                            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                                _ => panic!("Unsupported"),
+                            },
                             _ => unimplemented!("Assignment target in ON CONFLICT"),
                         };
                         let field = FieldRef {
@@ -413,7 +420,10 @@ fn convert_update(
     let mut sets = vec![];
     for a in assignments {
         let target_name = match &a.target {
-            sql::AssignmentTarget::ColumnName(name) => name.0.last().unwrap().value.clone(),
+            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                _ => panic!("Unsupported"),
+            },
             _ => unimplemented!("Assignment target"),
         };
         let field = FieldRef {
@@ -512,6 +522,9 @@ fn convert_select(
             sql::TableFactor::Pivot { .. } => unimplemented!("Pivot table factor"),
             sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot table factor"),
             sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize table factor"),
+            sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
+                "Unsupported table factor"
+            ),
         }
     };
     let mut join = vec![];
@@ -558,16 +571,21 @@ fn convert_select(
                 sql::TableFactor::Pivot { .. } => unimplemented!("Pivot join factor"),
                 sql::TableFactor::Unpivot { .. } => unimplemented!("Unpivot join factor"),
                 sql::TableFactor::MatchRecognize { .. } => unimplemented!("MatchRecognize join factor"),
+                sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
+                    "Unsupported table factor"
+                ),
             };
             let type_ = match j.join_operator {
-                sql::JoinOperator::LeftOuter(_) => {
+                sql::JoinOperator::Left(_) | sql::JoinOperator::LeftOuter(_) => {
                     good_ormning_core::pg::query::select::JoinType::Left
                 },
                 sql::JoinOperator::Inner(_) => good_ormning_core::pg::query::select::JoinType::Inner,
                 _ => unimplemented!("Join type: {:?}", j.join_operator),
             };
             let on = match &j.join_operator {
-                sql::JoinOperator::LeftOuter(constraint) | sql::JoinOperator::Inner(constraint) => match constraint {
+                sql::JoinOperator::Left(constraint) |
+                sql::JoinOperator::LeftOuter(constraint) |
+                sql::JoinOperator::Inner(constraint) => match constraint {
                     sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types, field_lookup),
                     _ => unimplemented!("Join constraint"),
                 },
@@ -582,9 +600,13 @@ fn convert_select(
     }
     let mut order = vec![];
     if let Some(order_by) = &q.order_by {
-        for o in &order_by.exprs {
+        let exprs = match &order_by.kind {
+            sqlparser::ast::OrderByKind::Expressions(exprs) => exprs,
+            _ => panic!("Unsupported order by kind"),
+        };
+        for o in exprs {
             let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-            let dir = match o.asc {
+            let dir = match o.options.asc {
                 Some(true) | None => Order::Asc,
                 Some(false) => Order::Desc,
             };
@@ -616,7 +638,10 @@ fn convert_select(
         },
         having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         order,
-        limit: q.limit.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        limit: q.limit_clause.as_ref().and_then(|lc| match lc {
+            sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
+            _ => None,
+        }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         distinct: s.distinct.is_some(),
         junctions: vec![],
     };
@@ -645,7 +670,7 @@ fn convert_expr(
             });
         },
         sql::Expr::Value(v) => {
-            match v {
+            match &v.value {
                 sql::Value::Number(n, _) => {
                     if let Ok(i) = n.parse::<i32>() {
                         return Expr::LitI32(i);
@@ -742,7 +767,9 @@ fn convert_expr(
                 high: Box::new(convert_expr(input, high, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::Case { operand, conditions, results, else_result } => {
+        sql::Expr::Case { operand, conditions, else_result } => {
+            let results = conditions.iter().map(|c| c.result.clone()).collect::<Vec<_>>();
+            let conditions = conditions.iter().map(|c| c.condition.clone()).collect::<Vec<_>>();
             return Expr::Case {
                 operand: operand
                     .as_ref()
@@ -848,12 +875,26 @@ fn convert_expr(
         sql::Expr::Collate { expr, collation } => {
             return Expr::Collate(
                 Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
-                collation.0.iter().map(|i| i.value.clone()).collect::<Vec<_>>().join("."),
+                collation.0.iter().map(|i| match i {
+                    sqlparser::ast::ObjectNamePart::Identifier(id) => id.value.clone(),
+                    _ => panic!("Unsupported"),
+                }).collect::<Vec<_>>().join("."),
             );
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
-            let r = convert_select_query(input, subquery, used_params, custom_types, field_lookup);
+            let dummy_q = sqlparser::ast::Query {
+                with: None,
+                body: subquery.clone(),
+                order_by: None,
+                limit_clause: None,
+                fetch: None,
+                locks: vec![],
+                for_clause: None,
+                settings: None,
+                format_clause: None,
+            };
+            let r = convert_select_query(input, &dummy_q, used_params, custom_types, field_lookup);
             return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -942,7 +983,7 @@ fn convert_expr(
                         let mut order_by = vec![];
                         for o in &spec.order_by {
                             let expr = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-                            let dir = match o.asc {
+                            let dir = match o.options.asc {
                                 Some(true) | None => Order::Asc,
                                 Some(false) => Order::Desc,
                             };
@@ -1055,4 +1096,36 @@ fn convert_window_frame_bound(
             },
         },
     }
+}
+
+fn convert_with(
+    input: &GoodQueryInput,
+    with: &sql::With,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> good_ormning_core::pg::query::utils::With {
+    let mut ctes = vec![];
+    for cte in &with.cte_tables {
+        let name = match &cte.alias.name {
+            sqlparser::ast::Ident { value, .. } => value.clone(),
+        };
+        let query = convert_select_query(input, &cte.query, used_params, custom_types, field_lookup);
+        let mut builder = CteBuilder::new(name, Box::new(query.clone()));
+        if !cte.alias.columns.is_empty() {
+            for col in &cte.alias.columns {
+                builder = builder.column(col.name.value.clone(), good_ormning_core::pg::types::type_i32().build());
+            }
+        } else {
+            for r in &query.returning {
+                let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
+                builder = builder.column(r_name, good_ormning_core::pg::types::type_i32().build());
+            }
+        }
+        ctes.push(good_ormning_core::pg::query::utils::Cte::from(builder));
+    }
+    return good_ormning_core::pg::query::utils::With {
+        recursive: with.recursive,
+        ctes,
+    };
 }
