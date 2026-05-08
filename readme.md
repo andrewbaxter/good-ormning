@@ -50,11 +50,11 @@ fn main() {
     good_module!(dbm);
 
     let mut db = rusqlite::Connection::open_in_memory().unwrap();
-    dbm::migrate(&mut db, None).unwrap();
+    let mut db = dbm::migrate(&mut db, None).unwrap();
 
-    good_query!("insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"; dbm::Db(&mut db)).unwrap();
+    good_query!(dbm, "insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"; &mut db).unwrap();
+    let users = good_ormning::sqlite::good_query_many!(dbm, "select name, points from users"; &mut db).unwrap();
 
-    let users = good_ormning::sqlite::good_query_many!("select name, points from users"; dbm::Db(&mut db)).unwrap();
     for user in users {
         println!("User: {}, Points: {}", user.name, user.points);
     }
@@ -115,7 +115,7 @@ You can get rid of old schema versions once you know there are no existing datab
 
 These macros are used to execute type-checked queries against the database.
 
-They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL: string, CONN, (PARAM: TYPE = VALUE,)...)`
+They have the format `good_query_SUFFIX!(DBMOD: ident, [DBNAME: string,] [VERSION: usize,] SQL: string; CONN, (PARAM: TYPE = VALUE,)...)`
 
 - `SUFFIX` - This determines the return type.
   - No suffix, no return
@@ -154,7 +154,7 @@ They have the format `good_query_SUFFIX!([DBNAME: string,] [VERSION: usize,] SQL
 Example:
 
 ```rust,ignore
-good_query!(r#"insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"#; dbm::Db(&mut db)).unwrap();
+good_query!(dbm, r#"insert into users (name, points) values (${string = "rust human"}, ${i64 = 0})"#; &mut db).unwrap();
 ```
 
 ### Rust features

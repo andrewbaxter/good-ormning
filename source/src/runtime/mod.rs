@@ -4,6 +4,7 @@ use std::fmt::Display;
 pub mod pg;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+pub mod utils;
 
 #[derive(Debug)]
 pub struct GoodError(pub String);

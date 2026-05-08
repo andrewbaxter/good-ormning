@@ -67,6 +67,7 @@ struct ParamType {
 }
 
 struct GoodQueryInput {
+    db_mod: Ident,
     version: Option<usize>,
     db_name: String,
     sql: String,
@@ -77,6 +78,8 @@ struct GoodQueryInput {
 
 impl Parse for GoodQueryInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let db_mod: Ident = input.parse()?;
+        input.parse::<Token![,]>()?;
         let (db_name, version, sql) = {
             let first: LitStr = input.parse()?;
             if input.peek(Token![;]) {
@@ -179,6 +182,7 @@ impl Parse for GoodQueryInput {
         }
         final_sql.push_str(&sql[last_end..]);
         Ok(GoodQueryInput {
+            db_mod: db_mod,
             version: version,
             db_name: db_name,
             sql: final_sql,
@@ -307,12 +311,13 @@ fn parse_and_generate_pg(
     let query_name = format_ident!("good_query_{}", query_hash);
     query.name = query_name.to_string();
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
+    let db_mod = &input.db_mod;
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
+        quote!(#db_mod::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
+        quote!(#db_mod::#name < impl:: good_ormning:: runtime:: pg:: PgConnection >)
     };
     let generated =
         good_ormning_core::pg::query::generate::generate_query_functions(
@@ -324,8 +329,17 @@ fn parse_and_generate_pg(
         );
     let conn = &input.conn;
     let args = &input.params;
+    let db_name_lit = LitStr::new(&db_name, input.db_mod.span());
+    let db_mod_str = input.db_mod.to_string();
+    let _db_mod_lit = LitStr::new(&db_mod_str, input.db_mod.span());
     quote!{
         {
+            const _:() = {
+                if !:: good_ormning:: runtime:: utils:: str_eq(#db_mod:: DB_NAME, #db_name_lit) {
+                    #[allow(unconditional_panic)]
+                    let _ = ["Database name mismatch"][1];
+                }
+            };
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::pg::PgConnection;
@@ -403,12 +417,13 @@ fn parse_and_generate_sqlite(
     let query_name = format_ident!("good_query_{}", query_hash);
     query.name = query_name.to_string();
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
+    let db_mod = &input.db_mod;
     let db_type = if let Some(v) = input.version {
         let name = format_ident!("Db{}{}", pascal_db_name, v);
-        quote!(dbm::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(#db_mod::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     } else {
         let name = format_ident!("Db{}{}", pascal_db_name, version_i);
-        quote!(dbm::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
+        quote!(#db_mod::#name < impl:: good_ormning:: runtime:: sqlite:: SqliteConnection >)
     };
     let generated =
         good_ormning_core::sqlite::query::generate::generate_query_functions(
@@ -420,8 +435,17 @@ fn parse_and_generate_sqlite(
         );
     let conn = &input.conn;
     let args = &input.params;
+    let db_name_lit = LitStr::new(&db_name, input.db_mod.span());
+    let db_mod_str = input.db_mod.to_string();
+    let _db_mod_lit = LitStr::new(&db_mod_str, input.db_mod.span());
     quote!{
         {
+            const _:() = {
+                if !:: good_ormning:: runtime:: utils:: str_eq(#db_mod:: DB_NAME, #db_name_lit) {
+                    #[allow(unconditional_panic)]
+                    let _ = ["Database name mismatch"][1];
+                }
+            };
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::sqlite::SqliteConnection;

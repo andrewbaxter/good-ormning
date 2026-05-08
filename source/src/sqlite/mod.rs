@@ -213,6 +213,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             quote!(#latest_newtype_name < impl good_ormning:: runtime:: sqlite:: SqliteConnection, >),
         );
     let tokens = quote!{
+        pub const DB_NAME: & str = #db_name;
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
         #(#db_types) * pub enum #enum_name < C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
