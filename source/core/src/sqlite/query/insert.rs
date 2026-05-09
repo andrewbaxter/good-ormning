@@ -196,7 +196,15 @@ impl QueryBody for Insert {
                         out.s(")");
                     }
                     out.s("do update");
-                    build_set(ctx, path, &scope, &mut out, set);
+                    let mut set_scope = scope.clone();
+                    for (field_ref, info) in &table_info.fields {
+                        set_scope.insert(Binding {
+                            table_id: "excluded".into(),
+                            id: field_ref.field_id.clone(),
+                        }, info.type_.clone());
+                    }
+                    ctx.table_aliases.insert("excluded".to_string(), self.table.clone());
+                    build_set(ctx, path, &set_scope, &mut out, set);
                 },
             }
         }

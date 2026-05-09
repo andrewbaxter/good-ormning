@@ -2515,3 +2515,24 @@ fn test_insert_select() -> Result<(), loga::Error> {
     )?;
     Ok(())
 }
+
+#[test]
+fn test_insert_on_conflict_update_excluded() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_insert_select");
+    let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;
+    let mut db = dbm::migrate(db, None).map_err(|e| loga::err(e))?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert into "triple_snapshot" ("subject", "predicate", "object", "commit_")
+           values (?1, ?2, ?3, ?4)
+           on conflict ("subject", "predicate", "object") do update set "commit_" = excluded."commit_"
+        "#;
+        &mut db,
+        p1: string = "a",
+        p2: string = "b",
+        p3: string = "c",
+        p4: i64 = 1
+    )?;
+    Ok(())
+}

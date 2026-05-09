@@ -631,10 +631,14 @@ pub fn build() {
         triple2.field("exists", field_bool().build());
 
         let triple_snapshot = v.table("triple_snapshot");
-        triple_snapshot.field("subject", field_str().build());
-        triple_snapshot.field("predicate", field_str().build());
-        triple_snapshot.field("object", field_str().build());
+        let triple_snapshot_subject = triple_snapshot.field("subject", field_str().build());
+        let triple_snapshot_predicate = triple_snapshot.field("predicate", field_str().build());
+        let triple_snapshot_object = triple_snapshot.field("object", field_str().build());
         triple_snapshot.field("commit_", field_i64().build());
+        triple_snapshot.unique_index(
+            "triple_snapshot_spo",
+            &[&triple_snapshot_subject, &triple_snapshot_predicate, &triple_snapshot_object],
+        );
 
         generate(GenerateArgs {
             db_name: Some("sqlite_gen_insert_select".to_string()),
