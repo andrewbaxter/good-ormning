@@ -1,3 +1,5 @@
+use crate::runtime::GoodError;
+
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
@@ -11,71 +13,97 @@ use jiff::{
 };
 
 pub trait GoodErrorQuery<T> {
-    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error>;
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError>;
 }
 
 impl<T> GoodErrorQuery<T> for Result<T, rusqlite::Error> {
-    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error> {
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
         match self {
             Ok(v) => Ok(v),
-            Err(e) => Err(loga::err(e).context(format!("Error executing query: {}", query))),
+            Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
+        }
+    }
+}
+
+impl<T> GoodErrorQuery<T> for Result<T, GoodError> {
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
         }
     }
 }
 
 pub trait SqliteConnection {
-    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> rusqlite::Result<usize>;
+    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> Result<usize, GoodError>;
     fn query<
         T,
         F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
-    >(&mut self, query: &str, params: impl rusqlite::Params, f: F) -> rusqlite::Result<Vec<T>>;
-    fn load_array_module(&mut self) -> rusqlite::Result<()>;
+    >(&mut self, query: &str, params: impl rusqlite::Params, f: F) -> Result<Vec<T>, GoodError>;
+    fn load_array_module(&mut self) -> Result<(), GoodError>;
 }
 
 impl SqliteConnection for rusqlite::Connection {
-    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> rusqlite::Result<usize> {
-        rusqlite::Connection::execute(self, query, params)
+    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> Result<usize, GoodError> {
+        rusqlite::Connection::execute(self, query, params).map_err(|e| GoodError(e.to_string()))
     }
 
     fn query<
         T,
         F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
-    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> rusqlite::Result<Vec<T>> {
-        let mut stmt = self.prepare(query)?;
-        let rows = stmt.query_map(params, |row| f(row))?;
+    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> Result<Vec<T>, GoodError> {
+        let mut stmt = self.prepare(query).map_err(|e| GoodError(e.to_string()))?;
+        let rows = stmt.query_map(params, |row| f(row)).map_err(|e| GoodError(e.to_string()))?;
         let mut res = vec![];
         for row in rows {
-            res.push(row?);
+            res.push(row.map_err(|e| GoodError(e.to_string()))?);
         }
         Ok(res)
     }
 
-    fn load_array_module(&mut self) -> rusqlite::Result<()> {
-        rusqlite::vtab::array::load_module(self)
+    fn load_array_module(&mut self) -> Result<(), GoodError> {
+        rusqlite::vtab::array::load_module(self).map_err(|e| GoodError(e.to_string()))
     }
 }
 
 impl SqliteConnection for rusqlite::Transaction<'_> {
-    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> rusqlite::Result<usize> {
-        rusqlite::Connection::execute(self, query, params)
+    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> Result<usize, GoodError> {
+        rusqlite::Connection::execute(self, query, params).map_err(|e| GoodError(e.to_string()))
     }
 
     fn query<
         T,
         F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
-    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> rusqlite::Result<Vec<T>> {
-        let mut stmt = self.prepare(query)?;
-        let rows = stmt.query_map(params, |row| f(row))?;
+    >(&mut self, query: &str, params: impl rusqlite::Params, mut f: F) -> Result<Vec<T>, GoodError> {
+        let mut stmt = self.prepare(query).map_err(|e| GoodError(e.to_string()))?;
+        let rows = stmt.query_map(params, |row| f(row)).map_err(|e| GoodError(e.to_string()))?;
         let mut res = vec![];
         for row in rows {
-            res.push(row?);
+            res.push(row.map_err(|e| GoodError(e.to_string()))?);
         }
         Ok(res)
     }
 
-    fn load_array_module(&mut self) -> rusqlite::Result<()> {
+    fn load_array_module(&mut self) -> Result<(), GoodError> {
         // Assume loaded on connection
         Ok(())
+    }
+}
+
+impl<T: SqliteConnection + ?Sized> SqliteConnection for &mut T {
+    fn execute(&mut self, query: &str, params: impl rusqlite::Params) -> Result<usize, GoodError> {
+        (**self).execute(query, params)
+    }
+
+    fn query<
+        Res,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<Res>,
+    >(&mut self, query: &str, params: impl rusqlite::Params, f: F) -> Result<Vec<Res>, GoodError> {
+        (**self).query(query, params, f)
+    }
+
+    fn load_array_module(&mut self) -> Result<(), GoodError> {
+        (**self).load_array_module()
     }
 }
 

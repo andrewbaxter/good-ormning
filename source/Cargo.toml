@@ -26,6 +26,7 @@ chrono = [
 jiff = ["dep:jiff", "good-ormning-core/jiff", "good-ormning-macros/jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
+deadpool = ["dep:deadpool-postgres", "dep:deadpool-sqlite"]
 import = ["dep:aargvark", "dep:tokio", "pg", "sqlite"]
 
 [dependencies]
@@ -49,6 +50,8 @@ rusqlite = { version = "0.37", optional = true, features = [
     "bundled",
 ] }
 tokio-postgres = { version = "0.7", optional = true }
+deadpool-postgres = { version = "0.12", optional = true }
+deadpool-sqlite = { version = "0.12", optional = true }
 async-trait = "0.1"
 aargvark = { version = "0.9", optional = true }
 tokio = { version = ">=0", features = [

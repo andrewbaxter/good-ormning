@@ -1,6 +1,7 @@
 use {
     async_trait::async_trait,
     std::borrow::Cow,
+    crate::runtime::GoodError,
 };
 #[cfg(feature = "chrono")]
 use chrono::{
@@ -15,14 +16,23 @@ use jiff::{
 };
 
 pub trait GoodErrorQuery<T> {
-    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error>;
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError>;
 }
 
 impl<T> GoodErrorQuery<T> for Result<T, tokio_postgres::Error> {
-    fn to_good_error_query(self, query: &str) -> Result<T, loga::Error> {
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
         match self {
             Ok(v) => Ok(v),
-            Err(e) => Err(loga::err(e).context(format!("Error executing query: {}", query))),
+            Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
+        }
+    }
+}
+
+impl<T> GoodErrorQuery<T> for Result<T, GoodError> {
+    fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
         }
     }
 }
@@ -33,12 +43,12 @@ pub trait PgConnection: Send {
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<u64, tokio_postgres::Error>;
+    ) -> Result<u64, GoodError>;
     async fn query(
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error>;
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError>;
 }
 
 #[async_trait]
@@ -47,16 +57,16 @@ impl PgConnection for tokio_postgres::Client {
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<u64, tokio_postgres::Error> {
-        tokio_postgres::Client::execute(self, query, params).await
+    ) -> Result<u64, GoodError> {
+        tokio_postgres::Client::execute(self, query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 
     async fn query(
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
-        tokio_postgres::Client::query(self, query, params).await
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
+        tokio_postgres::Client::query(self, query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 }
 
@@ -66,16 +76,56 @@ impl PgConnection for tokio_postgres::Transaction<'_> {
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<u64, tokio_postgres::Error> {
-        tokio_postgres::Transaction::execute(self, query, params).await
+    ) -> Result<u64, GoodError> {
+        tokio_postgres::Transaction::execute(self, query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 
     async fn query(
         &mut self,
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
-        tokio_postgres::Transaction::query(self, query, params).await
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
+        tokio_postgres::Transaction::query(self, query, params).await.map_err(|e| GoodError(e.to_string()))
+    }
+}
+
+#[cfg(feature = "deadpool")]
+#[async_trait]
+impl PgConnection for deadpool_postgres::Object {
+    async fn execute(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, GoodError> {
+        tokio_postgres::GenericClient::execute(self, query, params).await.map_err(|e| GoodError(e.to_string()))
+    }
+
+    async fn query(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
+        tokio_postgres::GenericClient::query(self, query, params).await.map_err(|e| GoodError(e.to_string()))
+    }
+}
+
+#[cfg(feature = "deadpool")]
+#[async_trait]
+impl PgConnection for deadpool_postgres::Pool {
+    async fn execute(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, GoodError> {
+        self.get().await.map_err(|e| GoodError(e.to_string()))?.execute(query, params).await.map_err(|e| GoodError(e.to_string()))
+    }
+
+    async fn query(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
+        self.get().await.map_err(|e| GoodError(e.to_string()))?.query(query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 }
 
