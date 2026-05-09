@@ -384,6 +384,7 @@ pub enum Expr {
         conditions: Vec<(Expr, Expr)>,
         else_: Option<Box<Expr>>,
     },
+    Paren(Box<Expr>),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -1185,6 +1186,12 @@ impl Expr {
                 }
                 out.s("end");
                 (res_type.expect("Case must have at least one branch"), out)
+            },
+            Expr::Paren(e) => {
+                let mut out = Tokens::new();
+                let (t, tokens) = e.build(ctx, &path.push_back("Paren".into()), scope);
+                out.s("(").s(&tokens.to_string()).s(")");
+                return (t, out);
             },
         }
     }

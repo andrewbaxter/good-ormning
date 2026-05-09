@@ -2517,6 +2517,44 @@ fn test_insert_select() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_nested_paren() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_nested_paren");
+    let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;
+    let mut db = dbm::migrate(db, None).map_err(|e| loga::err(e))?;
+    // Insert: (val=1, a=false, b=true), (val=2, a=true, b=false), (val=3, a=false, b=false)
+    // Query: WHERE val > 1 AND (a OR b)
+    //   Correct parens: only val=2 matches (2>1 AND (true OR false))
+    //   Without parens: (val > 1 AND a) OR b => val=1 also matches via b=true
+    for (val, a, b) in [(1i32, false, true), (2i32, true, false), (3i32, false, false)] {
+        good_ormning::sqlite::good_query!(
+            dbm,
+            "sqlite_gen_nested_paren",
+            r#"insert into "t" ("val", "a", "b") values (?1, ?2, ?3)"#;
+            &mut db,
+            p1: i32 = val,
+            p2: bool = a,
+            p3: bool = b
+        )?;
+    }
+    let rows = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_nested_paren",
+        r#"select
+             "t"."val" as "val"
+           from
+             "t"
+           where
+             "t"."val" > ?1
+             and ("t"."a" or "t"."b")
+           "#;
+        &mut db,
+        p1: i32 = 1
+    )?;
+    assert_eq!(rows, vec![2i32]);
+    Ok(())
+}
+
+#[test]
 fn test_insert_on_conflict_update_excluded() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_insert_select");
     let mut db = rusqlite::Connection::open_in_memory().map_err(|e| loga::err(e))?;

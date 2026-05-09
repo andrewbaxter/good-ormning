@@ -860,6 +860,20 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Nested parens preserve operator precedence
+    {
+        let v = SqliteVersion::new();
+        let t = v.table("t");
+        t.field("val", field_i32().build());
+        t.field("a", field_bool().build());
+        t.field("b", field_bool().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_nested_paren".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Default DB name
     {
         let v0 = SqliteVersion::new();

@@ -953,7 +953,9 @@ fn convert_expr(
                 exprs.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
             );
         },
-        sql::Expr::Nested(expr) => return convert_expr(input, expr, used_params, custom_types, field_lookup),
+        sql::Expr::Nested(expr) => {
+            return Expr::Paren(Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)));
+        },
         sql::Expr::Cast { expr, data_type, .. } => {
             let e = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let t = sql_type_to_pg_type(data_type, custom_types);
