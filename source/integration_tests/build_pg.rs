@@ -723,4 +723,18 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+
+    // # Default DB name
+    {
+        let v0 = PgVersion::new();
+        v0.table("default_table").field("id", field_i32().build());
+        let v1 = PgVersion::new();
+        v1.table("default_table").field("id", field_i32().build());
+        v1.table("default_table_v1").field("id", field_i32().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_default".to_string()),
+            versions: vec![(0usize, v0.build()), (1usize, v1.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }

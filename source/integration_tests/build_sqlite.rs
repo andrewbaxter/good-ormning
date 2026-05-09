@@ -817,4 +817,18 @@ pub fn build() {
             queries: vec![query],
         }).unwrap();
     }
+
+    // # Default DB name
+    {
+        let v0 = SqliteVersion::new();
+        v0.table("default_table").field("id", field_i32().build());
+        let v1 = SqliteVersion::new();
+        v1.table("default_table").field("id", field_i32().build());
+        v1.table("default_table_v1").field("id", field_i32().build());
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v0.build()), (1usize, v1.build())],
+            ..Default::default()
+        }).unwrap();
+    }
 }

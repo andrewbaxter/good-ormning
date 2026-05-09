@@ -1438,6 +1438,52 @@ fn test_migrate_pre_migration() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_good_query_combinations() -> Result<(), loga::Error> {
+    good_module!(dbm);
+    good_module!(dbm_custom, "sqlite_gen_base_insert");
+    let mut db_raw = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db_raw, None)?;
+
+    // 1. No db/version
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "insert into default_table (id) values (1)";
+        &mut db
+    )?;
+
+    // 2. Non-default db
+    let mut db_custom_raw = rusqlite::Connection::open_in_memory()?;
+    let mut db_custom = dbm_custom::migrate(db_custom_raw, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm_custom,
+        "sqlite_gen_base_insert",
+        "insert into bannanana (hizat) values ('test')";
+        &mut db_custom
+    )?;
+
+    // 3. Non-default version (of default db)
+    let mut db_v0 = dbm::Db0(db.0);
+    good_ormning::sqlite::good_query!(
+        dbm,
+        0,
+        "insert into default_table (id) values (2)";
+        &mut db_v0
+    )?;
+    db.0 = db_v0.0;
+
+    // 4. Non-default db and version
+    good_ormning::sqlite::good_query!(
+        dbm_custom,
+        "sqlite_gen_base_insert",
+        1,
+        "insert into bannanana (hizat) values ('test2')";
+        &mut db_custom
+    )?;
+
+    Ok(())
+}
+
+#[test]
 fn test_select_cte() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_cte");
     let mut db = rusqlite::Connection::open_in_memory()?;

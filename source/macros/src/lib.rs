@@ -81,28 +81,38 @@ impl Parse for GoodQueryInput {
         let db_mod: Ident = input.parse()?;
         input.parse::<Token![,]>()?;
         let (db_name, version, sql) = {
-            let first: LitStr = input.parse()?;
-            if input.peek(Token![;]) {
-                input.parse::<Token![;]>()?;
-                ("".to_string(), None, first.value())
-            } else {
+            if input.peek(LitInt) {
+                let version_lit: LitInt = input.parse()?;
+                let version = version_lit.base10_parse::<usize>()?;
                 input.parse::<Token![,]>()?;
-                let lookahead = input.lookahead1();
-                if lookahead.peek(LitInt) {
-                    let version_lit: LitInt = input.parse()?;
-                    let version = version_lit.base10_parse::<usize>()?;
-                    input.parse::<Token![,]>()?;
-                    let sql_lit: LitStr = input.parse()?;
-                    let sql = sql_lit.value();
+                let sql_lit: LitStr = input.parse()?;
+                let sql = sql_lit.value();
+                input.parse::<Token![;]>()?;
+                ("".to_string(), Some(version), sql)
+            } else {
+                let first: LitStr = input.parse()?;
+                if input.peek(Token![;]) {
                     input.parse::<Token![;]>()?;
-                    (first.value(), Some(version), sql)
-                } else if lookahead.peek(LitStr) {
-                    let sql_lit: LitStr = input.parse()?;
-                    let sql = sql_lit.value();
-                    input.parse::<Token![;]>()?;
-                    (first.value(), None, sql)
+                    ("".to_string(), None, first.value())
                 } else {
-                    return Err(lookahead.error());
+                    input.parse::<Token![,]>()?;
+                    let lookahead = input.lookahead1();
+                    if lookahead.peek(LitInt) {
+                        let version_lit: LitInt = input.parse()?;
+                        let version = version_lit.base10_parse::<usize>()?;
+                        input.parse::<Token![,]>()?;
+                        let sql_lit: LitStr = input.parse()?;
+                        let sql = sql_lit.value();
+                        input.parse::<Token![;]>()?;
+                        (first.value(), Some(version), sql)
+                    } else if lookahead.peek(LitStr) {
+                        let sql_lit: LitStr = input.parse()?;
+                        let sql = sql_lit.value();
+                        input.parse::<Token![;]>()?;
+                        (first.value(), None, sql)
+                    } else {
+                        return Err(lookahead.error());
+                    }
                 }
             }
         };

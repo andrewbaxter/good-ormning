@@ -1293,6 +1293,81 @@ async fn test_migrate_remove_table() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_migrate_pre_migration() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_migrate_pre_migration");
+    let (db, _cont) = db().await?;
+    let _db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenMigratePreMigrationVersions::V0(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_migrate_pre_migration",
+                    0,
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "migrate_pre_migration_v0_two" ("two")
+                       values
+                         (7)
+                       "#;
+                    db
+                ).await?;
+            },
+            _ => { },
+        }
+        Ok(())
+    }))).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_good_query_combinations() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_default");
+    good_module!(dbm_custom, "pg_gen_base_insert");
+    let (db_raw, _cont) = db().await?;
+    let mut client = dbm::migrate(db_raw, None).await?;
+
+    // 1. Non-default db
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_default",
+        "insert into default_table (id) values (1)";
+        &mut client
+    ).await?;
+
+    // 2. Non-default db (another one)
+    let (db_custom_raw, _cont2) = db().await?;
+    let mut client_custom = dbm_custom::migrate(db_custom_raw, None).await?;
+    good_ormning::pg::good_query!(
+        dbm_custom,
+        "pg_gen_base_insert",
+        "insert into bannanana (hizat) values ('test')";
+        &mut client_custom
+    ).await?;
+
+    // 3. Non-default version
+    let mut client_v0 = dbm::DbPgGenDefault0(client.0);
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_default",
+        0,
+        "insert into default_table (id) values (2)";
+        &mut client_v0
+    ).await?;
+    client.0 = client_v0.0;
+
+    // 4. Non-default db and version
+    good_ormning::pg::good_query!(
+        dbm_custom,
+        "pg_gen_base_insert",
+        1,
+        "insert into bannanana (hizat) values ('test2')";
+        &mut client_custom
+    ).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_select_cte() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_cte");
     let (mut db, _cont) = db().await?;
