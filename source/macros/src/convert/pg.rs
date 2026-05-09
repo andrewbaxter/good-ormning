@@ -263,7 +263,6 @@ fn convert_select_query_expr(
 fn get_table_ref(name: &sql::ObjectName) -> TableRef {
     return TableRef(match name.0.last().expect("ObjectName should not be empty") {
         sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-        _ => panic!("Unsupported"),
     });
 }
 
@@ -300,7 +299,6 @@ fn convert_returning(
                 sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
                     let table_ref = TableRef(match name.0.last().unwrap() {
                         sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        _ => panic!("Unsupported"),
                     });
                     let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
                     for (field_ref, field_info) in &table_info.fields {
@@ -359,7 +357,6 @@ fn convert_insert(
                         let target_name = match &a.target {
                             sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
                                 sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                                _ => panic!("Unsupported"),
                             },
                             _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
                         };
@@ -427,7 +424,6 @@ fn convert_update(
         let target_name = match &a.target {
             sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
                 sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                _ => panic!("Unsupported"),
             },
             _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
         };
@@ -966,7 +962,6 @@ fn convert_expr(
                 Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 collation.0.iter().map(|i| match i {
                     sqlparser::ast::ObjectNamePart::Identifier(id) => id.value.clone(),
-                    _ => panic!("Unsupported"),
                 }).collect::<Vec<_>>().join("."),
             );
         },
