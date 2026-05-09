@@ -16,6 +16,7 @@ use {
                 insert::{
                     Insert,
                     InsertConflict,
+                    InsertSource,
                 },
                 select::{
                     Join,
@@ -710,7 +711,7 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
     }
     InsertBuilder { q: Insert {
         table: table.to_ref(),
-        values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+        source: InsertSource::Values(values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect()),
         on_conflict: None,
         returning: vec![],
     } }

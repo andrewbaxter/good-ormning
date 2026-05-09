@@ -117,7 +117,13 @@ impl PgConnection for deadpool_postgres::Pool {
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<u64, GoodError> {
-        self.get().await.map_err(|e| GoodError(e.to_string()))?.execute(query, params).await.map_err(|e| GoodError(e.to_string()))
+        self
+            .get()
+            .await
+            .map_err(|e| GoodError(e.to_string()))?
+            .execute(query, params)
+            .await
+            .map_err(|e| GoodError(e.to_string()))
     }
 
     async fn query(
@@ -125,7 +131,13 @@ impl PgConnection for deadpool_postgres::Pool {
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
-        self.get().await.map_err(|e| GoodError(e.to_string()))?.query(query, params).await.map_err(|e| GoodError(e.to_string()))
+        self
+            .get()
+            .await
+            .map_err(|e| GoodError(e.to_string()))?
+            .query(query, params)
+            .await
+            .map_err(|e| GoodError(e.to_string()))
     }
 }
 

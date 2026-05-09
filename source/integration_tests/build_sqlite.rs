@@ -605,6 +605,44 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Insert select
+    {
+        let v = SqliteVersion::new();
+        let triple = v.table("triple");
+        triple.field("subject", field_str().build());
+        triple.field("predicate", field_str().build());
+        triple.field("object", field_str().build());
+        triple.field("commit_", field_i64().build());
+        triple.field("exists", field_bool().build());
+
+        let subjobj = v.table("subjobj");
+        let subjobj_value = subjobj.field("value", field_str().build());
+        subjobj.unique_index("subjobj_value_idx", &[&subjobj_value]);
+
+        let predicate = v.table("predicate");
+        let predicate_value = predicate.field("value", field_str().build());
+        predicate.unique_index("predicate_value_idx", &[&predicate_value]);
+
+        let triple2 = v.table("triple2");
+        triple2.field("subject", field_str().build());
+        triple2.field("predicate", field_str().build());
+        triple2.field("object", field_str().build());
+        triple2.field("commit_", field_i64().build());
+        triple2.field("exists", field_bool().build());
+
+        let triple_snapshot = v.table("triple_snapshot");
+        triple_snapshot.field("subject", field_str().build());
+        triple_snapshot.field("predicate", field_str().build());
+        triple_snapshot.field("object", field_str().build());
+        triple_snapshot.field("commit_", field_i64().build());
+
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_insert_select".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Select CTE
     {
         let v = SqliteVersion::new();

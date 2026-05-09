@@ -569,14 +569,22 @@ fn convert_select(
                     ),
                     alias: alias.as_ref().map(|a| a.name.value.clone()),
                 },
-                sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction in join not implemented in good-ormning"),
-                sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable in join not implemented in good-ormning"),
-                sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin in join not implemented in good-ormning"),
+                sql::TableFactor::TableFunction { .. } => unimplemented!(
+                    "TableFunction in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::JsonTable { .. } => unimplemented!(
+                    "JsonTable in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::NestedJoin { .. } => unimplemented!(
+                    "NestedJoin in join not implemented in good-ormning"
+                ),
                 sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::OpenJsonTable { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::XmlTable { .. } => unimplemented!("XmlTable in join not implemented in good-ormning"),
+                sql::TableFactor::XmlTable { .. } => unimplemented!(
+                    "XmlTable in join not implemented in good-ormning"
+                ),
             };
             let type_ = match j.join_operator {
                 sql::JoinOperator::Left(_) | sql::JoinOperator::LeftOuter(_) => {

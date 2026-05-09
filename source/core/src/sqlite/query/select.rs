@@ -151,6 +151,9 @@ impl NamedSelectSource {
         };
         if let Some(s) = &self.alias {
             out.s("as").id(s);
+            if let JoinSource::Table(tr) = &self.source {
+                ctx.table_aliases.insert(s.clone(), tr.clone());
+            }
             let mut new_fields2 = vec![];
             for (k, v) in new_fields {
                 new_fields2.push((k.with_alias(s), v));

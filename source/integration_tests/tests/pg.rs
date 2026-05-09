@@ -1363,7 +1363,6 @@ async fn test_good_query_combinations() -> Result<(), loga::Error> {
         "insert into bannanana (hizat) values ('test2')";
         &mut client_custom
     ).await?;
-
     Ok(())
 }
 

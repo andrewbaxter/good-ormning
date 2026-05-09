@@ -18,6 +18,7 @@ use {
                 insert::{
                     Insert,
                     InsertConflict,
+                    InsertSource,
                 },
                 select::{
                     Join,
@@ -343,22 +344,35 @@ fn convert_insert(
         sqlparser::ast::TableObject::TableName(n) => n,
         _ => panic!("Unsupported table object"),
     });
-    let mut values = vec![];
-    if let Some(q) = &insert.source {
-        if let sql::SetExpr::Values(v) = &*q.body {
-            if let Some(row) = v.rows.first() {
-                for (i, expr) in row.iter().enumerate() {
-                    let field = FieldRef {
-                        table_id: table.0.clone(),
-                        field_id: insert.columns[i].value.clone(),
-                    };
-                    values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
+    let source = if let Some(q) = &insert.source {
+        match &*q.body {
+            sql::SetExpr::Values(v) => {
+                let mut values = vec![];
+                if let Some(row) = v.rows.first() {
+                    for (i, expr) in row.iter().enumerate() {
+                        let field = FieldRef {
+                            table_id: table.0.clone(),
+                            field_id: insert.columns[i].value.clone(),
+                        };
+                        values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
+                    }
                 }
-            }
-        } else {
-            unimplemented!("Insert source SetExpr not implemented in good-ormning: {:?}", q.body)
+                InsertSource::Values(values)
+            },
+            _ => {
+                let columns = insert.columns.iter().map(|c| FieldRef {
+                    table_id: table.0.clone(),
+                    field_id: c.value.clone(),
+                }).collect();
+                InsertSource::Select {
+                    columns,
+                    select: convert_select_query(input, q, used_params, custom_types, field_lookup),
+                }
+            },
         }
-    }
+    } else {
+        InsertSource::Values(vec![])
+    };
     let on_conflict = if let Some(on) = &insert.on {
         match on {
             sql::OnInsert::OnConflict(oc) => match &oc.action {
@@ -408,7 +422,7 @@ fn convert_insert(
     };
     return Insert {
         table: table.clone(),
-        values,
+        source,
         on_conflict,
         returning: convert_returning(
             input,
@@ -539,7 +553,9 @@ fn convert_select(
                                         .as_ref()
                                         .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                                     group: match &s.group_by {
-                                        sql::GroupByExpr::All(_) => unimplemented!("GROUP BY ALL not implemented in good-ormning"),
+                                        sql::GroupByExpr::All(_) => unimplemented!(
+                                            "GROUP BY ALL not implemented in good-ormning"
+                                        ),
                                         sql::GroupByExpr::Expressions(exprs, _) => exprs
                                             .iter()
                                             .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
@@ -630,10 +646,16 @@ fn convert_select(
                     alias: alias.as_ref().map(|a| a.name.value.clone()),
                     index_hint: None,
                 },
-                sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction in join not implemented in good-ormning"),
+                sql::TableFactor::TableFunction { .. } => unimplemented!(
+                    "TableFunction in join not implemented in good-ormning"
+                ),
                 sql::TableFactor::UNNEST { .. } => unimplemented!("UNNEST in join not implemented in good-ormning"),
-                sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable in join not implemented in good-ormning"),
-                sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin in join not implemented in good-ormning"),
+                sql::TableFactor::JsonTable { .. } => unimplemented!(
+                    "JsonTable in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::NestedJoin { .. } => unimplemented!(
+                    "NestedJoin in join not implemented in good-ormning"
+                ),
                 sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
                 sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),

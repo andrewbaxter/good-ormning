@@ -1479,7 +1479,6 @@ fn test_good_query_combinations() -> Result<(), loga::Error> {
         "insert into bannanana (hizat) values ('test2')";
         &mut db_custom
     )?;
-
     Ok(())
 }
 
@@ -2424,5 +2423,95 @@ fn test_query_correlated_subquery() -> Result<(), loga::Error> {
            "#;
         &mut db
     )?, None);
+    Ok(())
+}
+
+#[test]
+fn test_insert_select() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_insert_select");
+    let mut db_raw = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db_raw, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert into "triple" ("subject", "predicate", "object", "commit_", "exists")
+                   values ('s1', 'p1', 'o1', 1, true),
+                          ('s1', 'p1', 'o1', 2, false),
+                          ('s2', 'p2', 'o2', 1, true)
+                   "#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert or ignore into "subjobj" ("value")
+                   select
+                     "subject"
+                   from
+                     "triple"
+                   union
+                   select
+                     "object"
+                   from
+                     "triple"
+                   "#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert or ignore into "predicate" ("value")
+                   select
+                     "predicate"
+                   from
+                     "triple"
+                   "#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert into "triple2" ("subject", "predicate", "object", "commit_", "exists")
+                   select
+                     "subject",
+                     "predicate",
+                     "object",
+                     "commit_",
+                     "exists"
+                   from
+                     "triple"
+                   "#;
+        &mut db
+    )?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_insert_select",
+        r#"insert into "triple_snapshot" ("subject", "predicate", "object", "commit_")
+                   select
+                     "subject",
+                     "predicate",
+                     "object",
+                     "commit_"
+                   from
+                     "triple" t1
+                   where
+                     (
+                       "commit_" = (
+                         select
+                           max("commit_")
+                         from
+                           "triple" t2
+                         where
+                           (
+                             "t1"."subject" = "t2"."subject"
+                             and "t1"."predicate" = "t2"."predicate"
+                             and "t1"."object" = "t2"."object"
+                           )
+                       )
+                       and "exists" = true
+                     )
+                   "#;
+        &mut db
+    )?;
     Ok(())
 }

@@ -206,6 +206,7 @@ pub struct SqliteTableInfo {
 
 pub struct SqliteQueryCtx {
     pub tables: HashMap<TableRef, SqliteTableInfo>,
+    pub table_aliases: HashMap<String, TableRef>,
     pub errs: Errs,
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub rust_args: Vec<TokenStream>,
@@ -224,6 +225,7 @@ impl SqliteQueryCtx {
     pub fn new(errs: Errs, tables: HashMap<TableRef, SqliteTableInfo>) -> Self {
         Self {
             tables: tables,
+            table_aliases: Default::default(),
             errs: errs,
             rust_arg_lookup: Default::default(),
             rust_args: Default::default(),
