@@ -156,7 +156,7 @@ pub fn generate_query_functions(
                             format_ident!("DbRes{}", res_type_count)
                         };
                         e.insert(ident.clone());
-                        let res_def = quote!(#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)] pub struct #ident #body);
+                        let res_def = quote!(pub struct #ident #body);
                         (ident, Some(res_def))
                     },
                 };
