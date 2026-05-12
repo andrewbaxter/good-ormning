@@ -97,7 +97,8 @@ impl PgConnection for deadpool_postgres::Object {
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<u64, GoodError> {
-        tokio_postgres::GenericClient::execute(self, query, params).await.map_err(|e| GoodError(e.to_string()))
+        use std::ops::DerefMut;
+        tokio_postgres::Client::execute(self.deref_mut().deref_mut(), query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 
     async fn query(
@@ -105,7 +106,8 @@ impl PgConnection for deadpool_postgres::Object {
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
-        tokio_postgres::GenericClient::query(self, query, params).await.map_err(|e| GoodError(e.to_string()))
+        use std::ops::DerefMut;
+        tokio_postgres::Client::query(self.deref_mut().deref_mut(), query, params).await.map_err(|e| GoodError(e.to_string()))
     }
 }
 

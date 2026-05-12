@@ -15,6 +15,7 @@ tokio = { version = ">=0", features = ["macros", "rt"] }
     "sqlite",
     "jiff",
     "import",
+    "deadpool",
 ] }
 "good-ormning-macros" = { path = "../macros" }
 tokio-postgres = { version = ">=0", features = [
@@ -26,6 +27,8 @@ good-ormning-core = { version = "0.5.11", path = "../core" }
 flowcontrol = ">=0"
 tempfile = "3.27.0"
 pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide" }
+deadpool-postgres = { version = "0.12", features = ["rt_tokio_1"] }
+deadpool-sqlite = { version = "0.12", features = ["rt_tokio_1"] }
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }
