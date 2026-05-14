@@ -23,7 +23,7 @@ async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error>
 #[tokio::test]
 async fn test_base_insert() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -54,7 +54,7 @@ async fn test_base_insert() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_i32");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -85,7 +85,7 @@ async fn test_param_i32() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_inline_param_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_inline_param_i32");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -119,7 +119,7 @@ async fn test_inline_param_i32() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_utctime_chrono");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
@@ -151,7 +151,7 @@ async fn test_param_utctime_chrono() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_like() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_like");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -185,7 +185,7 @@ async fn test_query_like() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_is_null() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_is_null");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -218,7 +218,7 @@ async fn test_query_is_null() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_concat() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_concat");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -249,7 +249,7 @@ async fn test_query_concat() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_row_number() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_row_number");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -301,7 +301,7 @@ async fn test_query_row_number() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_opt_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_i32");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -332,7 +332,7 @@ async fn test_param_opt_i32() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_i32_null");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -362,7 +362,7 @@ async fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_custom");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     let x_0 = integration_tests::MyBool(true);
     let x_1 = integration_tests::MyI32(13);
@@ -466,7 +466,7 @@ async fn test_param_custom() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_param_opt_custom() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_param_opt_custom");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -497,7 +497,7 @@ async fn test_param_opt_custom() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_insert_on_conflict_do_nothing");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     assert!(good_ormning::pg::good_query_opt!(
         dbm,
@@ -535,7 +535,7 @@ async fn test_insert_on_conflict_do_nothing() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_insert_on_conflict_update");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     assert_eq!(good_ormning::pg::good_query_one!(
         dbm,
@@ -597,7 +597,7 @@ async fn test_insert_on_conflict_update() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_update() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -648,7 +648,7 @@ async fn test_update() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_update_where() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update_where");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -728,7 +728,7 @@ async fn test_update_where() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_update_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_update_returning");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -759,7 +759,7 @@ async fn test_update_returning() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_delete() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -808,7 +808,7 @@ async fn test_delete() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_delete_where() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete_where");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -871,7 +871,7 @@ async fn test_delete_where() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_delete_returning() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete_returning");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -923,7 +923,7 @@ async fn test_delete_returning() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_join() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
@@ -974,7 +974,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_join_inner() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
@@ -1037,7 +1037,7 @@ async fn test_select_join_inner() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_join_right() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
@@ -1098,7 +1098,7 @@ async fn test_select_join_right() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_join_full() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
@@ -1170,7 +1170,7 @@ async fn test_select_join_full() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_join_cross() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_join");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenSelectJoinVersions::V1(db) => {
@@ -1242,7 +1242,7 @@ async fn test_select_join_cross() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_group_by");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1317,7 +1317,7 @@ async fn test_select_group_by() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_limit() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_limit");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1374,7 +1374,7 @@ async fn test_select_limit() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_order() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_order");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1431,7 +1431,7 @@ async fn test_select_order() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_add_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_add_field");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
         match v {
             dbm::DbPgGenMigrateAddFieldVersions::V0(db) => {
@@ -1476,7 +1476,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_rename_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_rename_field");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1495,7 +1495,7 @@ async fn test_migrate_rename_field() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_remove_field() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_remove_field");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1515,7 +1515,7 @@ async fn test_migrate_remove_field() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_add_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_add_table");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1535,7 +1535,7 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_rename_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_rename_table");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1555,8 +1555,8 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_remove_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_remove_table");
-    let (mut db, _cont) = db().await?;
-    let mut db = dbm::migrate(db, None).await?;
+    let (db, _cont) = db().await?;
+    let _db = dbm::migrate(db, None).await?;
     Ok(())
 }
 
@@ -1637,7 +1637,7 @@ async fn test_good_query_combinations() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_cte() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_cte");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1691,7 +1691,7 @@ async fn test_select_cte() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_select_window() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_window");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1767,15 +1767,15 @@ async fn test_select_window() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_migrate_make_field_optional() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_make_field_optional");
-    let (mut db, _cont) = db().await?;
-    let mut db = dbm::migrate(db, None).await?;
+    let (db, _cont) = db().await?;
+    let _db = dbm::migrate(db, None).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn test_query_filter() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_filter");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1824,7 +1824,7 @@ async fn test_query_filter() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_window_frame() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_window_frame");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     for i in 1 ..= 3 {
         good_ormning::pg::good_query!(
@@ -1862,7 +1862,7 @@ async fn test_query_window_frame() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_collate() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_collate");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1895,7 +1895,7 @@ async fn test_query_collate() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_is_distinct_from");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1942,7 +1942,7 @@ async fn test_query_is_distinct_from() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_having() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_having");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -1988,7 +1988,7 @@ async fn test_query_having() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_cte_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_cte_subquery");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2027,7 +2027,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_like_escape() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_like_escape");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2060,7 +2060,7 @@ async fn test_query_like_escape() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_union() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query_many!(
         dbm,
@@ -2084,7 +2084,7 @@ async fn test_query_union() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_returning_wildcard() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     let res = good_ormning::pg::good_query_one!(
         dbm,
@@ -2106,7 +2106,7 @@ async fn test_returning_wildcard() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_between() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2139,7 +2139,7 @@ async fn test_query_between() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_case() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2173,7 +2173,7 @@ async fn test_query_case() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_tuple_in() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     db
         .0
@@ -2204,7 +2204,7 @@ async fn test_query_tuple_in() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_base_insert");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     db
         .0
@@ -2250,7 +2250,7 @@ async fn test_query_tuple_cmp() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_repeated_param() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_repeated_param");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2336,7 +2336,7 @@ async fn test_repeated_param() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_inline_param_i32_common");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2368,7 +2368,7 @@ async fn test_inline_param_i32_common_syntax() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_delete_cte_macro() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_delete_cte");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2422,7 +2422,7 @@ async fn test_delete_cte_macro() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_query_correlated_subquery() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_query_correlated_subquery");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2480,7 +2480,7 @@ async fn test_query_correlated_subquery() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_set_ops_all() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_set_ops_all");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -2555,7 +2555,7 @@ async fn test_set_ops_all() -> Result<(), loga::Error> {
 #[tokio::test]
 async fn test_nested_paren() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_nested_paren");
-    let (mut db, _cont) = db().await?;
+    let (db, _cont) = db().await?;
     let mut db = dbm::migrate(db, None).await?;
     // Insert: (val=1, a=false, b=true), (val=2, a=true, b=false), (val=3, a=false, b=false)
     // Query: WHERE val > 1 AND (a OR b)
