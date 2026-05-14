@@ -778,7 +778,7 @@ fn convert_on(
             unimplemented!("NATURAL JOIN is not implemented in good-ormning")
         },
         sql::JoinConstraint::None => {
-            unimplemented!("JOIN without ON clause is not implemented in good-ormning")
+            panic!("JOIN requires an ON clause")
         },
     }
 }
