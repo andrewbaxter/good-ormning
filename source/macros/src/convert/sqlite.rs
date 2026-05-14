@@ -659,24 +659,55 @@ fn convert_select(
                     "Not supported by database engine"
                 ),
             };
-            let type_ = match j.join_operator {
-                sql::JoinOperator::Left(_) | sql::JoinOperator::LeftOuter(_) => JoinType::Left,
-                sql::JoinOperator::Inner(_) => JoinType::Inner,
-                _ => unimplemented!("JoinOperator not implemented in good-ormning: {:?}", j.join_operator),
-            };
-            let on = match &j.join_operator {
-                sql::JoinOperator::Left(constraint) |
-                sql::JoinOperator::LeftOuter(constraint) |
-                sql::JoinOperator::Inner(constraint) => match constraint {
-                    sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types, field_lookup),
-                    _ => unimplemented!("JoinConstraint not implemented in good-ormning: {:?}", constraint),
+            let (type_, on) = match &j.join_operator {
+                sql::JoinOperator::Join(constraint) |
+                sql::JoinOperator::Inner(constraint) => {
+                    (
+                        JoinType::Inner,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
                 },
-                _ => unreachable!(),
+                sql::JoinOperator::Left(constraint) |
+                sql::JoinOperator::LeftOuter(constraint) => {
+                    (
+                        JoinType::Left,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::Right(constraint) |
+                sql::JoinOperator::RightOuter(constraint) => {
+                    (
+                        JoinType::Right,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::FullOuter(constraint) => {
+                    (
+                        JoinType::Full,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
+                sql::JoinOperator::Semi(_) |
+                sql::JoinOperator::LeftSemi(_) |
+                sql::JoinOperator::RightSemi(_) |
+                sql::JoinOperator::Anti(_) |
+                sql::JoinOperator::LeftAnti(_) |
+                sql::JoinOperator::RightAnti(_) |
+                sql::JoinOperator::CrossApply |
+                sql::JoinOperator::OuterApply |
+                sql::JoinOperator::AsOf { .. } |
+                sql::JoinOperator::StraightJoin(_) => {
+                    unimplemented!(
+                        "JoinOperator not supported by SQLite in good-ormning: {:?}",
+                        j.join_operator
+                    )
+                },
             };
             join.push(Join {
                 source: source,
                 type_,
-                on,
+                on: on,
             });
         }
     }
@@ -727,6 +758,29 @@ fn convert_select(
         }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         distinct: s.distinct.is_some(),
     };
+}
+
+fn convert_on(
+    input: &GoodQueryInput,
+    constraint: &sql::JoinConstraint,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Expr {
+    match constraint {
+        sql::JoinConstraint::On(e) => {
+            return convert_expr(input, e, used_params, custom_types, field_lookup);
+        },
+        sql::JoinConstraint::Using(_) => {
+            unimplemented!("JOIN ... USING is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::Natural => {
+            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::None => {
+            unimplemented!("JOIN without ON clause is not implemented in good-ormning")
+        },
+    }
 }
 
 fn convert_expr(

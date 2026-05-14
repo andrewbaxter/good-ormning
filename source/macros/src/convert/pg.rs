@@ -582,26 +582,57 @@ fn convert_select(
                     "XmlTable in join not implemented in good-ormning"
                 ),
             };
-            let type_ = match j.join_operator {
-                sql::JoinOperator::Left(_) | sql::JoinOperator::LeftOuter(_) => {
-                    good_ormning_core::pg::query::select::JoinType::Left
+            let (type_, on) = match &j.join_operator {
+                sql::JoinOperator::Join(constraint) |
+                sql::JoinOperator::Inner(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Inner,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
                 },
-                sql::JoinOperator::Inner(_) => good_ormning_core::pg::query::select::JoinType::Inner,
-                _ => unimplemented!("JoinOperator not implemented in good-ormning: {:?}", j.join_operator),
-            };
-            let on = match &j.join_operator {
                 sql::JoinOperator::Left(constraint) |
-                sql::JoinOperator::LeftOuter(constraint) |
-                sql::JoinOperator::Inner(constraint) => match constraint {
-                    sql::JoinConstraint::On(e) => convert_expr(input, e, used_params, custom_types, field_lookup),
-                    _ => unimplemented!("JoinConstraint not implemented in good-ormning: {:?}", constraint),
+                sql::JoinOperator::LeftOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Left,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
                 },
-                _ => unreachable!(),
+                sql::JoinOperator::Right(constraint) |
+                sql::JoinOperator::RightOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Right,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::FullOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Full,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::CrossJoin => {
+                    (good_ormning_core::pg::query::select::JoinType::Cross, None)
+                },
+                sql::JoinOperator::Semi(_) |
+                sql::JoinOperator::LeftSemi(_) |
+                sql::JoinOperator::RightSemi(_) |
+                sql::JoinOperator::Anti(_) |
+                sql::JoinOperator::LeftAnti(_) |
+                sql::JoinOperator::RightAnti(_) |
+                sql::JoinOperator::CrossApply |
+                sql::JoinOperator::OuterApply |
+                sql::JoinOperator::AsOf { .. } |
+                sql::JoinOperator::StraightJoin(_) => {
+                    unimplemented!(
+                        "JoinOperator not supported by PostgreSQL in good-ormning: {:?}",
+                        j.join_operator
+                    )
+                },
             };
             join.push(good_ormning_core::pg::query::select::Join {
                 source: Box::new(source),
                 type_,
-                on,
+                on: on,
             });
         }
     }
@@ -652,6 +683,29 @@ fn convert_select(
         distinct: s.distinct.is_some(),
         junctions: vec![],
     };
+}
+
+fn convert_on(
+    input: &GoodQueryInput,
+    constraint: &sql::JoinConstraint,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Expr {
+    match constraint {
+        sql::JoinConstraint::On(e) => {
+            return convert_expr(input, e, used_params, custom_types, field_lookup);
+        },
+        sql::JoinConstraint::Using(_) => {
+            unimplemented!("JOIN ... USING is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::Natural => {
+            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::None => {
+            unimplemented!("JOIN without ON clause is not implemented in good-ormning")
+        },
+    }
 }
 
 fn convert_expr(

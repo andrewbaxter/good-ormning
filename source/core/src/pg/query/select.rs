@@ -106,15 +106,18 @@ impl NamedSelectSource {
 
 #[derive(Clone, Debug)]
 pub enum JoinType {
-    Left,
     Inner,
+    Left,
+    Right,
+    Full,
+    Cross,
 }
 
 #[derive(Clone, Debug)]
 pub struct Join {
     pub source: Box<NamedSelectSource>,
     pub type_: JoinType,
-    pub on: Expr,
+    pub on: Option<Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -156,13 +159,21 @@ impl QueryBody for Select {
             let path = path.push_back(format!("Join {}", i));
             let mut out = Tokens::new();
             match je.type_ {
-                JoinType::Left => out.s("left"),
                 JoinType::Inner => out.s("inner"),
+                JoinType::Left => out.s("left"),
+                JoinType::Right => out.s("right"),
+                JoinType::Full => out.s("full outer"),
+                JoinType::Cross => out.s("cross"),
             };
             out.s("join");
             let source: (ExprType, Tokens) = je.source.build(ctx, &path);
             out.s(&source.1.to_string());
             match je.type_ {
+                JoinType::Inner => {
+                    for (k, v) in source.0.0 {
+                        scope.insert(k, v);
+                    }
+                },
                 JoinType::Left => {
                     for (k, mut v) in source.0.0 {
                         if !v.opt {
@@ -175,15 +186,46 @@ impl QueryBody for Select {
                         scope.insert(k, v);
                     }
                 },
-                JoinType::Inner => {
+                JoinType::Right => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for v in fields.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, v) in source.0.0 {
+                        scope.insert(k, v);
+                    }
+                },
+                JoinType::Full => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for v in fields.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, mut v) in source.0.0 {
+                        if !v.opt {
+                            v = Type {
+                                opt: true,
+                                arr: false,
+                                type_: v.type_,
+                            };
+                        }
+                        scope.insert(k, v);
+                    }
+                },
+                JoinType::Cross => {
                     for (k, v) in source.0.0 {
                         scope.insert(k, v);
                     }
                 },
             }
-            out.s("on");
-            let (_, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
-            out.s(&on_tokens.to_string());
+            if let Some(on) = &je.on {
+                out.s("on");
+                let (_, on_tokens): (ExprType, Tokens) = on.build(ctx, &path, &scope);
+                out.s(&on_tokens.to_string());
+            }
             joins.push(out.to_string());
         }
 

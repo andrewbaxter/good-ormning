@@ -89,13 +89,21 @@ impl SelectBody {
             let path = path.push_back(format!("Join {}", i));
             let mut out = Tokens::new();
             match je.type_ {
-                crate::pg::query::select::JoinType::Left => out.s("left"),
                 crate::pg::query::select::JoinType::Inner => out.s("inner"),
+                crate::pg::query::select::JoinType::Left => out.s("left"),
+                crate::pg::query::select::JoinType::Right => out.s("right"),
+                crate::pg::query::select::JoinType::Full => out.s("full outer"),
+                crate::pg::query::select::JoinType::Cross => out.s("cross"),
             };
             out.s("join");
             let source: (ExprType, Tokens) = je.source.build(ctx, &path);
             out.s(&source.1.to_string());
             match je.type_ {
+                crate::pg::query::select::JoinType::Inner => {
+                    for (k, v) in source.0.0 {
+                        scope.insert(k, v);
+                    }
+                },
                 crate::pg::query::select::JoinType::Left => {
                     for (k, mut v) in source.0.0 {
                         if !v.opt {
@@ -108,15 +116,40 @@ impl SelectBody {
                         scope.insert(k, v);
                     }
                 },
-                crate::pg::query::select::JoinType::Inner => {
+                crate::pg::query::select::JoinType::Right => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, v) in source.0.0 {
+                        scope.insert(k, v);
+                    }
+                },
+                crate::pg::query::select::JoinType::Full => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, mut v) in source.0.0 {
+                        if !v.opt {
+                            v = Type {
+                                opt: true,
+                                arr: false,
+                                type_: v.type_,
+                            };
+                        }
+                        scope.insert(k, v);
+                    }
+                },
+                crate::pg::query::select::JoinType::Cross => {
                     for (k, v) in source.0.0 {
                         scope.insert(k, v);
                     }
                 },
             }
-            out.s("on");
-            let (_, on_tokens): (ExprType, Tokens) = je.on.build(ctx, &path, &scope);
-            out.s(&on_tokens.to_string());
+            if let Some(on) = &je.on {
+                out.s("on");
+                let (_, on_tokens): (ExprType, Tokens) = on.build(ctx, &path, &scope);
+                out.s(&on_tokens.to_string());
+            }
             joins.push(out.to_string());
         }
 

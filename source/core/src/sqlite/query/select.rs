@@ -44,13 +44,16 @@ pub enum Order {
 pub enum JoinType {
     Inner,
     Left,
+    Right,
+    Full,
+    Cross,
 }
 
 #[derive(Clone, Debug)]
 pub struct Join {
     pub type_: JoinType,
     pub source: NamedSelectSource,
-    pub on: Expr,
+    pub on: Option<Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -206,6 +209,11 @@ impl QueryBody for Select {
             let path = path.push_back(format!("Join {}", i));
             let (fields, _): (ExprType, Tokens) = j.source.build(ctx, &path);
             match j.type_ {
+                JoinType::Inner => {
+                    for (k, v) in fields.0 {
+                        scope.insert(k, v);
+                    }
+                },
                 JoinType::Left => {
                     for (k, mut v) in fields.0 {
                         if !v.opt {
@@ -218,7 +226,30 @@ impl QueryBody for Select {
                         scope.insert(k, v);
                     }
                 },
-                JoinType::Inner => {
+                JoinType::Right => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, v) in fields.0 {
+                        scope.insert(k, v);
+                    }
+                },
+                JoinType::Full => {
+                    for v in scope.values_mut() {
+                        v.opt = true;
+                    }
+                    for (k, mut v) in fields.0 {
+                        if !v.opt {
+                            v = Type {
+                                opt: true,
+                                arr: false,
+                                type_: v.type_,
+                            };
+                        }
+                        scope.insert(k, v);
+                    }
+                },
+                JoinType::Cross => {
                     for (k, v) in fields.0 {
                         scope.insert(k, v);
                     }
@@ -237,13 +268,25 @@ impl QueryBody for Select {
                     JoinType::Left => {
                         out.s("left join");
                     },
+                    JoinType::Right => {
+                        out.s("right join");
+                    },
+                    JoinType::Full => {
+                        out.s("full outer join");
+                    },
+                    JoinType::Cross => {
+                        out.s("cross join");
+                    },
                 }
                 let (_, source_tokens): (ExprType, Tokens) = j.source.build(ctx, &path);
-                out.s(&source_tokens.to_string()).s("on");
-                let (on_t, on_tokens): (ExprType, Tokens) =
-                    j.on.build(ctx, &path.push_back("On".to_string()), &scope);
-                check_bool(ctx, &path, &on_t);
-                out.s(&on_tokens.to_string());
+                out.s(&source_tokens.to_string());
+                if let Some(on) = &j.on {
+                    out.s("on");
+                    let (on_t, on_tokens): (ExprType, Tokens) =
+                        on.build(ctx, &path.push_back("On".to_string()), &scope);
+                    check_bool(ctx, &path, &on_t);
+                    out.s(&on_tokens.to_string());
+                }
             }
         }
         if let Some(where_) = &self.where_ {
