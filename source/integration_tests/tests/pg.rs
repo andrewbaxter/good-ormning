@@ -972,6 +972,274 @@ async fn test_select_join() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_select_join_inner() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_select_join");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenSelectJoinVersions::V1(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('nomatch', 44)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                ).await?;
+            },
+        }
+        Ok(())
+    }))).await?;
+    let res = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_join",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             inner join "select_join_two" on ("b"."hizat"::text) = "select_join_two"."hizat"
+           "#;
+        &mut db
+    ).await?;
+    assert_eq!(res.len(), 1);
+    assert_eq!(res[0].three, 33);
+    assert_eq!(res[0].two, "yes".to_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_join_right() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_select_join");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenSelectJoinVersions::V1(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('nomatch', 'orphan')
+                       "#;
+                    db
+                ).await?;
+            },
+        }
+        Ok(())
+    }))).await?;
+    let res = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_join",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             right join "select_join_two" on ("b"."hizat"::text) = "select_join_two"."hizat"
+           "#;
+        &mut db
+    ).await?;
+    assert_eq!(res.len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_join_full() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_select_join");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenSelectJoinVersions::V1(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('lonely', 44)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('orphan', 'no')
+                       "#;
+                    db
+                ).await?;
+            },
+        }
+        Ok(())
+    }))).await?;
+    let res = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_join",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             full outer join "select_join_two" on ("b"."hizat"::text) = "select_join_two"."hizat"
+           "#;
+        &mut db
+    ).await?;
+    assert_eq!(res.len(), 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_select_join_cross() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_select_join");
+    let (mut db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenSelectJoinVersions::V1(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('b', 2)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('x', 'y')
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_select_join",
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('z', 'w')
+                       "#;
+                    db
+                ).await?;
+            },
+        }
+        Ok(())
+    }))).await?;
+    let res = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_join",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             cross join "select_join_two"
+           "#;
+        &mut db
+    ).await?;
+    assert_eq!(res.len(), 4);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_group_by");
     let (mut db, _cont) = db().await?;

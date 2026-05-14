@@ -1090,6 +1090,274 @@ fn test_select_join() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_select_join_inner() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_join");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('nomatch', 44)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                )?;
+            },
+        }
+        Ok(())
+    }))?;
+    let res = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_join",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             inner join "select_join_two" on ("b"."hizat") = "select_join_two"."hizat"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(res.len(), 1);
+    assert_eq!(res[0].three, 33);
+    assert_eq!(res[0].two, "yes".to_string());
+    Ok(())
+}
+
+#[test]
+fn test_select_join_right() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_join");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('nomatch', 'orphan')
+                       "#;
+                    db
+                )?;
+            },
+        }
+        Ok(())
+    }))?;
+    let res = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_join",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             right join "select_join_two" on ("b"."hizat") = "select_join_two"."hizat"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(res.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn test_select_join_full() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_join");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('key', 33)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('lonely', 44)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('key', 'yes')
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('orphan', 'no')
+                       "#;
+                    db
+                )?;
+            },
+        }
+        Ok(())
+    }))?;
+    let res = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_join",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             full outer join "select_join_two" on ("b"."hizat") = "select_join_two"."hizat"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(res.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn test_select_join_cross() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_join");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenSelectJoinVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "b" ("hizat", "three")
+                       values
+                         ('b', 2)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('x', 'y')
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "select_join_two" ("hizat", "two")
+                       values
+                         ('z', 'w')
+                       "#;
+                    db
+                )?;
+            },
+        }
+        Ok(())
+    }))?;
+    let res = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_join",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "b"."three" as "three",
+             "select_join_two"."two" as "two"
+           from
+             "b"
+             cross join "select_join_two"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(res.len(), 4);
+    Ok(())
+}
+
+#[test]
 fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_group_by");
     let mut db = rusqlite::Connection::open_in_memory()?;
