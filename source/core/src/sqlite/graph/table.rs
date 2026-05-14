@@ -26,7 +26,7 @@ pub struct NodeTable_ {
 impl NodeTable_ {
     pub fn compare(&self, old: &Self, _created: &HashSet<GraphId>) -> Comparison {
         if old.def.id != self.def.id {
-            Comparison::Recreate
+            Comparison::Update
         } else {
             Comparison::DoNothing
         }
@@ -34,7 +34,13 @@ impl NodeTable_ {
 }
 
 impl NodeData for NodeTable_ {
-    fn update(&self, _ctx: &mut SqliteMigrateCtx, _old: &Self) { }
+    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
+        if old.def.id != self.def.id {
+            let mut stmt = Tokens::new();
+            stmt.s("alter table").id(&old.def.id).s("rename to").id(&self.def.id);
+            ctx.statements.push(stmt.to_string());
+        }
+    }
 }
 
 impl NodeDataDispatch for NodeTable_ {

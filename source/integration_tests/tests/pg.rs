@@ -1536,19 +1536,40 @@ async fn test_migrate_add_table() -> Result<(), loga::Error> {
 async fn test_migrate_rename_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_rename_table");
     let (db, _cont) = db().await?;
-    let mut db = dbm::migrate(db, None).await?;
-    good_ormning::pg::good_query!(
-        dbm,
-        "pg_gen_migrate_rename_table",
-        //# genemichaels-external: sql-formatter-pg
-        r#"insert into
-             "bana" ("hizat")
-           values
-             ($1)
-           "#;
-        &mut db,
-        p1: string = "inset"
-    ).await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenMigrateRenameTableVersions::V0(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_migrate_rename_table",
+                    0,
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "migrate_rename_table_bnanana" ("hizat")
+                       values
+                         ('survives')
+                       "#;
+                    db
+                ).await?;
+            },
+            _ => { },
+        }
+        Ok(())
+    }))).await?;
+    assert_eq!(
+        good_ormning::pg::good_query_opt!(
+            dbm,
+            "pg_gen_migrate_rename_table",
+            //# genemichaels-external: sql-formatter-pg
+            r#"select
+                 "bana"."hizat" as "hizat"
+               from
+                 "bana"
+               "#;
+            &mut db
+        ).await?,
+        Some("survives".to_string())
+    );
     Ok(())
 }
 

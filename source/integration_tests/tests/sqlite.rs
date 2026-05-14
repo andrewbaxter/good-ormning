@@ -1719,19 +1719,40 @@ fn test_migrate_add_table() -> Result<(), loga::Error> {
 fn test_migrate_rename_table() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_rename_table");
     let db = rusqlite::Connection::open_in_memory()?;
-    let mut db = dbm::migrate(db, None)?;
-    good_ormning::sqlite::good_query!(
-        dbm,
-        "sqlite_gen_migrate_rename_table",
-        //# genemichaels-external: sql-formatter-sqlite
-        r#"insert into
-             "bana" ("hizat")
-           values
-             (?1)
-           "#;
-        &mut db,
-        p1: string = "inset"
-    )?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenMigrateRenameTableVersions::V0(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_migrate_rename_table",
+                    0,
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "migrate_rename_table_bnanana" ("hizat")
+                       values
+                         ('survives')
+                       "#;
+                    db
+                )?;
+            },
+            _ => { },
+        }
+        Ok(())
+    }))?;
+    assert_eq!(
+        good_ormning::sqlite::good_query_opt!(
+            dbm,
+            "sqlite_gen_migrate_rename_table",
+            //# genemichaels-external: sql-formatter-sqlite
+            r#"select
+                 "bana"."hizat" as "hizat"
+               from
+                 "bana"
+               "#;
+            &mut db
+        )?,
+        Some("survives".to_string())
+    );
     Ok(())
 }
 
