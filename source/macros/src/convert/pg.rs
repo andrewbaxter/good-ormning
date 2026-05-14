@@ -520,11 +520,11 @@ fn convert_select(
             sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
             sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable not implemented in good-ormning"),
             sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin not implemented in good-ormning"),
-            sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::OpenJsonTable { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::XmlTable { .. } => unimplemented!("XmlTable not implemented in good-ormning"),
+            sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
+            sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
+            sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by PostgreSQL"),
+            sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by PostgreSQL"),
+            sql::TableFactor::XmlTable { .. } => unimplemented!("XMLTABLE is not implemented in good-ormning"),
         }
     };
     let mut join = vec![];
@@ -574,12 +574,16 @@ fn convert_select(
                 sql::TableFactor::NestedJoin { .. } => unimplemented!(
                     "NestedJoin in join not implemented in good-ormning"
                 ),
-                sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::OpenJsonTable { .. } => unimplemented!("Not supported by database engine"),
+                sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
+                sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
+                sql::TableFactor::MatchRecognize { .. } => {
+                    panic!("MATCH_RECOGNIZE is not supported by PostgreSQL")
+                },
+                sql::TableFactor::OpenJsonTable { .. } => {
+                    panic!("OPENJSON is not supported by PostgreSQL")
+                },
                 sql::TableFactor::XmlTable { .. } => unimplemented!(
-                    "XmlTable in join not implemented in good-ormning"
+                    "XMLTABLE in join is not implemented in good-ormning"
                 ),
             };
             let (type_, on) = match &j.join_operator {
@@ -623,8 +627,8 @@ fn convert_select(
                 sql::JoinOperator::OuterApply |
                 sql::JoinOperator::AsOf { .. } |
                 sql::JoinOperator::StraightJoin(_) => {
-                    unimplemented!(
-                        "JoinOperator not supported by PostgreSQL in good-ormning: {:?}",
+                    panic!(
+                        "Join operator is not supported by PostgreSQL: {:?}",
                         j.join_operator
                     )
                 },
@@ -668,7 +672,7 @@ fn convert_select(
         join,
         where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         group: match &s.group_by {
-            sql::GroupByExpr::All(_) => unimplemented!("GROUP BY ALL not implemented in good-ormning"),
+            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by PostgreSQL"),
             sql::GroupByExpr::Expressions(exprs, _) => exprs
                 .iter()
                 .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))

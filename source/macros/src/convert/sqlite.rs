@@ -241,21 +241,21 @@ fn convert_select_query_expr(
                 },
                 sql::SetOperator::Intersect => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        unimplemented!("Not supported by database engine")
+                        panic!("INTERSECT ALL is not supported by SQLite")
                     } else {
                         good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect
                     }
                 },
                 sql::SetOperator::Minus => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        unimplemented!("Not supported by database engine")
+                        panic!("MINUS ALL is not supported by SQLite")
                     } else {
                         good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
                     }
                 },
                 sql::SetOperator::Except => {
                     if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        unimplemented!("Not supported by database engine")
+                        panic!("EXCEPT ALL is not supported by SQLite")
                     } else {
                         good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
                     }
@@ -322,8 +322,8 @@ fn convert_returning(
                 sql::SelectItem::QualifiedWildcard(
                     sql::SelectItemQualifiedWildcardKind::Expr(_),
                     _,
-                ) => unimplemented!(
-                    "Not supported by database engine"
+                ) => panic!(
+                    "Qualified wildcard with expression is not supported by SQLite"
                 ),
             }
         }
@@ -549,8 +549,8 @@ fn convert_select(
                                         .as_ref()
                                         .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                                     group: match &s.group_by {
-                                        sql::GroupByExpr::All(_) => unimplemented!(
-                                            "GROUP BY ALL not implemented in good-ormning"
+                                        sql::GroupByExpr::All(_) => panic!(
+                                            "GROUP BY ALL is not supported by SQLite"
                                         ),
                                         sql::GroupByExpr::Expressions(exprs, _) => exprs
                                             .iter()
@@ -598,15 +598,14 @@ fn convert_select(
                 index_hint: None,
             },
             sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
-            sql::TableFactor::UNNEST { .. } => unimplemented!("UNNEST not implemented in good-ormning"),
-            sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable not implemented in good-ormning"),
-            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin not implemented in good-ormning"),
-            sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
-            sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
-                "Not supported by database engine"
-            ),
+            sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
+            sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
+            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin is not implemented in good-ormning"),
+            sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
+            sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
+            sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
+            sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
+            sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
         }
     };
     let mut join = vec![];
@@ -645,19 +644,18 @@ fn convert_select(
                 sql::TableFactor::TableFunction { .. } => unimplemented!(
                     "TableFunction in join not implemented in good-ormning"
                 ),
-                sql::TableFactor::UNNEST { .. } => unimplemented!("UNNEST in join not implemented in good-ormning"),
-                sql::TableFactor::JsonTable { .. } => unimplemented!(
-                    "JsonTable in join not implemented in good-ormning"
-                ),
+                sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
+                sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
                 sql::TableFactor::NestedJoin { .. } => unimplemented!(
-                    "NestedJoin in join not implemented in good-ormning"
+                    "NestedJoin in join is not implemented in good-ormning"
                 ),
-                sql::TableFactor::Pivot { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::Unpivot { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::MatchRecognize { .. } => unimplemented!("Not supported by database engine"),
-                sql::TableFactor::OpenJsonTable { .. } | sql::TableFactor::XmlTable { .. } => unimplemented!(
-                    "Not supported by database engine"
-                ),
+                sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
+                sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
+                sql::TableFactor::MatchRecognize { .. } => {
+                    panic!("MATCH_RECOGNIZE is not supported by SQLite")
+                },
+                sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
+                sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
             };
             let (type_, on) = match &j.join_operator {
                 sql::JoinOperator::Join(constraint) |
@@ -698,8 +696,8 @@ fn convert_select(
                 sql::JoinOperator::OuterApply |
                 sql::JoinOperator::AsOf { .. } |
                 sql::JoinOperator::StraightJoin(_) => {
-                    unimplemented!(
-                        "JoinOperator not supported by SQLite in good-ormning: {:?}",
+                    panic!(
+                        "Join operator is not supported by SQLite: {:?}",
                         j.join_operator
                     )
                 },
@@ -744,7 +742,7 @@ fn convert_select(
         join,
         where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
         group: match &s.group_by {
-            sql::GroupByExpr::All(_) => unimplemented!("GROUP BY ALL not implemented in good-ormning"),
+            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
             sql::GroupByExpr::Expressions(exprs, _) => exprs
                 .iter()
                 .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
