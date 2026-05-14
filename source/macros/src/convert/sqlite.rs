@@ -504,6 +504,132 @@ fn convert_delete(
     };
 }
 
+fn convert_table_factor_sqlite(
+    input: &GoodQueryInput,
+    tf: &sql::TableFactor,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> NamedSelectSource {
+    match tf {
+        sql::TableFactor::Table { name, alias, .. } => {
+            NamedSelectSource {
+                source: JoinSource::Table(get_table_ref(name)),
+                alias: Some(
+                    alias
+                        .as_ref()
+                        .map(|a| a.name.value.clone())
+                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                ),
+                index_hint: None,
+            }
+        },
+        sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+            source: JoinSource::Subsel(
+                Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+            ),
+            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            index_hint: None,
+        },
+        sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+            source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                    convert_expr(input, e, used_params, custom_types, field_lookup)
+                },
+                _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
+            }).collect()),
+            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            index_hint: None,
+        },
+        sql::TableFactor::NestedJoin { table_with_joins, alias } => {
+            let base =
+                convert_table_factor_sqlite(
+                    input,
+                    &table_with_joins.relation,
+                    used_params,
+                    custom_types,
+                    field_lookup,
+                );
+            let joins =
+                convert_sql_joins_sqlite(input, &table_with_joins.joins, used_params, custom_types, field_lookup);
+            NamedSelectSource {
+                source: JoinSource::NestedJoin(Box::new(base), joins),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+                index_hint: None,
+            }
+        },
+        sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
+        sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
+        sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
+        sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
+        sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
+        sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
+        sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
+        sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
+    }
+}
+
+fn convert_sql_joins_sqlite(
+    input: &GoodQueryInput,
+    joins: &[sql::Join],
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Vec<Join> {
+    let mut out = vec![];
+    for j in joins {
+        let source = convert_table_factor_sqlite(input, &j.relation, used_params, custom_types, field_lookup);
+        let (type_, on) = match &j.join_operator {
+            sql::JoinOperator::Join(constraint) |
+            sql::JoinOperator::Inner(constraint) => {
+                (
+                    JoinType::Inner,
+                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                )
+            },
+            sql::JoinOperator::Left(constraint) |
+            sql::JoinOperator::LeftOuter(constraint) => {
+                (
+                    JoinType::Left,
+                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                )
+            },
+            sql::JoinOperator::Right(constraint) |
+            sql::JoinOperator::RightOuter(constraint) => {
+                (
+                    JoinType::Right,
+                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                )
+            },
+            sql::JoinOperator::FullOuter(constraint) => {
+                (
+                    JoinType::Full,
+                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                )
+            },
+            sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
+            sql::JoinOperator::Semi(_) |
+            sql::JoinOperator::LeftSemi(_) |
+            sql::JoinOperator::RightSemi(_) |
+            sql::JoinOperator::Anti(_) |
+            sql::JoinOperator::LeftAnti(_) |
+            sql::JoinOperator::RightAnti(_) |
+            sql::JoinOperator::CrossApply |
+            sql::JoinOperator::OuterApply |
+            sql::JoinOperator::AsOf { .. } |
+            sql::JoinOperator::StraightJoin(_) => {
+                panic!("Join operator is not supported by SQLite: {:?}", j.join_operator)
+            },
+        };
+        out.push(Join {
+            source: source,
+            type_,
+            on: on,
+        });
+    }
+    return out;
+}
+
 fn convert_select(
     input: &GoodQueryInput,
     q: &sql::Query,
@@ -519,196 +645,62 @@ fn convert_select(
             index_hint: None,
         }
     } else {
-        match &s.from[0].relation {
-            sql::TableFactor::Table { name, alias, args, .. } => {
-                if let Some(args) = args {
-                    let name_str = name.to_string().to_lowercase();
-                    if name_str == "rarray" {
-                        if !args.args.is_empty() {
-                            if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
-                                let expr = convert_expr(input, e, used_params, custom_types, field_lookup);
-                                return Select {
-                                    with: None,
-                                    table: NamedSelectSource {
-                                        source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
-                                        alias: alias.as_ref().map(|a| a.name.value.clone()),
-                                        index_hint: None,
-                                    },
-                                    returning: convert_returning(
-                                        input,
-                                        &Some(s.projection.clone()),
-                                        used_params,
-                                        custom_types,
-                                        field_lookup,
-                                        None,
-                                    ),
-                                    junction: vec![],
-                                    join: vec![],
-                                    where_: s
-                                        .selection
-                                        .as_ref()
-                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-                                    group: match &s.group_by {
-                                        sql::GroupByExpr::All(_) => panic!(
-                                            "GROUP BY ALL is not supported by SQLite"
-                                        ),
-                                        sql::GroupByExpr::Expressions(exprs, _) => exprs
-                                            .iter()
-                                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                                            .collect(),
-                                    },
-                                    having: s
-                                        .having
-                                        .as_ref()
-                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-                                    order: vec![],
-                                    limit: None,
-                                    distinct: s.distinct.is_some(),
-                                };
-                            }
+        // Special handling for rarray in table position
+        if let sql::TableFactor::Table { name, alias, args, .. } = &s.from[0].relation {
+            if let Some(args) = args {
+                let name_str = name.to_string().to_lowercase();
+                if name_str == "rarray" {
+                    if !args.args.is_empty() {
+                        if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
+                            let expr = convert_expr(input, e, used_params, custom_types, field_lookup);
+                            return Select {
+                                with: None,
+                                table: NamedSelectSource {
+                                    source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
+                                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                                    index_hint: None,
+                                },
+                                returning: convert_returning(
+                                    input,
+                                    &Some(s.projection.clone()),
+                                    used_params,
+                                    custom_types,
+                                    field_lookup,
+                                    None,
+                                ),
+                                junction: vec![],
+                                join: vec![],
+                                where_: s
+                                    .selection
+                                    .as_ref()
+                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+                                group: match &s.group_by {
+                                    sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
+                                    sql::GroupByExpr::Expressions(exprs, _) => exprs
+                                        .iter()
+                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                                        .collect(),
+                                },
+                                having: s
+                                    .having
+                                    .as_ref()
+                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+                                order: vec![],
+                                limit: None,
+                                distinct: s.distinct.is_some(),
+                            };
                         }
                     }
                 }
-                NamedSelectSource {
-                    source: JoinSource::Table(get_table_ref(name)),
-                    alias: Some(
-                        alias
-                            .as_ref()
-                            .map(|a| a.name.value.clone())
-                            .unwrap_or_else(|| get_table_ref(name).0.clone()),
-                    ),
-                    index_hint: None,
-                }
-            },
-            sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                source: JoinSource::Subsel(
-                    Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-                ),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-                index_hint: None,
-            },
-            sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-                source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                    sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                        convert_expr(input, e, used_params, custom_types, field_lookup)
-                    },
-                    _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
-                }).collect()),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-                index_hint: None,
-            },
-            sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
-            sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
-            sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
-            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin is not implemented in good-ormning"),
-            sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
-            sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
-            sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
-            sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
-            sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
+            }
         }
+        convert_table_factor_sqlite(input, &s.from[0].relation, used_params, custom_types, field_lookup)
     };
-    let mut join = vec![];
-    if !s.from.is_empty() {
-        for j in &s.from[0].joins {
-            let source = match &j.relation {
-                sql::TableFactor::Table { name, alias, .. } => {
-                    NamedSelectSource {
-                        source: JoinSource::Table(get_table_ref(name)),
-                        alias: Some(
-                            alias
-                                .as_ref()
-                                .map(|a| a.name.value.clone())
-                                .unwrap_or_else(|| get_table_ref(name).0.clone()),
-                        ),
-                        index_hint: None,
-                    }
-                },
-                sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Subsel(
-                        Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-                    ),
-                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                    index_hint: None,
-                },
-                sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                        sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                            convert_expr(input, e, used_params, custom_types, field_lookup)
-                        },
-                        _ => unimplemented!("FunctionArg in join not implemented in good-ormning: {:?}", a),
-                    }).collect()),
-                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                    index_hint: None,
-                },
-                sql::TableFactor::TableFunction { .. } => unimplemented!(
-                    "TableFunction in join not implemented in good-ormning"
-                ),
-                sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
-                sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
-                sql::TableFactor::NestedJoin { .. } => unimplemented!(
-                    "NestedJoin in join is not implemented in good-ormning"
-                ),
-                sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
-                sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
-                sql::TableFactor::MatchRecognize { .. } => {
-                    panic!("MATCH_RECOGNIZE is not supported by SQLite")
-                },
-                sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
-                sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
-            };
-            let (type_, on) = match &j.join_operator {
-                sql::JoinOperator::Join(constraint) |
-                sql::JoinOperator::Inner(constraint) => {
-                    (
-                        JoinType::Inner,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::Left(constraint) |
-                sql::JoinOperator::LeftOuter(constraint) => {
-                    (
-                        JoinType::Left,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::Right(constraint) |
-                sql::JoinOperator::RightOuter(constraint) => {
-                    (
-                        JoinType::Right,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::FullOuter(constraint) => {
-                    (
-                        JoinType::Full,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
-                sql::JoinOperator::Semi(_) |
-                sql::JoinOperator::LeftSemi(_) |
-                sql::JoinOperator::RightSemi(_) |
-                sql::JoinOperator::Anti(_) |
-                sql::JoinOperator::LeftAnti(_) |
-                sql::JoinOperator::RightAnti(_) |
-                sql::JoinOperator::CrossApply |
-                sql::JoinOperator::OuterApply |
-                sql::JoinOperator::AsOf { .. } |
-                sql::JoinOperator::StraightJoin(_) => {
-                    panic!(
-                        "Join operator is not supported by SQLite: {:?}",
-                        j.join_operator
-                    )
-                },
-            };
-            join.push(Join {
-                source: source,
-                type_,
-                on: on,
-            });
-        }
-    }
+    let join = if s.from.is_empty() {
+        vec![]
+    } else {
+        convert_sql_joins_sqlite(input, &s.from[0].joins, used_params, custom_types, field_lookup)
+    };
     let mut order = vec![];
     if let Some(order_by) = &q.order_by {
         let exprs = match &order_by.kind {

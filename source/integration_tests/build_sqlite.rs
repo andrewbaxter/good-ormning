@@ -412,6 +412,25 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Select + nested join
+    {
+        let v = SqliteVersion::new();
+        let a = v.table("nj_a");
+        a.field("id", field_str().build());
+        a.field("val", field_i32().build());
+        let b = v.table("nj_b");
+        b.field("id", field_str().build());
+        b.field("a_id", field_str().build());
+        let c = v.table("nj_c");
+        c.field("b_id", field_str().build());
+        c.field("label", field_str().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_select_nested_join".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Select limit
     {
         let v = SqliteVersion::new();

@@ -67,6 +67,7 @@ pub enum JoinSource {
     Subsel(Box<Select>),
     Table(TableRef),
     Func(String, Vec<Expr>),
+    NestedJoin(Box<NamedSelectSource>, Vec<Join>),
     Empty,
 }
 
@@ -147,6 +148,89 @@ impl NamedSelectSource {
                 } else {
                     vec![]
                 }
+            },
+            JoinSource::NestedJoin(base, joins) => {
+                let (base_fields, base_tokens) = base.build(ctx, path);
+                let mut fields: Vec<(Binding, Type)> = base_fields.0;
+                let mut inner = Tokens::new();
+                inner.s(&base_tokens.to_string());
+                for (i, j) in joins.iter().enumerate() {
+                    let path = path.push_back(format!("Nested join {}", i));
+                    match j.type_ {
+                        JoinType::Inner => {
+                            inner.s("inner join");
+                        },
+                        JoinType::Left => {
+                            inner.s("left join");
+                        },
+                        JoinType::Right => {
+                            inner.s("right join");
+                        },
+                        JoinType::Full => {
+                            inner.s("full outer join");
+                        },
+                        JoinType::Cross => {
+                            inner.s("cross join");
+                        },
+                    }
+                    let (join_fields, join_tokens) = j.source.build(ctx, &path);
+                    inner.s(&join_tokens.to_string());
+                    match j.type_ {
+                        JoinType::Inner => {
+                            for (k, v) in join_fields.0 {
+                                fields.push((k, v));
+                            }
+                        },
+                        JoinType::Left => {
+                            for (k, mut v) in join_fields.0 {
+                                if !v.opt {
+                                    v = Type {
+                                        opt: true,
+                                        arr: false,
+                                        type_: v.type_,
+                                    };
+                                }
+                                fields.push((k, v));
+                            }
+                        },
+                        JoinType::Right => {
+                            for (_, v) in fields.iter_mut() {
+                                v.opt = true;
+                            }
+                            for (k, v) in join_fields.0 {
+                                fields.push((k, v));
+                            }
+                        },
+                        JoinType::Full => {
+                            for (_, v) in fields.iter_mut() {
+                                v.opt = true;
+                            }
+                            for (k, mut v) in join_fields.0 {
+                                if !v.opt {
+                                    v = Type {
+                                        opt: true,
+                                        arr: false,
+                                        type_: v.type_,
+                                    };
+                                }
+                                fields.push((k, v));
+                            }
+                        },
+                        JoinType::Cross => {
+                            for (k, v) in join_fields.0 {
+                                fields.push((k, v));
+                            }
+                        },
+                    }
+                    if let Some(on) = &j.on {
+                        inner.s("on");
+                        let scope: HashMap<Binding, Type> = fields.iter().cloned().collect();
+                        let (_, on_tokens) = on.build(ctx, &path.push_back("On".to_string()), &scope);
+                        inner.s(&on_tokens.to_string());
+                    }
+                }
+                out.s("(").s(&inner.to_string()).s(")");
+                fields
             },
             JoinSource::Empty => {
                 vec![]

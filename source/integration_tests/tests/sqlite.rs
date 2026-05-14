@@ -1358,6 +1358,71 @@ fn test_select_join_cross() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_select_nested_join() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_nested_join");
+    let mut db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenSelectNestedJoinVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_nested_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "nj_a" ("id", "val")
+                       values
+                         ('a1', 10)
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_nested_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "nj_b" ("id", "a_id")
+                       values
+                         ('b1', 'a1')
+                       "#;
+                    db
+                )?;
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_select_nested_join",
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "nj_c" ("b_id", "label")
+                       values
+                         ('b1', 'hello')
+                       "#;
+                    db
+                )?;
+            },
+        }
+        Ok(())
+    }))?;
+    let res = good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_select_nested_join",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "nj_a"."val" as "val",
+             "nj_c"."label" as "label"
+           from
+             "nj_a"
+             left join (
+               "nj_b"
+               inner join "nj_c" on "nj_b"."id" = "nj_c"."b_id"
+             ) on "nj_a"."id" = "nj_b"."a_id"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(res.val, 10);
+    assert_eq!(res.label, Some("hello".into()));
+    Ok(())
+}
+
+#[test]
 fn test_select_group_by() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_select_group_by");
     let mut db = rusqlite::Connection::open_in_memory()?;
