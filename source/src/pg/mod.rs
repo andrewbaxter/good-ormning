@@ -1,4 +1,128 @@
+#[cfg(test)]
+mod test {
+    use super::{
+        GenerateArgs,
+        Version,
+        generate,
+        query::expr::SerialExpr,
+        schema::field::{
+            field_auto,
+            field_i32,
+            field_str,
+        },
+    };
+
+    #[test]
+    #[should_panic]
+    fn test_add_field_dup_bad() {
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("zPAO2PJU4").field("z437INV6D", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("zQZQ8E2WD");
+                    bananna.field("z437INV6D", field_str().build());
+                    bananna.field("z437INV6D", field_i32().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_add_field_serial_bad() {
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("zMOY9YMCK").field("z437INV6D", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("zMOY9YMCK");
+                    bananna.field("z437INV6D", field_str().build());
+                    bananna.field("zPREUVAOD", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_table_dup_bad() {
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_res_count_none_bad() {
+        let v = Version::new();
+        let bananna = v.table("z5S18LWQE");
+        bananna.field("z437INV6D", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    fn test_returning_none_bad() {
+        let v = Version::new();
+        let bananna = v.table("zZPD1I2EF");
+        bananna.field("z437INV6D", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    fn test_select_nothing_bad() {
+        let v = Version::new();
+        v.table("zOOR88EQ9").field("z437INV6D", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+}
+
 use {
+    convert_case::{
+        Case,
+        Casing,
+    },
     good_ormning_core::{
         pg::{
             graph::utils::PgMigrateCtx,
@@ -12,10 +136,6 @@ use {
             },
         },
         utils::Errs,
-    },
-    convert_case::{
-        Casing,
-        Case,
     },
     quote::{
         format_ident,
@@ -37,32 +157,6 @@ pub use {
         good_query_pg as good_query,
     },
 };
-
-pub struct GenerateArgs {
-    /// If you have multiple databases, use this to disambiguate them. You'll also need
-    /// to use it in `good_module!` and `good_query!`.
-    pub db_name: Option<String>,
-    /// A list of database version ids and schema versions. The ids must be consecutive
-    /// but can start from any number. Once a version has been applied to a production
-    /// database it shouldn't be modified again (modifications should be done in a new
-    /// version).
-    ///
-    /// These will be turned into migrations as part of the `migrate` function.
-    pub versions: Vec<(usize, Version)>,
-    /// A list of queries to generate type-safe functions for. Use instead of or to
-    /// supplement `good_query!` if you want to programmatically generate queries.
-    pub queries: Vec<Query>,
-}
-
-impl Default for GenerateArgs {
-    fn default() -> Self {
-        Self {
-            db_name: None,
-            versions: vec![],
-            queries: vec![],
-        }
-    }
-}
 
 /// Generate Rust code for migrations and queries, also saves schema type
 /// information for use by queries.
@@ -342,124 +436,28 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-#[cfg(test)]
-mod test {
-    use {
-        super::{
-            generate,
-            GenerateArgs,
-            query::expr::SerialExpr,
-            schema::field::{
-                field_auto,
-                field_i32,
-                field_str,
-            },
-            Version,
-        },
-    };
+pub struct GenerateArgs {
+    /// If you have multiple databases, use this to disambiguate them. You'll also need
+    /// to use it in `good_module!` and `good_query!`.
+    pub db_name: Option<String>,
+    /// A list of queries to generate type-safe functions for. Use instead of or to
+    /// supplement `good_query!` if you want to programmatically generate queries.
+    pub queries: Vec<Query>,
+    /// A list of database version ids and schema versions. The ids must be consecutive
+    /// but can start from any number. Once a version has been applied to a production
+    /// database it shouldn't be modified again (modifications should be done in a new
+    /// version).
+    ///
+    /// These will be turned into migrations as part of the `migrate` function.
+    pub versions: Vec<(usize, Version)>,
+}
 
-    #[test]
-    fn test_add_field_serial_bad() {
-        assert!(generate(GenerateArgs {
+impl Default for GenerateArgs {
+    fn default() -> Self {
+        Self {
             db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("zMOY9YMCK").field("z437INV6D", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    let bananna = v.table("zMOY9YMCK");
-                    bananna.field("z437INV6D", field_str().build());
-                    bananna.field("zPREUVAOD", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_add_field_dup_bad() {
-        generate(GenerateArgs {
-            db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("zPAO2PJU4").field("z437INV6D", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    let bananna = v.table("zQZQ8E2WD");
-                    bananna.field("z437INV6D", field_str().build());
-                    bananna.field("z437INV6D", field_i32().build());
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_add_table_dup_bad() {
-        generate(GenerateArgs {
-            db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
-                    v.table("zSNS34DYI").field("z437INV6D", field_str().build());
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).unwrap();
-    }
-
-    #[test]
-    fn test_res_count_none_bad() {
-        let v = Version::new();
-        let bananna = v.table("z5S18LWQE");
-        bananna.field("z437INV6D", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    fn test_select_nothing_bad() {
-        let v = Version::new();
-        v.table("zOOR88EQ9").field("z437INV6D", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    fn test_returning_none_bad() {
-        let v = Version::new();
-        let bananna = v.table("zZPD1I2EF");
-        bananna.field("z437INV6D", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
+            versions: vec![],
+            queries: vec![],
+        }
     }
 }

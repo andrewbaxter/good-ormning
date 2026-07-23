@@ -26,11 +26,11 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Delete {
-    pub with: Option<crate::sqlite::query::utils::With>,
+    pub index_hint: Option<IndexHint>,
+    pub returning: Vec<Returning>,
     pub table: TableRef,
     pub where_: Option<Expr>,
-    pub returning: Vec<Returning>,
-    pub index_hint: Option<IndexHint>,
+    pub with: Option<crate::sqlite::query::utils::With>,
 }
 
 impl QueryBody for Delete {

@@ -16,9 +16,9 @@ use {
 
 #[derive(Clone)]
 pub struct NodeConstraint_ {
+    pub def: Constraint,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
-    pub def: Constraint,
 }
 
 impl NodeConstraint_ {
@@ -73,16 +73,16 @@ impl NodeDataDispatch for NodeConstraint_ {
         ctx.statements.push(stmt.to_string());
     }
 
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
+    }
+
     fn delete(&self, ctx: &mut PgMigrateCtx) {
         ctx
             .statements
             .push(
                 Tokens::new().s("alter table").id(&self.table_id).s("drop constraint").id(&self.def.id).to_string(),
             );
-    }
-
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {

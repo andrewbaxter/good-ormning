@@ -12,85 +12,6 @@ use {
     std::collections::HashMap,
 };
 
-fn sanitize_ident(s: &str) -> String {
-    let out: String = s.chars().map(|c| if c.is_alphanumeric() || c == '_' {
-        c
-    } else {
-        '_'
-    }).collect();
-    if out.starts_with(|c: char| c.is_ascii_digit()) {
-        return format!("_{}", out);
-    }
-    return out;
-}
-
-fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static str {
-    use good_ormning_core::pg::types::SimpleSimpleType as S;
-
-    match sst {
-        S::Auto => "field_auto",
-        S::I16 => "field_i16",
-        S::I32 => "field_i32",
-        S::I64 => "field_i64",
-        S::U32 => "field_u32",
-        S::F32 => "field_f32",
-        S::F64 => "field_f64",
-        S::Bool => "field_bool",
-        S::String => "field_str",
-        S::Bytes => "field_bytes",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeSChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
-        #[cfg(feature = "chrono")]
-        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeSJiff => "field_utctime_s_jiff",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
-    }
-}
-
-fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> &'static str {
-    use good_ormning_core::sqlite::types::SimpleSimpleType as S;
-
-    match sst {
-        S::Auto => "field_auto",
-        S::I16 => "field_i16",
-        S::I32 => "field_i32",
-        S::I64 => "field_i64",
-        S::U32 => "field_u32",
-        S::F32 => "field_f32",
-        S::F64 => "field_f64",
-        S::Bool => "field_bool",
-        S::String => "field_str",
-        S::Bytes => "field_bytes",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeSChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
-        #[cfg(feature = "chrono")]
-        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeSJiff => "field_utctime_s_jiff",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
-    }
-}
-
-fn lookup_field(
-    field_var_map: &HashMap<(String, String), String>,
-    table_key: &str,
-    field_id: &str,
-) -> Result<Ident, loga::Error> {
-    let name =
-        field_var_map
-            .get(&(table_key.to_string(), field_id.to_string()))
-            .cloned()
-            .ok_or_else(|| loga::err(format!("Field {:?} not found in table {:?}", field_id, table_key)))?;
-    return Ok(format_ident!("{}", name));
-}
-
 fn format_tokens(tokens: TokenStream) -> String {
     match genemichaels_lib::format_str(&tokens.to_string(), &FormatConfig::default()) {
         Ok(res) => return res.rendered,
@@ -342,4 +263,83 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
             #(#stmts) *
         }
     }));
+}
+
+fn lookup_field(
+    field_var_map: &HashMap<(String, String), String>,
+    table_key: &str,
+    field_id: &str,
+) -> Result<Ident, loga::Error> {
+    let name =
+        field_var_map
+            .get(&(table_key.to_string(), field_id.to_string()))
+            .cloned()
+            .ok_or_else(|| loga::err(format!("Field {:?} not found in table {:?}", field_id, table_key)))?;
+    return Ok(format_ident!("{}", name));
+}
+
+fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static str {
+    use good_ormning_core::pg::types::SimpleSimpleType as S;
+
+    match sst {
+        S::Auto => "field_auto",
+        S::I16 => "field_i16",
+        S::I32 => "field_i32",
+        S::I64 => "field_i64",
+        S::U32 => "field_u32",
+        S::F32 => "field_f32",
+        S::F64 => "field_f64",
+        S::Bool => "field_bool",
+        S::String => "field_str",
+        S::Bytes => "field_bytes",
+        #[cfg(feature = "chrono")]
+        S::UtcTimeSChrono => "field_utctime_s_chrono",
+        #[cfg(feature = "chrono")]
+        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
+        #[cfg(feature = "chrono")]
+        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
+        #[cfg(feature = "jiff")]
+        S::UtcTimeSJiff => "field_utctime_s_jiff",
+        #[cfg(feature = "jiff")]
+        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
+    }
+}
+
+fn sanitize_ident(s: &str) -> String {
+    let out: String = s.chars().map(|c| if c.is_alphanumeric() || c == '_' {
+        c
+    } else {
+        '_'
+    }).collect();
+    if out.starts_with(|c: char| c.is_ascii_digit()) {
+        return format!("_{}", out);
+    }
+    return out;
+}
+
+fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> &'static str {
+    use good_ormning_core::sqlite::types::SimpleSimpleType as S;
+
+    match sst {
+        S::Auto => "field_auto",
+        S::I16 => "field_i16",
+        S::I32 => "field_i32",
+        S::I64 => "field_i64",
+        S::U32 => "field_u32",
+        S::F32 => "field_f32",
+        S::F64 => "field_f64",
+        S::Bool => "field_bool",
+        S::String => "field_str",
+        S::Bytes => "field_bytes",
+        #[cfg(feature = "chrono")]
+        S::UtcTimeSChrono => "field_utctime_s_chrono",
+        #[cfg(feature = "chrono")]
+        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
+        #[cfg(feature = "chrono")]
+        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
+        #[cfg(feature = "jiff")]
+        S::UtcTimeSJiff => "field_utctime_s_jiff",
+        #[cfg(feature = "jiff")]
+        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
+    }
 }

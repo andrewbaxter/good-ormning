@@ -28,11 +28,6 @@ use good_ormning::{
     pg_type_utctime_s_jiff as type_utctime_s_jiff,
 };
 
-fn get_type(f: &FieldHandle) -> Type {
-    let version = f.table.version.0.borrow();
-    version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone()
-}
-
 pub fn build() {
     // # Base: create table, insert, select
     {
@@ -412,7 +407,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -434,7 +429,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -457,7 +452,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -481,7 +476,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -503,7 +498,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -527,7 +522,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -578,7 +573,7 @@ pub fn build() {
             versions: vec![
                 // Versions (previous)
                 (0usize, v0.build()),
-                (1usize, v1.build())
+                (1usize, v1.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -599,7 +594,7 @@ pub fn build() {
                     bananna.field("hizat", field_str().build());
                     v.build()
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -751,4 +746,9 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+}
+
+fn get_type(f: &FieldHandle) -> Type {
+    let version = f.table.version.0.borrow();
+    version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone()
 }

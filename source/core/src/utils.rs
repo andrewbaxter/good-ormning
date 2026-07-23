@@ -7,65 +7,12 @@ use {
     },
 };
 
-pub struct Tokens(String);
-
-impl fmt::Display for Tokens {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        return f.write_str(&self.0);
-    }
-}
-
-impl Default for Tokens {
-    fn default() -> Self {
-        return Self::new();
-    }
-}
-
-impl Tokens {
-    pub fn new() -> Tokens {
-        return Tokens(String::new());
-    }
-
-    pub fn s(&mut self, s: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(s);
-        self
-    }
-
-    pub fn id(&mut self, i: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("\"{}\"", i));
-        self
-    }
-
-    pub fn f(&mut self, f: impl FnOnce(&mut Self)) -> &mut Self {
-        f(self);
-        self
-    }
-}
-
-pub struct Errs_ {
-    errs: Vec<String>,
-}
+pub const DEFAULT_DB_NAME: &str = "";
 
 #[derive(Clone)]
 pub struct Errs(Rc<RefCell<Errs_>>);
 
-impl Default for Errs {
-    fn default() -> Self {
-        return Self::new();
-    }
-}
-
 impl Errs {
-    pub fn new() -> Self {
-        return Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })));
-    }
-
     pub fn err(&self, path: &rpds::Vector<String>, t: String) {
         let mut s = self.0.as_ref().borrow_mut();
         let mut out = String::new();
@@ -80,6 +27,10 @@ impl Errs {
         s.errs.push(out);
     }
 
+    pub fn new() -> Self {
+        return Self(Rc::new(RefCell::new(Errs_ { errs: vec![] })));
+    }
+
     pub fn raise(self) -> Result<(), Vec<String>> {
         let errs = self.0.borrow_mut().errs.split_off(0);
         if !errs.is_empty() {
@@ -87,6 +38,30 @@ impl Errs {
         }
         Ok(())
     }
+}
+
+impl Default for Errs {
+    fn default() -> Self {
+        return Self::new();
+    }
+}
+
+pub struct Errs_ {
+    errs: Vec<String>,
+}
+
+pub fn json_file_name(db_name: &str) -> String {
+    format!("good_ormning_{}.json", db_name)
+}
+
+pub fn rs_file_name(db_name: &str) -> String {
+    format!("good_ormning_{}.rs", db_name)
+}
+
+pub struct RustTypes {
+    pub arg_type: TokenStream,
+    pub custom_trait: TokenStream,
+    pub ret_type: TokenStream,
 }
 
 pub fn sanitize_ident(v: &str) -> (bool, String) {
@@ -149,18 +124,43 @@ pub fn sanitize_ident(v: &str) -> (bool, String) {
     }
 }
 
-pub struct RustTypes {
-    pub custom_trait: TokenStream,
-    pub ret_type: TokenStream,
-    pub arg_type: TokenStream,
+pub struct Tokens(String);
+
+impl Tokens {
+    pub fn f(&mut self, f: impl FnOnce(&mut Self)) -> &mut Self {
+        f(self);
+        self
+    }
+
+    pub fn id(&mut self, i: &str) -> &mut Self {
+        if !self.0.is_empty() {
+            self.0.push(' ');
+        }
+        self.0.push_str(&format!("\"{}\"", i));
+        self
+    }
+
+    pub fn new() -> Tokens {
+        return Tokens(String::new());
+    }
+
+    pub fn s(&mut self, s: &str) -> &mut Self {
+        if !self.0.is_empty() {
+            self.0.push(' ');
+        }
+        self.0.push_str(s);
+        self
+    }
 }
 
-pub const DEFAULT_DB_NAME: &str = "";
-
-pub fn rs_file_name(db_name: &str) -> String {
-    format!("good_ormning_{}.rs", db_name)
+impl Default for Tokens {
+    fn default() -> Self {
+        return Self::new();
+    }
 }
 
-pub fn json_file_name(db_name: &str) -> String {
-    format!("good_ormning_{}.json", db_name)
+impl fmt::Display for Tokens {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return f.write_str(&self.0);
+    }
 }

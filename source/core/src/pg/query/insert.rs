@@ -32,20 +32,11 @@ use {
 };
 
 #[derive(Clone, Debug)]
-pub enum InsertConflict {
-    DoNothing,
-    DoUpdate {
-        conflict: Vec<FieldRef>,
-        set: Vec<(FieldRef, Expr)>,
-    },
-}
-
-#[derive(Clone, Debug)]
 pub struct Insert {
-    pub table: TableRef,
-    pub values: Vec<(FieldRef, Expr)>,
     pub on_conflict: Option<InsertConflict>,
     pub returning: Vec<Returning>,
+    pub table: TableRef,
+    pub values: Vec<(FieldRef, Expr)>,
 }
 
 impl QueryBody for Insert {
@@ -137,4 +128,13 @@ impl QueryBody for Insert {
         let out_type = build_returning(ctx, path, &scope, &mut out, &self.returning, res_count);
         return (out_type, out);
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum InsertConflict {
+    DoNothing,
+    DoUpdate {
+        conflict: Vec<FieldRef>,
+        set: Vec<(FieldRef, Expr)>,
+    },
 }

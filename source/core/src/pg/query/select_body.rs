@@ -30,44 +30,17 @@ use {
 };
 
 #[derive(Clone, Debug)]
-pub enum SelectJunctionOperator {
-    Union,
-    UnionAll,
-    Intersect,
-    IntersectAll,
-    Except,
-    ExceptAll,
-}
-
-#[derive(Clone, Debug)]
-pub struct SelectJunction {
-    pub op: SelectJunctionOperator,
-    pub body: Box<dyn QueryBody>,
-}
-
-#[derive(Clone, Debug)]
 pub struct SelectBody {
-    pub table: NamedSelectSource,
-    pub returning: Vec<Returning>,
-    pub join: Vec<Join>,
-    pub where_: Option<Expr>,
+    pub distinct: bool,
     pub group: Vec<Expr>,
     pub having: Option<Expr>,
-    pub order: Vec<(Expr, Order)>,
-    pub limit: Option<Expr>,
-    pub distinct: bool,
+    pub join: Vec<Join>,
     pub junctions: Vec<SelectJunction>,
-}
-
-impl QueryBody for SelectBody {
-    fn build(
-        &self,
-        ctx: &mut PgQueryCtx,
-        path: &rpds::Vector<String>,
-        res_count: QueryResCount,
-    ) -> (ExprType, Tokens) {
-        return self.build_internal(ctx, &HashMap::new(), path, res_count);
-    }
+    pub limit: Option<Expr>,
+    pub order: Vec<(Expr, Order)>,
+    pub returning: Vec<Returning>,
+    pub table: NamedSelectSource,
+    pub where_: Option<Expr>,
 }
 
 impl SelectBody {
@@ -240,4 +213,31 @@ impl SelectBody {
         }
         (out_type, out)
     }
+}
+
+impl QueryBody for SelectBody {
+    fn build(
+        &self,
+        ctx: &mut PgQueryCtx,
+        path: &rpds::Vector<String>,
+        res_count: QueryResCount,
+    ) -> (ExprType, Tokens) {
+        return self.build_internal(ctx, &HashMap::new(), path, res_count);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectJunction {
+    pub body: Box<dyn QueryBody>,
+    pub op: SelectJunctionOperator,
+}
+
+#[derive(Clone, Debug)]
+pub enum SelectJunctionOperator {
+    Except,
+    ExceptAll,
+    Intersect,
+    IntersectAll,
+    Union,
+    UnionAll,
 }

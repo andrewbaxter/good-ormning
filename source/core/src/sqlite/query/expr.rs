@@ -1,22 +1,5 @@
-use serde::{
-    Serialize,
-    Deserialize,
-};
 #[cfg(feature = "chrono")]
 use chrono::FixedOffset;
-use {
-    quote::{
-        ToTokens,
-        format_ident,
-        quote,
-    },
-    std::{
-        collections::HashMap,
-        fmt::Display,
-        rc::Rc,
-    },
-    syn::Path,
-};
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
@@ -47,360 +30,73 @@ use crate::{
 };
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
+use serde::{
+    Serialize,
+    Deserialize,
+};
 use super::select::{
     Select,
     Order,
 };
-
-#[derive(Clone)]
-pub struct ExprType(pub Vec<(Binding, Type)>);
-
-impl ExprType {
-    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
-        if self.0.len() != 1 {
-            errs.err(path, format!("Expected scalar expression but got {} fields", self.0.len()));
-            return None;
-        }
-        return Some(self.0[0].1.clone());
-    }
-}
-
-#[allow(clippy::type_complexity)]
-pub struct ComputeType(pub Rc<dyn Fn(&mut SqliteQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
-
-impl Clone for ComputeType {
-    fn clone(&self) -> Self {
-        return ComputeType(self.0.clone());
-    }
-}
-
-impl std::fmt::Debug for ComputeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f.write_str("ComputeType");
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameType {
-    Rows,
-    Range,
-    Groups,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameBound {
-    UnboundedPreceding,
-    Preceding(Box<SerialExpr>),
-    CurrentRow,
-    Following(Box<SerialExpr>),
-    UnboundedFollowing,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameExclude {
-    CurrentRow,
-    Group,
-    Ties,
-    NoOthers,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SerialWindowFrame {
-    pub type_: SerialWindowFrameType,
-    pub start: SerialWindowFrameBound,
-    pub end: Option<SerialWindowFrameBound>,
-    pub exclude: Option<SerialWindowFrameExclude>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialExpr {
-    LitArray(Vec<SerialExpr>),
-    LitNull(SimpleType),
-    LitBool(bool),
-    LitAuto(i64),
-    LitI16(i16),
-    LitI32(i32),
-    LitI64(i64),
-    LitU32(u32),
-    LitF32(f32),
-    LitF64(f64),
-    LitString(String),
-    LitBytes(Vec<u8>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeSChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeMsChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeSJiff(Timestamp),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeMsJiff(Timestamp),
-    BinOp {
-        left: Box<SerialExpr>,
-        op: BinOp,
-        right: Box<SerialExpr>,
+use {
+    quote::{
+        ToTokens,
+        format_ident,
+        quote,
     },
-    BinOpChain {
-        op: BinOp,
-        exprs: Vec<SerialExpr>,
+    std::{
+        collections::HashMap,
+        fmt::Display,
+        rc::Rc,
     },
-    PrefixOp {
-        op: PrefixOp,
-        right: Box<SerialExpr>,
-    },
-    Cast(Box<SerialExpr>, Type),
-    Collate(Box<SerialExpr>, String),
-    Like {
-        expr: Box<SerialExpr>,
-        pattern: Box<SerialExpr>,
-        escape: Option<Box<SerialExpr>>,
-        glob: bool,
-    },
-    Between {
-        e: Box<SerialExpr>,
-        negated: bool,
-        low: Box<SerialExpr>,
-        high: Box<SerialExpr>,
-    },
-}
+    syn::Path,
+};
 
-impl From<SerialWindowFrameType> for WindowFrameType {
-    fn from(s: SerialWindowFrameType) -> Self {
-        match s {
-            SerialWindowFrameType::Rows => WindowFrameType::Rows,
-            SerialWindowFrameType::Range => WindowFrameType::Range,
-            SerialWindowFrameType::Groups => WindowFrameType::Groups,
-        }
-    }
-}
-
-impl From<SerialWindowFrameBound> for WindowFrameBound {
-    fn from(s: SerialWindowFrameBound) -> Self {
-        match s {
-            SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
-            SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
-            SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
-            SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
-            SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
-        }
-    }
-}
-
-impl From<SerialWindowFrameExclude> for WindowFrameExclude {
-    fn from(s: SerialWindowFrameExclude) -> Self {
-        match s {
-            SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
-            SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
-            SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
-            SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
-        }
-    }
-}
-
-impl From<SerialWindowFrame> for WindowFrame {
-    fn from(s: SerialWindowFrame) -> Self {
-        WindowFrame {
-            type_: WindowFrameType::from(s.type_),
-            start: WindowFrameBound::from(s.start),
-            end: s.end.map(WindowFrameBound::from),
-            exclude: s.exclude.map(WindowFrameExclude::from),
-        }
-    }
-}
-
-impl From<SerialExpr> for Expr {
-    fn from(s: SerialExpr) -> Self {
-        match s {
-            SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
-            SerialExpr::LitNull(t) => Expr::LitNull(t),
-            SerialExpr::LitBool(b) => Expr::LitBool(b),
-            SerialExpr::LitAuto(v) => Expr::LitAuto(v),
-            SerialExpr::LitI16(v) => Expr::LitI16(v),
-            SerialExpr::LitI32(v) => Expr::LitI32(v),
-            SerialExpr::LitI64(v) => Expr::LitI64(v),
-            SerialExpr::LitU32(v) => Expr::LitU32(v),
-            SerialExpr::LitF32(v) => Expr::LitF32(v),
-            SerialExpr::LitF64(v) => Expr::LitF64(v),
-            SerialExpr::LitString(v) => Expr::LitString(v),
-            SerialExpr::LitBytes(v) => Expr::LitBytes(v),
-            #[cfg(feature = "chrono")]
-            SerialExpr::LitUtcTimeSChrono(v) => Expr::LitUtcTimeSChrono(v),
-            #[cfg(feature = "chrono")]
-            SerialExpr::LitUtcTimeMsChrono(v) => Expr::LitUtcTimeMsChrono(v),
-            #[cfg(feature = "chrono")]
-            SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
-            #[cfg(feature = "jiff")]
-            SerialExpr::LitUtcTimeSJiff(v) => Expr::LitUtcTimeSJiff(v),
-            #[cfg(feature = "jiff")]
-            SerialExpr::LitUtcTimeMsJiff(v) => Expr::LitUtcTimeMsJiff(v),
-            SerialExpr::BinOp { left, op, right } => Expr::BinOp {
-                left: Box::new(Expr::from(*left)),
-                op: op,
-                right: Box::new(Expr::from(*right)),
+macro_rules! empty_type{
+    ($out: expr, $t: expr) => {
+        (ExprType(vec![(Binding::empty(), Type {
+            type_: SimpleType {
+                type_: $t,
+                custom: None,
             },
-            SerialExpr::BinOpChain { op, exprs } => Expr::BinOpChain {
-                op: op,
-                exprs: exprs.into_iter().map(Expr::from).collect(),
-            },
-            SerialExpr::PrefixOp { op, right } => Expr::PrefixOp {
-                op: op,
-                right: Box::new(Expr::from(*right)),
-            },
-            SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
-            SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
-            SerialExpr::Like { expr, pattern, escape, glob } => Expr::Like {
-                expr: Box::new(Expr::from(*expr)),
-                pattern: Box::new(Expr::from(*pattern)),
-                escape: escape.map(|e| Box::new(Expr::from(*e))),
-                glob,
-            },
-            SerialExpr::Between { e, negated, low, high } => Expr::Between {
-                e: Box::new(Expr::from(*e)),
-                negated,
-                low: Box::new(Expr::from(*low)),
-                high: Box::new(Expr::from(*high)),
-            },
-        }
+            opt: false,
+            arr: false,
+        })]), $out)
+    };
+}
+
+trait FlatWithIndex<T>: Iterator<Item = T> {
+    fn flat_with_index<
+        R: Iterator,
+        F: FnMut(usize, T) -> R,
+    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
+    where
+        Self: Sized;
+}
+
+impl<I: Iterator<Item = T>, T> FlatWithIndex<T> for I {
+    fn flat_with_index<
+        R: Iterator,
+        F: FnMut(usize, T) -> R,
+    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
+    where
+        Self: Sized {
+        WithIndex {
+            iter: self,
+            f: f,
+            i: 0,
+            _phantom: std::marker::PhantomData,
+        }.flatten()
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameType {
-    Rows,
-    Range,
-    Groups,
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameBound {
-    UnboundedPreceding,
-    Preceding(Box<Expr>),
-    CurrentRow,
-    Following(Box<Expr>),
-    UnboundedFollowing,
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameExclude {
-    CurrentRow,
-    Group,
-    Ties,
-    NoOthers,
-}
-
-#[derive(Clone, Debug)]
-pub struct WindowFrame {
-    pub type_: WindowFrameType,
-    pub start: WindowFrameBound,
-    pub end: Option<WindowFrameBound>,
-    pub exclude: Option<WindowFrameExclude>,
-}
-
-#[derive(Clone, Debug)]
-pub enum Expr {
-    LitArray(Vec<Expr>),
-    // A null value needs a type for type checking purposes. It will always be trated
-    // as an optional value.
-    LitNull(SimpleType),
-    LitBool(bool),
-    LitAuto(i64),
-    LitI16(i16),
-    LitI32(i32),
-    LitI64(i64),
-    LitU32(u32),
-    LitF32(f32),
-    LitF64(f64),
-    LitString(String),
-    LitBytes(Vec<u8>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeSChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeMsChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeSJiff(Timestamp),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeMsJiff(Timestamp),
-    /// A query parameter. This will become a parameter to the generated Rust function
-    /// with the specified `name` and `type_`.
-    Param {
-        name: String,
-        type_: Type,
-    },
-    /// This evaluates to the value of a field in the query main or joined tables. If
-    /// you've aliased tables or field names, you'll have to instantiate `FieldId`
-    /// yourself with the appropriate values. For synthetic values like function
-    /// results you may need a `FieldId` with an empty `TableId` (`""`).
-    Field(FieldRef),
-    BinOp {
-        left: Box<Expr>,
-        op: BinOp,
-        right: Box<Expr>,
-    },
-    BinOpChain {
-        op: BinOp,
-        exprs: Vec<Expr>,
-    },
-    PrefixOp {
-        op: PrefixOp,
-        right: Box<Expr>,
-    },
-    Call {
-        func: String,
-        args: Vec<Expr>,
-        compute_type: ComputeType,
-        filter: Option<Box<Expr>>,
-    },
-    Window {
-        expr: Box<Expr>,
-        partition_by: Vec<Expr>,
-        order_by: Vec<(Expr, Order)>,
-        frame: Option<WindowFrame>,
-    },
-    /// A sub SELECT query.
-    Select(Box<Select>),
-    /// This is a synthetic expression, saying to treat the result of the expression as
-    /// having the specified type. Use this for casting between primitive types and
-    /// Rust new-types for instance.
-    Cast(Box<Expr>, Type),
-    Exists(Box<super::select::Select>),
-    Collate(Box<Expr>, String),
-    Like {
-        expr: Box<Expr>,
-        pattern: Box<Expr>,
-        escape: Option<Box<Expr>>,
-        glob: bool,
-    },
-    Between {
-        e: Box<Expr>,
-        negated: bool,
-        low: Box<Expr>,
-        high: Box<Expr>,
-    },
-    Case {
-        operand: Option<Box<Expr>>,
-        conditions: Vec<(Expr, Expr)>,
-        else_: Option<Box<Expr>>,
-    },
-    Paren(Box<Expr>),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Binding {
-    pub table_id: String,
     pub id: String,
+    pub table_id: String,
 }
 
 impl Binding {
-    pub fn local(name: String) -> Self {
-        Binding {
-            table_id: "".into(),
-            id: name,
-        }
-    }
-
     pub fn empty() -> Self {
         Binding {
             table_id: "".into(),
@@ -412,6 +108,13 @@ impl Binding {
         Binding {
             table_id: f.table_id.clone(),
             id: f.field_id.clone(),
+        }
+    }
+
+    pub fn local(name: String) -> Self {
+        Binding {
+            table_id: "".into(),
+            id: name,
         }
     }
 
@@ -435,134 +138,498 @@ impl Display for Binding {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BinOp {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
     And,
-    Or,
-    Equals,
-    NotEquals,
-    Is,
-    IsNot,
-    LessThan,
-    LessThanEqualTo,
-    GreaterThan,
-    GreaterThanEqualTo,
-    Like,
-    In,
-    NotIn,
-    StringConcat,
-    Mod,
     BitwiseAnd,
     BitwiseOr,
-    BitwiseXor,
     BitwiseShiftLeft,
     BitwiseShiftRight,
-    IsDistinctFrom,
-    IsNotDistinctFrom,
+    BitwiseXor,
+    Divide,
+    Equals,
     Glob,
-    Regexp,
+    GreaterThan,
+    GreaterThanEqualTo,
+    In,
+    Is,
+    IsDistinctFrom,
+    IsNot,
+    IsNotDistinctFrom,
+    LessThan,
+    LessThanEqualTo,
+    Like,
     Match,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PrefixOp {
-    Not,
-    BitwiseNot,
     Minus,
+    Mod,
+    Multiply,
+    NotEquals,
+    NotIn,
+    Or,
+    Plus,
+    Regexp,
+    StringConcat,
 }
 
-macro_rules! empty_type{
-    ($out: expr, $t: expr) => {
-        (ExprType(vec![(Binding::empty(), Type {
+pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
+    let Some(right) = right.assert_scalar(errs, path) else {
+        return;
+    };
+    check_general_same_type_assignable(errs, path, left, &right);
+}
+
+pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+    check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
+        type_: SimpleType {
+            type_: SimpleSimpleType::Bool,
+            custom: None,
+        },
+        opt: false,
+        arr: false,
+    })]));
+}
+
+pub fn check_general_same(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
+    if left.0.len() != right.0.len() {
+        ctx
+            .errs
+            .err(
+                path,
+                format!(
+                    "Operator arms record type lengths don't match: left has {} fields and right has {}",
+                    left.0.len(),
+                    right.0.len()
+                ),
+            );
+    } else if left.0.len() == 1 && right.0.len() == 1 {
+        check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1);
+    } else {
+        for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
+            check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1);
+        }
+    }
+}
+
+pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
+    if left.type_.type_ != right.type_.type_ {
+        ctx
+            .errs
+            .err(
+                path,
+                format!(
+                    "Operator arms types don't match: left has type {:?} and right has {:?}",
+                    left.type_.type_,
+                    right.type_.type_
+                ),
+            );
+    }
+}
+
+pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &Type) {
+    if left.type_.type_ != right.type_.type_ {
+        errs.err(
+            path,
+            format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
+        );
+    }
+    if !left.opt && right.opt {
+        errs.err(path, "Expression is optional but destination is not".to_string());
+    }
+}
+
+pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
+    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
+    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
+    check_general_same_type(&mut SqliteQueryCtx::new(errs.clone(), HashMap::new()), path, &left, &right);
+    return Some(left);
+}
+
+#[allow(clippy::type_complexity)]
+pub struct ComputeType(pub Rc<dyn Fn(&mut SqliteQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
+
+impl Clone for ComputeType {
+    fn clone(&self) -> Self {
+        return ComputeType(self.0.clone());
+    }
+}
+
+impl std::fmt::Debug for ComputeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return f.write_str("ComputeType");
+    }
+}
+
+fn do_bin_op(
+    ctx: &mut SqliteQueryCtx,
+    path: &rpds::Vector<String>,
+    scope: &HashMap<Binding, Type>,
+    op: &BinOp,
+    exprs: &[Expr],
+) -> (ExprType, Tokens) {
+    let mut out = Tokens::new();
+    let token;
+    match op {
+        BinOp::In | BinOp::NotIn => {
+            if exprs.len() != 2 {
+                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
+                return (ExprType(vec![]), Tokens::new());
+            }
+            let token = match op {
+                BinOp::In => "in",
+                BinOp::NotIn => "not in",
+                _ => unreachable!(),
+            };
+            ctx.op_stack.push(op.clone());
+            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
+            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
+            ctx.op_stack.pop();
+            if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                if right_t.0.len() == left_t.0.len() {
+                    check_general_same(ctx, path, &left_t, &right_t);
+                } else if !left_t.0.is_empty() && right_t.0.len() % left_t.0.len() == 0 {
+                    for i in 0 .. (right_t.0.len() / left_t.0.len()) {
+                        let start = i * left_t.0.len();
+                        let end = start + left_t.0.len();
+                        let sub_right_t = ExprType(right_t.0[start .. end].to_vec());
+                        check_general_same(
+                            ctx,
+                            &path.push_back(format!("Right set element {}", i)),
+                            &left_t,
+                            &sub_right_t,
+                        );
+                    }
+                } else {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                op,
+                                left_t.0.len(),
+                                right_t.0.len()
+                            ),
+                        );
+                }
+            }
+            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
+            return (ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::Bool,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]), out);
+        },
+        BinOp::Equals |
+        BinOp::NotEquals |
+        BinOp::LessThan |
+        BinOp::LessThanEqualTo |
+        BinOp::GreaterThan |
+        BinOp::GreaterThanEqualTo |
+        BinOp::Is |
+        BinOp::IsNot |
+        BinOp::IsDistinctFrom |
+        BinOp::IsNotDistinctFrom => {
+            if exprs.len() != 2 {
+                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
+                return (ExprType(vec![]), Tokens::new());
+            }
+            let token = match op {
+                BinOp::Equals => "=",
+                BinOp::NotEquals => "<>",
+                BinOp::LessThan => "<",
+                BinOp::LessThanEqualTo => "<=",
+                BinOp::GreaterThan => ">",
+                BinOp::GreaterThanEqualTo => ">=",
+                BinOp::Is => "is",
+                BinOp::IsNot => "is not",
+                BinOp::IsDistinctFrom => "is distinct from",
+                BinOp::IsNotDistinctFrom => "is not distinct from",
+                _ => unreachable!(),
+            };
+            ctx.op_stack.push(op.clone());
+            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
+            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
+            ctx.op_stack.pop();
+            if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                if left_t.0.len() == right_t.0.len() {
+                    check_general_same(ctx, path, &left_t, &right_t);
+                } else {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            format!(
+                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
+                                op,
+                                left_t.0.len(),
+                                right_t.0.len()
+                            ),
+                        );
+                }
+            }
+            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
+            return (ExprType(vec![(Binding::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::Bool,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]), out);
+        },
+        BinOp::Plus => {
+            token = "+";
+        },
+        BinOp::Minus => {
+            token = "-";
+        },
+        BinOp::Multiply => {
+            token = "*";
+        },
+        BinOp::Divide => {
+            token = "/";
+        },
+        BinOp::And => {
+            token = "and";
+        },
+        BinOp::Or => {
+            token = "or";
+        },
+        BinOp::Like => {
+            token = "like";
+        },
+        BinOp::StringConcat => {
+            token = "||";
+        },
+        BinOp::Mod => {
+            token = "%";
+        },
+        BinOp::BitwiseAnd => {
+            token = "&";
+        },
+        BinOp::BitwiseOr => {
+            token = "|";
+        },
+        BinOp::BitwiseXor => {
+            token = "~";
+        },
+        BinOp::BitwiseShiftLeft => {
+            token = "<<";
+        },
+        BinOp::BitwiseShiftRight => {
+            token = ">>";
+        },
+        BinOp::Glob => {
+            token = "glob";
+        },
+        BinOp::Regexp => {
+            token = "regexp";
+        },
+        BinOp::Match => {
+            token = "match";
+        },
+    }
+    let mut out_t = None;
+    for (i, res) in exprs.iter().enumerate() {
+        if i > 0 {
+            out.s(token);
+        }
+        let (t, tokens): (ExprType, Tokens) = res.build(ctx, &path.push_back(format!("Operand {}", i)), scope);
+        let got_t = match t.assert_scalar(&mut ctx.errs, &path.push_back(format!("Operand {}", i))) {
+            Some(t) => t,
+            None => {
+                continue;
+            },
+        };
+        match op {
+            BinOp::Plus |
+            BinOp::Minus |
+            BinOp::Multiply |
+            BinOp::Divide |
+            BinOp::Mod |
+            BinOp::BitwiseAnd |
+            BinOp::BitwiseOr |
+            BinOp::BitwiseXor |
+            BinOp::BitwiseShiftLeft |
+            BinOp::BitwiseShiftRight => {
+                if !matches!(
+                    got_t.type_.type_,
+                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto
+                ) &&
+                    !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
+                    // arithmetic allows floats, bitwise only ints
+                } else if !matches!(
+                    got_t.type_.type_,
+                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
+                        SimpleSimpleType::Auto
+                ) {
+                    ctx
+                        .errs
+                        .err(
+                            &path.push_back(format!("Operand {}", i)),
+                            format!(
+                                "Arithmetic/Bitwise operator {:?} not supported for type {:?}",
+                                op,
+                                got_t.type_.type_
+                            ),
+                        );
+                }
+            },
+            BinOp::And | BinOp::Or => {
+                if !matches!(got_t.type_.type_, SimpleSimpleType::Bool) {
+                    ctx
+                        .errs
+                        .err(
+                            &path.push_back(format!("Operand {}", i)),
+                            format!("Logical operator {:?} not supported for type {:?}", op, got_t.type_.type_),
+                        );
+                }
+            },
+            BinOp::Equals |
+            BinOp::NotEquals |
+            BinOp::Is |
+            BinOp::IsNot |
+            BinOp::LessThan |
+            BinOp::LessThanEqualTo |
+            BinOp::GreaterThan |
+            BinOp::GreaterThanEqualTo |
+            BinOp::Like |
+            BinOp::StringConcat |
+            BinOp::IsDistinctFrom |
+            BinOp::IsNotDistinctFrom |
+            BinOp::Glob |
+            BinOp::Regexp |
+            BinOp::Match => {
+
+            },
+            BinOp::In | BinOp::NotIn => unreachable!(),
+        }
+        if let Some(out_t) = &mut out_t {
+            check_general_same_type(ctx, path, out_t, &got_t);
+        } else {
+            out_t = Some(got_t);
+        }
+        out.s(&tokens.to_string());
+    }
+    let res_t = match op {
+        BinOp::Like | BinOp::Glob | BinOp::Regexp | BinOp::Match => Type {
             type_: SimpleType {
-                type_: $t,
+                type_: SimpleSimpleType::Bool,
                 custom: None,
             },
             opt: false,
             arr: false,
-        })]), $out)
+        },
+        BinOp::StringConcat => Type {
+            type_: SimpleType {
+                type_: SimpleSimpleType::String,
+                custom: None,
+            },
+            opt: false,
+            arr: false,
+        },
+        BinOp::In | BinOp::NotIn => unreachable!(),
+        _ => out_t.unwrap_or(Type {
+            type_: SimpleType {
+                type_: SimpleSimpleType::I32,
+                custom: None,
+            },
+            opt: false,
+            arr: false,
+        }),
     };
+    return (ExprType(vec![(Binding::empty(), res_t)]), out);
 }
 
-impl WindowFrame {
-    pub fn build(
-        &self,
-        ctx: &mut SqliteQueryCtx,
-        path: &rpds::Vector<String>,
-        scope: &HashMap<Binding, Type>,
-    ) -> Tokens {
-        let mut out = Tokens::new();
-        match self.type_ {
-            WindowFrameType::Rows => {
-                out.s("rows");
-            },
-            WindowFrameType::Range => {
-                out.s("range");
-            },
-            WindowFrameType::Groups => {
-                out.s("groups");
-            },
-        }
-        if let Some(end) = &self.end {
-            out.s("between");
-            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
-            out.s("and");
-            out.s(&end.build(ctx, &path.push_back("End".into()), scope).to_string());
-        } else {
-            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
-        }
-        if let Some(exclude) = &self.exclude {
-            out.s("exclude");
-            match exclude {
-                WindowFrameExclude::CurrentRow => {
-                    out.s("current row");
-                },
-                WindowFrameExclude::Group => {
-                    out.s("group");
-                },
-                WindowFrameExclude::Ties => {
-                    out.s("ties");
-                },
-                WindowFrameExclude::NoOthers => {
-                    out.s("no others");
-                },
-            }
-        }
-        out
-    }
-}
-
-impl WindowFrameBound {
-    pub fn build(
-        &self,
-        ctx: &mut SqliteQueryCtx,
-        path: &rpds::Vector<String>,
-        scope: &HashMap<Binding, Type>,
-    ) -> Tokens {
-        let mut out = Tokens::new();
-        match self {
-            WindowFrameBound::UnboundedPreceding => {
-                out.s("unbounded preceding");
-            },
-            WindowFrameBound::Preceding(e) => {
-                let (_, tokens) = e.build(ctx, path, scope);
-                out.s(&tokens.to_string()).s("preceding");
-            },
-            WindowFrameBound::CurrentRow => {
-                out.s("current row");
-            },
-            WindowFrameBound::Following(e) => {
-                let (_, tokens) = e.build(ctx, path, scope);
-                out.s(&tokens.to_string()).s("following");
-            },
-            WindowFrameBound::UnboundedFollowing => {
-                out.s("unbounded following");
-            },
-        }
-        out
-    }
+#[derive(Clone, Debug)]
+pub enum Expr {
+    Between {
+        e: Box<Expr>,
+        negated: bool,
+        low: Box<Expr>,
+        high: Box<Expr>,
+    },
+    BinOp {
+        left: Box<Expr>,
+        op: BinOp,
+        right: Box<Expr>,
+    },
+    BinOpChain {
+        op: BinOp,
+        exprs: Vec<Expr>,
+    },
+    Call {
+        func: String,
+        args: Vec<Expr>,
+        compute_type: ComputeType,
+        filter: Option<Box<Expr>>,
+    },
+    Case {
+        operand: Option<Box<Expr>>,
+        conditions: Vec<(Expr, Expr)>,
+        else_: Option<Box<Expr>>,
+    },
+    /// This is a synthetic expression, saying to treat the result of the expression as
+    /// having the specified type. Use this for casting between primitive types and
+    /// Rust new-types for instance.
+    Cast(Box<Expr>, Type),
+    Collate(Box<Expr>, String),
+    Exists(Box<super::select::Select>),
+    /// This evaluates to the value of a field in the query main or joined tables. If
+    /// you've aliased tables or field names, you'll have to instantiate `FieldId`
+    /// yourself with the appropriate values. For synthetic values like function
+    /// results you may need a `FieldId` with an empty `TableId` (`""`).
+    Field(FieldRef),
+    Like {
+        expr: Box<Expr>,
+        pattern: Box<Expr>,
+        escape: Option<Box<Expr>>,
+        glob: bool,
+    },
+    LitArray(Vec<Expr>),
+    LitAuto(i64),
+    LitBool(bool),
+    LitBytes(Vec<u8>),
+    LitF32(f32),
+    LitF64(f64),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    LitI16(i16),
+    LitI32(i32),
+    LitI64(i64),
+    // A null value needs a type for type checking purposes. It will always be trated
+    // as an optional value.
+    LitNull(SimpleType),
+    LitString(String),
+    LitU32(u32),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeMsChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeMsJiff(Timestamp),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeSChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeSJiff(Timestamp),
+    /// A query parameter. This will become a parameter to the generated Rust function
+    /// with the specified `name` and `type_`.
+    Param {
+        name: String,
+        type_: Type,
+    },
+    Paren(Box<Expr>),
+    PrefixOp {
+        op: PrefixOp,
+        right: Box<Expr>,
+    },
+    /// A sub SELECT query.
+    Select(Box<Select>),
+    Window {
+        expr: Box<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<(Expr, Order)>,
+        frame: Option<WindowFrame>,
+    },
 }
 
 impl Expr {
@@ -1197,394 +1264,327 @@ impl Expr {
     }
 }
 
-pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
-    check_general_same(ctx, path, t, &ExprType(vec![(Binding::empty(), Type {
-        type_: SimpleType {
-            type_: SimpleSimpleType::Bool,
-            custom: None,
-        },
-        opt: false,
-        arr: false,
-    })]));
-}
-
-pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
-    let Some(right) = right.assert_scalar(errs, path) else {
-        return;
-    };
-    check_general_same_type_assignable(errs, path, left, &right);
-}
-
-pub fn check_general_same(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
-    if left.0.len() != right.0.len() {
-        ctx
-            .errs
-            .err(
-                path,
-                format!(
-                    "Operator arms record type lengths don't match: left has {} fields and right has {}",
-                    left.0.len(),
-                    right.0.len()
-                ),
-            );
-    } else if left.0.len() == 1 && right.0.len() == 1 {
-        check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1);
-    } else {
-        for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
-            check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1);
+impl From<SerialExpr> for Expr {
+    fn from(s: SerialExpr) -> Self {
+        match s {
+            SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
+            SerialExpr::LitNull(t) => Expr::LitNull(t),
+            SerialExpr::LitBool(b) => Expr::LitBool(b),
+            SerialExpr::LitAuto(v) => Expr::LitAuto(v),
+            SerialExpr::LitI16(v) => Expr::LitI16(v),
+            SerialExpr::LitI32(v) => Expr::LitI32(v),
+            SerialExpr::LitI64(v) => Expr::LitI64(v),
+            SerialExpr::LitU32(v) => Expr::LitU32(v),
+            SerialExpr::LitF32(v) => Expr::LitF32(v),
+            SerialExpr::LitF64(v) => Expr::LitF64(v),
+            SerialExpr::LitString(v) => Expr::LitString(v),
+            SerialExpr::LitBytes(v) => Expr::LitBytes(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitUtcTimeSChrono(v) => Expr::LitUtcTimeSChrono(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitUtcTimeMsChrono(v) => Expr::LitUtcTimeMsChrono(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
+            #[cfg(feature = "jiff")]
+            SerialExpr::LitUtcTimeSJiff(v) => Expr::LitUtcTimeSJiff(v),
+            #[cfg(feature = "jiff")]
+            SerialExpr::LitUtcTimeMsJiff(v) => Expr::LitUtcTimeMsJiff(v),
+            SerialExpr::BinOp { left, op, right } => Expr::BinOp {
+                left: Box::new(Expr::from(*left)),
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::BinOpChain { op, exprs } => Expr::BinOpChain {
+                op: op,
+                exprs: exprs.into_iter().map(Expr::from).collect(),
+            },
+            SerialExpr::PrefixOp { op, right } => Expr::PrefixOp {
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
+            SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
+            SerialExpr::Like { expr, pattern, escape, glob } => Expr::Like {
+                expr: Box::new(Expr::from(*expr)),
+                pattern: Box::new(Expr::from(*pattern)),
+                escape: escape.map(|e| Box::new(Expr::from(*e))),
+                glob,
+            },
+            SerialExpr::Between { e, negated, low, high } => Expr::Between {
+                e: Box::new(Expr::from(*e)),
+                negated,
+                low: Box::new(Expr::from(*low)),
+                high: Box::new(Expr::from(*high)),
+            },
         }
     }
 }
 
-pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
-    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
-    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
-    check_general_same_type(&mut SqliteQueryCtx::new(errs.clone(), HashMap::new()), path, &left, &right);
-    return Some(left);
-}
+#[derive(Clone)]
+pub struct ExprType(pub Vec<(Binding, Type)>);
 
-pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
-    if left.type_.type_ != right.type_.type_ {
-        ctx
-            .errs
-            .err(
-                path,
-                format!(
-                    "Operator arms types don't match: left has type {:?} and right has {:?}",
-                    left.type_.type_,
-                    right.type_.type_
-                ),
-            );
-    }
-}
-
-pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &Type) {
-    if left.type_.type_ != right.type_.type_ {
-        errs.err(
-            path,
-            format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
-        );
-    }
-    if !left.opt && right.opt {
-        errs.err(path, "Expression is optional but destination is not".to_string());
-    }
-}
-
-fn do_bin_op(
-    ctx: &mut SqliteQueryCtx,
-    path: &rpds::Vector<String>,
-    scope: &HashMap<Binding, Type>,
-    op: &BinOp,
-    exprs: &[Expr],
-) -> (ExprType, Tokens) {
-    let mut out = Tokens::new();
-    let token;
-    match op {
-        BinOp::In | BinOp::NotIn => {
-            if exprs.len() != 2 {
-                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
-                return (ExprType(vec![]), Tokens::new());
-            }
-            let token = match op {
-                BinOp::In => "in",
-                BinOp::NotIn => "not in",
-                _ => unreachable!(),
-            };
-            ctx.op_stack.push(op.clone());
-            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
-            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
-            ctx.op_stack.pop();
-            if !left_t.0.is_empty() && !right_t.0.is_empty() {
-                if right_t.0.len() == left_t.0.len() {
-                    check_general_same(ctx, path, &left_t, &right_t);
-                } else if !left_t.0.is_empty() && right_t.0.len() % left_t.0.len() == 0 {
-                    for i in 0 .. (right_t.0.len() / left_t.0.len()) {
-                        let start = i * left_t.0.len();
-                        let end = start + left_t.0.len();
-                        let sub_right_t = ExprType(right_t.0[start .. end].to_vec());
-                        check_general_same(
-                            ctx,
-                            &path.push_back(format!("Right set element {}", i)),
-                            &left_t,
-                            &sub_right_t,
-                        );
-                    }
-                } else {
-                    ctx
-                        .errs
-                        .err(
-                            path,
-                            format!(
-                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
-                                op,
-                                left_t.0.len(),
-                                right_t.0.len()
-                            ),
-                        );
-                }
-            }
-            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
-            return (ExprType(vec![(Binding::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::Bool,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]), out);
-        },
-        BinOp::Equals |
-        BinOp::NotEquals |
-        BinOp::LessThan |
-        BinOp::LessThanEqualTo |
-        BinOp::GreaterThan |
-        BinOp::GreaterThanEqualTo |
-        BinOp::Is |
-        BinOp::IsNot |
-        BinOp::IsDistinctFrom |
-        BinOp::IsNotDistinctFrom => {
-            if exprs.len() != 2 {
-                ctx.errs.err(path, format!("Operator {:?} requires exactly 2 operands", op));
-                return (ExprType(vec![]), Tokens::new());
-            }
-            let token = match op {
-                BinOp::Equals => "=",
-                BinOp::NotEquals => "<>",
-                BinOp::LessThan => "<",
-                BinOp::LessThanEqualTo => "<=",
-                BinOp::GreaterThan => ">",
-                BinOp::GreaterThanEqualTo => ">=",
-                BinOp::Is => "is",
-                BinOp::IsNot => "is not",
-                BinOp::IsDistinctFrom => "is distinct from",
-                BinOp::IsNotDistinctFrom => "is not distinct from",
-                _ => unreachable!(),
-            };
-            ctx.op_stack.push(op.clone());
-            let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
-            let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
-            ctx.op_stack.pop();
-            if !left_t.0.is_empty() && !right_t.0.is_empty() {
-                if left_t.0.len() == right_t.0.len() {
-                    check_general_same(ctx, path, &left_t, &right_t);
-                } else {
-                    ctx
-                        .errs
-                        .err(
-                            path,
-                            format!(
-                                "Operator {:?} arms record type lengths don't match: left has {} fields and right has {}",
-                                op,
-                                left_t.0.len(),
-                                right_t.0.len()
-                            ),
-                        );
-                }
-            }
-            out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
-            return (ExprType(vec![(Binding::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::Bool,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]), out);
-        },
-        BinOp::Plus => {
-            token = "+";
-        },
-        BinOp::Minus => {
-            token = "-";
-        },
-        BinOp::Multiply => {
-            token = "*";
-        },
-        BinOp::Divide => {
-            token = "/";
-        },
-        BinOp::And => {
-            token = "and";
-        },
-        BinOp::Or => {
-            token = "or";
-        },
-        BinOp::Like => {
-            token = "like";
-        },
-        BinOp::StringConcat => {
-            token = "||";
-        },
-        BinOp::Mod => {
-            token = "%";
-        },
-        BinOp::BitwiseAnd => {
-            token = "&";
-        },
-        BinOp::BitwiseOr => {
-            token = "|";
-        },
-        BinOp::BitwiseXor => {
-            token = "~";
-        },
-        BinOp::BitwiseShiftLeft => {
-            token = "<<";
-        },
-        BinOp::BitwiseShiftRight => {
-            token = ">>";
-        },
-        BinOp::Glob => {
-            token = "glob";
-        },
-        BinOp::Regexp => {
-            token = "regexp";
-        },
-        BinOp::Match => {
-            token = "match";
-        },
-    }
-    let mut out_t = None;
-    for (i, res) in exprs.iter().enumerate() {
-        if i > 0 {
-            out.s(token);
+impl ExprType {
+    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
+        if self.0.len() != 1 {
+            errs.err(path, format!("Expected scalar expression but got {} fields", self.0.len()));
+            return None;
         }
-        let (t, tokens): (ExprType, Tokens) = res.build(ctx, &path.push_back(format!("Operand {}", i)), scope);
-        let got_t = match t.assert_scalar(&mut ctx.errs, &path.push_back(format!("Operand {}", i))) {
-            Some(t) => t,
-            None => {
-                continue;
-            },
-        };
-        match op {
-            BinOp::Plus |
-            BinOp::Minus |
-            BinOp::Multiply |
-            BinOp::Divide |
-            BinOp::Mod |
-            BinOp::BitwiseAnd |
-            BinOp::BitwiseOr |
-            BinOp::BitwiseXor |
-            BinOp::BitwiseShiftLeft |
-            BinOp::BitwiseShiftRight => {
-                if !matches!(
-                    got_t.type_.type_,
-                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto
-                ) &&
-                    !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
-                    // arithmetic allows floats, bitwise only ints
-                } else if !matches!(
-                    got_t.type_.type_,
-                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
-                        SimpleSimpleType::Auto
-                ) {
-                    ctx
-                        .errs
-                        .err(
-                            &path.push_back(format!("Operand {}", i)),
-                            format!(
-                                "Arithmetic/Bitwise operator {:?} not supported for type {:?}",
-                                op,
-                                got_t.type_.type_
-                            ),
-                        );
-                }
-            },
-            BinOp::And | BinOp::Or => {
-                if !matches!(got_t.type_.type_, SimpleSimpleType::Bool) {
-                    ctx
-                        .errs
-                        .err(
-                            &path.push_back(format!("Operand {}", i)),
-                            format!("Logical operator {:?} not supported for type {:?}", op, got_t.type_.type_),
-                        );
-                }
-            },
-            BinOp::Equals |
-            BinOp::NotEquals |
-            BinOp::Is |
-            BinOp::IsNot |
-            BinOp::LessThan |
-            BinOp::LessThanEqualTo |
-            BinOp::GreaterThan |
-            BinOp::GreaterThanEqualTo |
-            BinOp::Like |
-            BinOp::StringConcat |
-            BinOp::IsDistinctFrom |
-            BinOp::IsNotDistinctFrom |
-            BinOp::Glob |
-            BinOp::Regexp |
-            BinOp::Match => {
+        return Some(self.0[0].1.clone());
+    }
+}
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PrefixOp {
+    BitwiseNot,
+    Minus,
+    Not,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialExpr {
+    Between {
+        e: Box<SerialExpr>,
+        negated: bool,
+        low: Box<SerialExpr>,
+        high: Box<SerialExpr>,
+    },
+    BinOp {
+        left: Box<SerialExpr>,
+        op: BinOp,
+        right: Box<SerialExpr>,
+    },
+    BinOpChain {
+        op: BinOp,
+        exprs: Vec<SerialExpr>,
+    },
+    Cast(Box<SerialExpr>, Type),
+    Collate(Box<SerialExpr>, String),
+    Like {
+        expr: Box<SerialExpr>,
+        pattern: Box<SerialExpr>,
+        escape: Option<Box<SerialExpr>>,
+        glob: bool,
+    },
+    LitArray(Vec<SerialExpr>),
+    LitAuto(i64),
+    LitBool(bool),
+    LitBytes(Vec<u8>),
+    LitF32(f32),
+    LitF64(f64),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    LitI16(i16),
+    LitI32(i32),
+    LitI64(i64),
+    LitNull(SimpleType),
+    LitString(String),
+    LitU32(u32),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeMsChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeMsJiff(Timestamp),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeSChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeSJiff(Timestamp),
+    PrefixOp {
+        op: PrefixOp,
+        right: Box<SerialExpr>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SerialWindowFrame {
+    pub end: Option<SerialWindowFrameBound>,
+    pub exclude: Option<SerialWindowFrameExclude>,
+    pub start: SerialWindowFrameBound,
+    pub type_: SerialWindowFrameType,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameBound {
+    CurrentRow,
+    Following(Box<SerialExpr>),
+    Preceding(Box<SerialExpr>),
+    UnboundedFollowing,
+    UnboundedPreceding,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameExclude {
+    CurrentRow,
+    Group,
+    NoOthers,
+    Ties,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameType {
+    Groups,
+    Range,
+    Rows,
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowFrame {
+    pub end: Option<WindowFrameBound>,
+    pub exclude: Option<WindowFrameExclude>,
+    pub start: WindowFrameBound,
+    pub type_: WindowFrameType,
+}
+
+impl WindowFrame {
+    pub fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<Binding, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self.type_ {
+            WindowFrameType::Rows => {
+                out.s("rows");
             },
-            BinOp::In | BinOp::NotIn => unreachable!(),
+            WindowFrameType::Range => {
+                out.s("range");
+            },
+            WindowFrameType::Groups => {
+                out.s("groups");
+            },
         }
-        if let Some(out_t) = &mut out_t {
-            check_general_same_type(ctx, path, out_t, &got_t);
+        if let Some(end) = &self.end {
+            out.s("between");
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
+            out.s("and");
+            out.s(&end.build(ctx, &path.push_back("End".into()), scope).to_string());
         } else {
-            out_t = Some(got_t);
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
         }
-        out.s(&tokens.to_string());
+        if let Some(exclude) = &self.exclude {
+            out.s("exclude");
+            match exclude {
+                WindowFrameExclude::CurrentRow => {
+                    out.s("current row");
+                },
+                WindowFrameExclude::Group => {
+                    out.s("group");
+                },
+                WindowFrameExclude::Ties => {
+                    out.s("ties");
+                },
+                WindowFrameExclude::NoOthers => {
+                    out.s("no others");
+                },
+            }
+        }
+        out
     }
-    let res_t = match op {
-        BinOp::Like | BinOp::Glob | BinOp::Regexp | BinOp::Match => Type {
-            type_: SimpleType {
-                type_: SimpleSimpleType::Bool,
-                custom: None,
-            },
-            opt: false,
-            arr: false,
-        },
-        BinOp::StringConcat => Type {
-            type_: SimpleType {
-                type_: SimpleSimpleType::String,
-                custom: None,
-            },
-            opt: false,
-            arr: false,
-        },
-        BinOp::In | BinOp::NotIn => unreachable!(),
-        _ => out_t.unwrap_or(Type {
-            type_: SimpleType {
-                type_: SimpleSimpleType::I32,
-                custom: None,
-            },
-            opt: false,
-            arr: false,
-        }),
-    };
-    return (ExprType(vec![(Binding::empty(), res_t)]), out);
 }
 
-trait FlatWithIndex<T>: Iterator<Item = T> {
-    fn flat_with_index<
-        R: Iterator,
-        F: FnMut(usize, T) -> R,
-    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
-    where
-        Self: Sized;
+impl From<SerialWindowFrame> for WindowFrame {
+    fn from(s: SerialWindowFrame) -> Self {
+        WindowFrame {
+            type_: WindowFrameType::from(s.type_),
+            start: WindowFrameBound::from(s.start),
+            end: s.end.map(WindowFrameBound::from),
+            exclude: s.exclude.map(WindowFrameExclude::from),
+        }
+    }
 }
 
-impl<I: Iterator<Item = T>, T> FlatWithIndex<T> for I {
-    fn flat_with_index<
-        R: Iterator,
-        F: FnMut(usize, T) -> R,
-    >(self, f: F) -> std::iter::Flatten<WithIndex<Self, F, T, R>>
-    where
-        Self: Sized {
-        WithIndex {
-            iter: self,
-            f: f,
-            i: 0,
-            _phantom: std::marker::PhantomData,
-        }.flatten()
+#[derive(Clone, Debug)]
+pub enum WindowFrameBound {
+    CurrentRow,
+    Following(Box<Expr>),
+    Preceding(Box<Expr>),
+    UnboundedFollowing,
+    UnboundedPreceding,
+}
+
+impl WindowFrameBound {
+    pub fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<Binding, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self {
+            WindowFrameBound::UnboundedPreceding => {
+                out.s("unbounded preceding");
+            },
+            WindowFrameBound::Preceding(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("preceding");
+            },
+            WindowFrameBound::CurrentRow => {
+                out.s("current row");
+            },
+            WindowFrameBound::Following(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("following");
+            },
+            WindowFrameBound::UnboundedFollowing => {
+                out.s("unbounded following");
+            },
+        }
+        out
+    }
+}
+
+impl From<SerialWindowFrameBound> for WindowFrameBound {
+    fn from(s: SerialWindowFrameBound) -> Self {
+        match s {
+            SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
+            SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
+            SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameExclude {
+    CurrentRow,
+    Group,
+    NoOthers,
+    Ties,
+}
+
+impl From<SerialWindowFrameExclude> for WindowFrameExclude {
+    fn from(s: SerialWindowFrameExclude) -> Self {
+        match s {
+            SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
+            SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
+            SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
+            SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameType {
+    Groups,
+    Range,
+    Rows,
+}
+
+impl From<SerialWindowFrameType> for WindowFrameType {
+    fn from(s: SerialWindowFrameType) -> Self {
+        match s {
+            SerialWindowFrameType::Rows => WindowFrameType::Rows,
+            SerialWindowFrameType::Range => WindowFrameType::Range,
+            SerialWindowFrameType::Groups => WindowFrameType::Groups,
+        }
     }
 }
 
 struct WithIndex<I, F, T, R> {
-    iter: I,
+    _phantom: std::marker::PhantomData<(T, R)>,
     f: F,
     i: usize,
-    _phantom: std::marker::PhantomData<(T, R)>,
+    iter: I,
 }
 
 impl<I: Iterator<Item = T>, F: FnMut(usize, T) -> R, T, R: Iterator> Iterator for WithIndex<I, F, T, R> {

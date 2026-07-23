@@ -1,3 +1,5 @@
+pub mod graph;
+
 use {
     crate::graphmigrate::graph::{
         Graph,
@@ -14,44 +16,26 @@ use {
     },
 };
 
-pub mod graph;
-
 // Clone is required for initial shuffling - once create/delete/coalesce starts no
 // more cloning
 pub trait NodeData: Clone {
-    type O;
     type I: Hash + Eq + Clone + Debug + PartialOrd + Ord;
+    type O;
 
     fn compare(&self, old: &Self, created: &HashSet<Self::I>) -> Comparison;
-    fn create_coalesce(&mut self, other: Self) -> Option<Self>;
     fn create(&self, ctx: &mut Self::O);
-    fn delete_coalesce(&mut self, other: Self) -> Option<Self>;
+    fn create_coalesce(&mut self, other: Self) -> Option<Self>;
     fn delete(&self, ctx: &mut Self::O);
-    fn update(&self, ctx: &mut Self::O, old: &Self);
+    fn delete_coalesce(&mut self, other: Self) -> Option<Self>;
     fn renamed_from(&self) -> Option<Self::I>;
-}
-
-pub struct Node<T: NodeData> {
-    deps: Vec<T::I>,
-    pub(crate) body: T,
-}
-
-impl<T: NodeData> Node<T> {
-    pub fn new(deps: Vec<T::I>, body: T) -> Self {
-        Self {
-            deps: deps,
-            body: body,
-        }
-    }
+    fn update(&self, ctx: &mut Self::O, old: &Self);
 }
 
 pub enum Comparison {
     DoNothing,
-    Update,
     Recreate,
+    Update,
 }
-
-type Version<T> = BTreeMap<<T as NodeData>::I, Node<T>>;
 
 pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>, version: &Version<T>) {
     enum DiffNode<T: NodeData> {
@@ -228,3 +212,19 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
         }
     }
 }
+
+pub struct Node<T: NodeData> {
+    pub(crate) body: T,
+    deps: Vec<T::I>,
+}
+
+impl<T: NodeData> Node<T> {
+    pub fn new(deps: Vec<T::I>, body: T) -> Self {
+        Self {
+            deps: deps,
+            body: body,
+        }
+    }
+}
+
+type Version<T> = BTreeMap<<T as NodeData>::I, Node<T>>;

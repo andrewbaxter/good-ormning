@@ -41,9 +41,9 @@ use {
 
 #[derive(Clone)]
 pub struct NodeField_ {
+    pub def: Field,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
-    pub def: Field,
 }
 
 impl NodeField_ {
@@ -189,16 +189,16 @@ impl NodeDataDispatch for NodeField_ {
         }
     }
 
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        Some(other)
+    }
+
     fn delete(&self, ctx: &mut PgMigrateCtx) {
         ctx
             .statements
             .push(
                 Tokens::new().s("alter table").id(&self.table_id).s("drop column").id(&self.def.id).to_string(),
             );
-    }
-
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {

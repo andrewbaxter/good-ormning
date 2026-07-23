@@ -1,5 +1,6 @@
 use {
     good_ormning_core::pg::{
+        Version,
         schema::{
             constraint::{
                 Constraint,
@@ -19,7 +20,6 @@ use {
             SimpleType,
             Type,
         },
-        Version,
     },
     loga::ResultContext,
     sqlparser::{
@@ -37,6 +37,20 @@ use {
     },
     tokio_postgres::Client,
 };
+
+fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
+    return FieldType {
+        type_: Type {
+            type_: SimpleType {
+                type_: sst,
+                custom: None,
+            },
+            opt: opt,
+            arr: false,
+        },
+        migration_default: None,
+    };
+}
 
 fn map_type(typname: &str, col_default: Option<&str>) -> Result<SimpleSimpleType, loga::Error> {
     // int8 is bigint; bigserial has a nextval() default.
@@ -56,20 +70,6 @@ fn map_type(typname: &str, col_default: Option<&str>) -> Result<SimpleSimpleType
         "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => return Ok(SimpleSimpleType::String),
         _ => return Err(loga::err(format!("Unknown PostgreSQL type: {:?}", typname))),
     }
-}
-
-fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
-    return FieldType {
-        type_: Type {
-            type_: SimpleType {
-                type_: sst,
-                custom: None,
-            },
-            opt: opt,
-            arr: false,
-        },
-        migration_default: None,
-    };
 }
 
 fn parse_index_columns(indexdef: &str) -> Result<Vec<String>, loga::Error> {

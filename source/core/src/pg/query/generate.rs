@@ -1,35 +1,35 @@
 use {
-    proc_macro2::{
-        TokenStream,
-        Ident,
-    },
-    quote::{
-        quote,
-        format_ident,
-        ToTokens,
-    },
-    std::collections::HashMap,
     crate::{
+        QueryResCount,
         pg::{
-            types::{
-                to_rust_types,
-                Type,
-            },
+            Query,
             query::{
+                expr::ExprValName,
                 utils::{
                     PgQueryCtx,
                     PgTableInfo,
                 },
-                expr::ExprValName,
             },
-            Query,
+            types::{
+                Type,
+                to_rust_types,
+            },
         },
         utils::{
             Errs,
             sanitize_ident,
         },
-        QueryResCount,
     },
+    proc_macro2::{
+        Ident,
+        TokenStream,
+    },
+    quote::{
+        ToTokens,
+        format_ident,
+        quote,
+    },
+    std::collections::HashMap,
 };
 
 pub fn generate_query_functions(

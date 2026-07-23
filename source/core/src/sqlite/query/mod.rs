@@ -1,10 +1,10 @@
 pub mod delete;
 pub mod expr;
+pub mod generate;
 pub mod helpers;
 pub mod insert;
+pub mod parse;
 pub mod select;
 pub mod select_body;
 pub mod update;
 pub mod utils;
-pub mod generate;
-pub mod parse;

@@ -30,11 +30,11 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Update {
+    pub index_hint: Option<IndexHint>,
+    pub returning: Vec<Returning>,
     pub table: TableRef,
     pub values: Vec<(FieldRef, Expr)>,
     pub where_: Option<Expr>,
-    pub returning: Vec<Returning>,
-    pub index_hint: Option<IndexHint>,
 }
 
 impl QueryBody for Update {

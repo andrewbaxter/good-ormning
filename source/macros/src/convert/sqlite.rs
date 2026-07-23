@@ -57,420 +57,6 @@ use {
     },
 };
 
-pub fn param_type_to_sqlite_type(pt: &ParamType, custom_types: &BTreeMap<String, SqliteCustomType>) -> SqliteType {
-    let (simple_type, custom) = match pt.base.as_str() {
-        "i16" => (SqliteSimpleSimpleType::I16, None),
-        "i32" => (SqliteSimpleSimpleType::I32, None),
-        "i64" => (SqliteSimpleSimpleType::I64, None),
-        "u32" => (SqliteSimpleSimpleType::U32, None),
-        "f32" => (SqliteSimpleSimpleType::F32, None),
-        "f64" => (SqliteSimpleSimpleType::F64, None),
-        "bool" => (SqliteSimpleSimpleType::Bool, None),
-        "string" => (SqliteSimpleSimpleType::String, None),
-        "bytes" => (SqliteSimpleSimpleType::Bytes, None),
-        #[cfg(feature = "chrono")]
-        "utctime_s_chrono" => (SqliteSimpleSimpleType::UtcTimeSChrono, None),
-        #[cfg(feature = "chrono")]
-        "utctime_ms_chrono" => (SqliteSimpleSimpleType::UtcTimeMsChrono, None),
-        #[cfg(feature = "jiff")]
-        "utctime_s_jiff" => (SqliteSimpleSimpleType::UtcTimeSJiff, None),
-        #[cfg(feature = "jiff")]
-        "utctime_ms_jiff" => (SqliteSimpleSimpleType::UtcTimeMsJiff, None),
-        "auto" => (SqliteSimpleSimpleType::Auto, None),
-        _ => {
-            if let Some(ct) = custom_types.get(&pt.base) {
-                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
-            } else {
-                (SqliteSimpleSimpleType::I32, Some(pt.base.clone()))
-            }
-        },
-    };
-    return SqliteType {
-        type_: SqliteSimpleType {
-            type_: simple_type,
-            custom,
-        },
-        opt: pt.opt,
-        arr: pt.arr,
-    };
-}
-
-pub fn sql_type_to_sqlite_type(
-    t: &sqlparser::ast::DataType,
-    custom_types: &BTreeMap<String, SqliteCustomType>,
-) -> SqliteType {
-    let (simple_type, custom) = match t {
-        sqlparser::ast::DataType::SmallInt(_) => (SqliteSimpleSimpleType::I16, None),
-        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (
-            SqliteSimpleSimpleType::I32,
-            None,
-        ),
-        sqlparser::ast::DataType::BigInt(_) => (SqliteSimpleSimpleType::I64, None),
-        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (SqliteSimpleSimpleType::F32, None),
-        sqlparser::ast::DataType::DoublePrecision => (SqliteSimpleSimpleType::F64, None),
-        sqlparser::ast::DataType::Boolean => (SqliteSimpleSimpleType::Bool, None),
-        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (
-            SqliteSimpleSimpleType::String,
-            None,
-        ),
-        sqlparser::ast::DataType::Binary(_) |
-        sqlparser::ast::DataType::Varbinary(_) |
-        sqlparser::ast::DataType::Blob(_) => (
-            SqliteSimpleSimpleType::Bytes,
-            None,
-        ),
-        sqlparser::ast::DataType::Timestamp(..) => {
-            #[cfg(feature = "chrono")]
-            {
-                (SqliteSimpleSimpleType::UtcTimeSChrono, None)
-            }
-            #[cfg(not(feature = "chrono"))]
-            {
-                (SqliteSimpleSimpleType::I32, None)
-            }
-        },
-        sqlparser::ast::DataType::Custom(name, ..) => {
-            let name_str = name.to_string();
-            if let Some(ct) = custom_types.get(&name_str) {
-                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
-            } else {
-                (SqliteSimpleSimpleType::I32, Some(name_str))
-            }
-        },
-        _ => (SqliteSimpleSimpleType::I32, None),
-    };
-    return SqliteType {
-        type_: SqliteSimpleType {
-            type_: simple_type,
-            custom,
-        },
-        opt: false,
-        arr: false,
-    };
-}
-
-pub fn convert_query(
-    input: &GoodQueryInput,
-    statement: &sql::Statement,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Query {
-    let mut used_params = HashSet::new();
-    let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => {
-            if let sql::SetExpr::Delete(sql::Statement::Delete(d)) = &*q.body {
-                let mut del = convert_delete(input, d, &mut used_params, custom_types, field_lookup);
-                if let Some(with) = &q.with {
-                    del.with = Some(convert_with(input, with, &mut used_params, custom_types, field_lookup));
-                }
-                Box::new(del)
-            } else {
-                Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup))
-            }
-        },
-        sql::Statement::Insert(insert) => Box::new(
-            convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
-        ),
-        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
-            convert_update(
-                input,
-                table,
-                assignments,
-                selection,
-                returning,
-                &mut used_params,
-                custom_types,
-                field_lookup,
-            ),
-        ),
-        sql::Statement::Delete(delete) => Box::new(
-            convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
-        ),
-        _ => unimplemented!("Statement type not implemented in good-ormning: {:?}", statement),
-    };
-    for (ident, _) in &input.param_types {
-        let s = ident.to_string();
-        let s = s.trim_start_matches("r#");
-        if !used_params.contains(s) {
-            panic!("Parameter {} not used in query", ident);
-        }
-    }
-    return Query {
-        name: "unnamed".to_string(),
-        body,
-        // Dummy
-        res_count: QueryResCount::Many,
-        res_name: None,
-    };
-}
-
-fn convert_select_query(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Select {
-    let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
-    if let Some(with) = &q.with {
-        sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
-    }
-    return sel;
-}
-
-fn convert_select_query_expr(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    expr: &sql::SetExpr,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Select {
-    match expr {
-        sql::SetExpr::Select(s) => return convert_select(input, q, s, used_params, custom_types, field_lookup),
-        sql::SetExpr::SetOperation { left, op, right, set_quantifier } => {
-            let mut l = convert_select_query_expr(input, q, left, used_params, custom_types, field_lookup);
-            let r = convert_select_query_expr(input, q, right, used_params, custom_types, field_lookup);
-            let operator = match op {
-                sql::SetOperator::Union => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::UnionAll
-                    } else {
-                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Union
-                    }
-                },
-                sql::SetOperator::Intersect => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        panic!("INTERSECT ALL is not supported by SQLite")
-                    } else {
-                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect
-                    }
-                },
-                sql::SetOperator::Minus => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        panic!("MINUS ALL is not supported by SQLite")
-                    } else {
-                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
-                    }
-                },
-                sql::SetOperator::Except => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        panic!("EXCEPT ALL is not supported by SQLite")
-                    } else {
-                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
-                    }
-                },
-            };
-            l.junction.push(good_ormning_core::sqlite::query::select_body::SelectJunction {
-                op: operator,
-                body: Box::new(r),
-            });
-            return l;
-        },
-        _ => unimplemented!("SetExpr type not implemented in good-ormning: {:?}", expr),
-    }
-}
-
-fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
-        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-    });
-}
-
-fn convert_returning(
-    input: &GoodQueryInput,
-    returning: &Option<Vec<sql::SelectItem>>,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-    default_table: Option<&TableRef>,
-) -> Vec<Returning> {
-    let mut out = vec![];
-    if let Some(items) = returning {
-        for item in items {
-            match item {
-                sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
-                    e: convert_expr(input, e, used_params, custom_types, field_lookup),
-                    rename: None,
-                }),
-                sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
-                    e: convert_expr(input, expr, used_params, custom_types, field_lookup),
-                    rename: Some(alias.value.clone()),
-                }),
-                sql::SelectItem::Wildcard(_) => {
-                    let table_ref = default_table.expect("Wildcard returning without default table");
-                    let table_info = field_lookup.get(table_ref).expect("Table not found in field_lookup");
-                    for (field_ref, field_info) in &table_info.fields {
-                        out.push(Returning {
-                            e: Expr::Field(field_ref.clone()),
-                            rename: Some(field_info.sql_name.clone()),
-                        });
-                    }
-                },
-                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
-                    let table_ref = TableRef(match name.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    });
-                    let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
-                    for (field_ref, field_info) in &table_info.fields {
-                        out.push(Returning {
-                            e: Expr::Field(field_ref.clone()),
-                            rename: Some(field_info.sql_name.clone()),
-                        });
-                    }
-                },
-                sql::SelectItem::QualifiedWildcard(
-                    sql::SelectItemQualifiedWildcardKind::Expr(_),
-                    _,
-                ) => panic!(
-                    "Qualified wildcard with expression is not supported by SQLite"
-                ),
-            }
-        }
-    }
-    return out;
-}
-
-fn convert_insert(
-    input: &GoodQueryInput,
-    insert: &sql::Insert,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Insert {
-    let table = get_table_ref(match &insert.table {
-        sqlparser::ast::TableObject::TableName(n) => n,
-        _ => panic!("Unsupported table object"),
-    });
-    let source = if let Some(q) = &insert.source {
-        match &*q.body {
-            sql::SetExpr::Values(v) => {
-                let mut values = vec![];
-                if let Some(row) = v.rows.first() {
-                    for (i, expr) in row.iter().enumerate() {
-                        let field = FieldRef {
-                            table_id: table.0.clone(),
-                            field_id: insert.columns[i].value.clone(),
-                        };
-                        values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
-                    }
-                }
-                InsertSource::Values(values)
-            },
-            _ => {
-                let columns = insert.columns.iter().map(|c| FieldRef {
-                    table_id: table.0.clone(),
-                    field_id: c.value.clone(),
-                }).collect();
-                InsertSource::Select {
-                    columns,
-                    select: convert_select_query(input, q, used_params, custom_types, field_lookup),
-                }
-            },
-        }
-    } else {
-        InsertSource::Values(vec![])
-    };
-    let on_conflict = if let Some(on) = &insert.on {
-        match on {
-            sql::OnInsert::OnConflict(oc) => match &oc.action {
-                sql::OnConflictAction::DoNothing => Some(InsertConflict::DoNothing),
-                sql::OnConflictAction::DoUpdate(du) => {
-                    let mut updates = vec![];
-                    for a in &du.assignments {
-                        let target_name = match &a.target {
-                            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                            },
-                            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
-                        };
-                        let field = FieldRef {
-                            table_id: table.0.clone(),
-                            field_id: target_name,
-                        };
-                        updates.push(
-                            (field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)),
-                        );
-                    }
-                    let conflict = if let Some(target) = &oc.conflict_target {
-                        match target {
-                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
-                                table_id: table.0.clone(),
-                                field_id: id.value.clone(),
-                            }).collect(),
-                            _ => vec![],
-                        }
-                    } else {
-                        vec![]
-                    };
-                    Some(InsertConflict::DoUpdate {
-                        conflict,
-                        set: updates,
-                    })
-                },
-            },
-            _ => None,
-        }
-    } else {
-        match insert.or {
-            Some(sql::SqliteOnConflict::Ignore) => Some(InsertConflict::DoNothing),
-            _ => None,
-        }
-    };
-    return Insert {
-        table: table.clone(),
-        source,
-        on_conflict,
-        returning: convert_returning(
-            input,
-            &insert.returning,
-            used_params,
-            custom_types,
-            field_lookup,
-            Some(&table),
-        ),
-    };
-}
-
-fn convert_update(
-    input: &GoodQueryInput,
-    table: &sql::TableWithJoins,
-    assignments: &[sql::Assignment],
-    selection: &Option<sql::Expr>,
-    returning: &Option<Vec<sql::SelectItem>>,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Update {
-    let table_ref = match &table.relation {
-        sql::TableFactor::Table { name, .. } => {
-            get_table_ref(name)
-        },
-        _ => unimplemented!("Update table factor not implemented in good-ormning: {:?}", table.relation),
-    };
-    let mut values = vec![];
-    for a in assignments {
-        let target_name = match &a.target {
-            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-            },
-            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
-        };
-        let field = FieldRef {
-            table_id: table_ref.0.clone(),
-            field_id: target_name,
-        };
-        values.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
-    }
-    return Update {
-        table: table_ref.clone(),
-        values,
-        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        returning: convert_returning(input, returning, used_params, custom_types, field_lookup, Some(&table_ref)),
-        index_hint: None,
-    };
-}
-
 fn convert_delete(
     input: &GoodQueryInput,
     delete: &sql::Delete,
@@ -502,275 +88,6 @@ fn convert_delete(
         ),
         index_hint: None,
     };
-}
-
-fn convert_table_factor_sqlite(
-    input: &GoodQueryInput,
-    tf: &sql::TableFactor,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> NamedSelectSource {
-    match tf {
-        sql::TableFactor::Table { name, alias, .. } => {
-            NamedSelectSource {
-                source: JoinSource::Table(get_table_ref(name)),
-                alias: Some(
-                    alias
-                        .as_ref()
-                        .map(|a| a.name.value.clone())
-                        .unwrap_or_else(|| get_table_ref(name).0.clone()),
-                ),
-                index_hint: None,
-            }
-        },
-        sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-            source: JoinSource::Subsel(
-                Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-            ),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
-            index_hint: None,
-        },
-        sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-            source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                    convert_expr(input, e, used_params, custom_types, field_lookup)
-                },
-                _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
-            }).collect()),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
-            index_hint: None,
-        },
-        sql::TableFactor::NestedJoin { table_with_joins, alias } => {
-            let base =
-                convert_table_factor_sqlite(
-                    input,
-                    &table_with_joins.relation,
-                    used_params,
-                    custom_types,
-                    field_lookup,
-                );
-            let joins =
-                convert_sql_joins_sqlite(input, &table_with_joins.joins, used_params, custom_types, field_lookup);
-            NamedSelectSource {
-                source: JoinSource::NestedJoin(Box::new(base), joins),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-                index_hint: None,
-            }
-        },
-        sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
-        sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
-        sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
-        sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
-        sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
-        sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
-        sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
-        sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
-    }
-}
-
-fn convert_sql_joins_sqlite(
-    input: &GoodQueryInput,
-    joins: &[sql::Join],
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Vec<Join> {
-    let mut out = vec![];
-    for j in joins {
-        let source = convert_table_factor_sqlite(input, &j.relation, used_params, custom_types, field_lookup);
-        let (type_, on) = match &j.join_operator {
-            sql::JoinOperator::Join(constraint) |
-            sql::JoinOperator::Inner(constraint) => {
-                (
-                    JoinType::Inner,
-                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                )
-            },
-            sql::JoinOperator::Left(constraint) |
-            sql::JoinOperator::LeftOuter(constraint) => {
-                (
-                    JoinType::Left,
-                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                )
-            },
-            sql::JoinOperator::Right(constraint) |
-            sql::JoinOperator::RightOuter(constraint) => {
-                (
-                    JoinType::Right,
-                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                )
-            },
-            sql::JoinOperator::FullOuter(constraint) => {
-                (
-                    JoinType::Full,
-                    Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                )
-            },
-            sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
-            sql::JoinOperator::Semi(_) |
-            sql::JoinOperator::LeftSemi(_) |
-            sql::JoinOperator::RightSemi(_) |
-            sql::JoinOperator::Anti(_) |
-            sql::JoinOperator::LeftAnti(_) |
-            sql::JoinOperator::RightAnti(_) |
-            sql::JoinOperator::CrossApply |
-            sql::JoinOperator::OuterApply |
-            sql::JoinOperator::AsOf { .. } |
-            sql::JoinOperator::StraightJoin(_) => {
-                panic!("Join operator is not supported by SQLite: {:?}", j.join_operator)
-            },
-        };
-        out.push(Join {
-            source: source,
-            type_,
-            on: on,
-        });
-    }
-    return out;
-}
-
-fn convert_select(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    s: &sql::Select,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Select {
-    let table = if s.from.is_empty() {
-        NamedSelectSource {
-            source: JoinSource::Empty,
-            alias: None,
-            index_hint: None,
-        }
-    } else {
-        // Special handling for rarray in table position
-        if let sql::TableFactor::Table { name, alias, args, .. } = &s.from[0].relation {
-            if let Some(args) = args {
-                let name_str = name.to_string().to_lowercase();
-                if name_str == "rarray" {
-                    if !args.args.is_empty() {
-                        if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
-                            let expr = convert_expr(input, e, used_params, custom_types, field_lookup);
-                            return Select {
-                                with: None,
-                                table: NamedSelectSource {
-                                    source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
-                                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                                    index_hint: None,
-                                },
-                                returning: convert_returning(
-                                    input,
-                                    &Some(s.projection.clone()),
-                                    used_params,
-                                    custom_types,
-                                    field_lookup,
-                                    None,
-                                ),
-                                junction: vec![],
-                                join: vec![],
-                                where_: s
-                                    .selection
-                                    .as_ref()
-                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-                                group: match &s.group_by {
-                                    sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
-                                    sql::GroupByExpr::Expressions(exprs, _) => exprs
-                                        .iter()
-                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                                        .collect(),
-                                },
-                                having: s
-                                    .having
-                                    .as_ref()
-                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-                                order: vec![],
-                                limit: None,
-                                distinct: s.distinct.is_some(),
-                            };
-                        }
-                    }
-                }
-            }
-        }
-        convert_table_factor_sqlite(input, &s.from[0].relation, used_params, custom_types, field_lookup)
-    };
-    let join = if s.from.is_empty() {
-        vec![]
-    } else {
-        convert_sql_joins_sqlite(input, &s.from[0].joins, used_params, custom_types, field_lookup)
-    };
-    let mut order = vec![];
-    if let Some(order_by) = &q.order_by {
-        let exprs = match &order_by.kind {
-            sqlparser::ast::OrderByKind::Expressions(exprs) => exprs,
-            _ => panic!("Unsupported order by kind"),
-        };
-        for o in exprs {
-            let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-            let dir = match o.options.asc {
-                Some(true) | None => Order::Asc,
-                Some(false) => Order::Desc,
-            };
-            order.push((e, dir));
-        }
-    }
-    return Select {
-        with: None,
-        table: table.clone(),
-        returning: convert_returning(
-            input,
-            &Some(s.projection.clone()),
-            used_params,
-            custom_types,
-            field_lookup,
-            Some(&match &table.source {
-                JoinSource::Table(tr) => tr.clone(),
-                _ => TableRef("".into()),
-            }),
-        ),
-        junction: vec![],
-        join,
-        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        group: match &s.group_by {
-            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
-            sql::GroupByExpr::Expressions(exprs, _) => exprs
-                .iter()
-                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                .collect(),
-        },
-        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        order,
-        limit: q.limit_clause.as_ref().and_then(|lc| match lc {
-            sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
-            _ => None,
-        }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        distinct: s.distinct.is_some(),
-    };
-}
-
-fn convert_on(
-    input: &GoodQueryInput,
-    constraint: &sql::JoinConstraint,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
-) -> Expr {
-    match constraint {
-        sql::JoinConstraint::On(e) => {
-            return convert_expr(input, e, used_params, custom_types, field_lookup);
-        },
-        sql::JoinConstraint::Using(_) => {
-            unimplemented!("JOIN ... USING is not implemented in good-ormning")
-        },
-        sql::JoinConstraint::Natural => {
-            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
-        },
-        sql::JoinConstraint::None => {
-            panic!("JOIN requires an ON clause")
-        },
-    }
 }
 
 fn convert_expr(
@@ -1233,6 +550,570 @@ fn convert_expr(
     }
 }
 
+fn convert_insert(
+    input: &GoodQueryInput,
+    insert: &sql::Insert,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Insert {
+    let table = get_table_ref(match &insert.table {
+        sqlparser::ast::TableObject::TableName(n) => n,
+        _ => panic!("Unsupported table object"),
+    });
+    let source = if let Some(q) = &insert.source {
+        match &*q.body {
+            sql::SetExpr::Values(v) => {
+                let mut values = vec![];
+                if let Some(row) = v.rows.first() {
+                    for (i, expr) in row.iter().enumerate() {
+                        let field = FieldRef {
+                            table_id: table.0.clone(),
+                            field_id: insert.columns[i].value.clone(),
+                        };
+                        values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
+                    }
+                }
+                InsertSource::Values(values)
+            },
+            _ => {
+                let columns = insert.columns.iter().map(|c| FieldRef {
+                    table_id: table.0.clone(),
+                    field_id: c.value.clone(),
+                }).collect();
+                InsertSource::Select {
+                    columns,
+                    select: convert_select_query(input, q, used_params, custom_types, field_lookup),
+                }
+            },
+        }
+    } else {
+        InsertSource::Values(vec![])
+    };
+    let on_conflict = if let Some(on) = &insert.on {
+        match on {
+            sql::OnInsert::OnConflict(oc) => match &oc.action {
+                sql::OnConflictAction::DoNothing => Some(InsertConflict::DoNothing),
+                sql::OnConflictAction::DoUpdate(du) => {
+                    let mut updates = vec![];
+                    for a in &du.assignments {
+                        let target_name = match &a.target {
+                            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                            },
+                            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
+                        };
+                        let field = FieldRef {
+                            table_id: table.0.clone(),
+                            field_id: target_name,
+                        };
+                        updates.push(
+                            (field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)),
+                        );
+                    }
+                    let conflict = if let Some(target) = &oc.conflict_target {
+                        match target {
+                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
+                                table_id: table.0.clone(),
+                                field_id: id.value.clone(),
+                            }).collect(),
+                            _ => vec![],
+                        }
+                    } else {
+                        vec![]
+                    };
+                    Some(InsertConflict::DoUpdate {
+                        conflict,
+                        set: updates,
+                    })
+                },
+            },
+            _ => None,
+        }
+    } else {
+        match insert.or {
+            Some(sql::SqliteOnConflict::Ignore) => Some(InsertConflict::DoNothing),
+            _ => None,
+        }
+    };
+    return Insert {
+        table: table.clone(),
+        source,
+        on_conflict,
+        returning: convert_returning(
+            input,
+            &insert.returning,
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&table),
+        ),
+    };
+}
+
+fn convert_on(
+    input: &GoodQueryInput,
+    constraint: &sql::JoinConstraint,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Expr {
+    match constraint {
+        sql::JoinConstraint::On(e) => {
+            return convert_expr(input, e, used_params, custom_types, field_lookup);
+        },
+        sql::JoinConstraint::Using(_) => {
+            unimplemented!("JOIN ... USING is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::Natural => {
+            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::None => {
+            panic!("JOIN requires an ON clause")
+        },
+    }
+}
+
+pub fn convert_query(
+    input: &GoodQueryInput,
+    statement: &sql::Statement,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Query {
+    let mut used_params = HashSet::new();
+    let body: Box<dyn QueryBody> = match statement {
+        sql::Statement::Query(q) => {
+            if let sql::SetExpr::Delete(sql::Statement::Delete(d)) = &*q.body {
+                let mut del = convert_delete(input, d, &mut used_params, custom_types, field_lookup);
+                if let Some(with) = &q.with {
+                    del.with = Some(convert_with(input, with, &mut used_params, custom_types, field_lookup));
+                }
+                Box::new(del)
+            } else {
+                Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup))
+            }
+        },
+        sql::Statement::Insert(insert) => Box::new(
+            convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
+        ),
+        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
+            convert_update(
+                input,
+                table,
+                assignments,
+                selection,
+                returning,
+                &mut used_params,
+                custom_types,
+                field_lookup,
+            ),
+        ),
+        sql::Statement::Delete(delete) => Box::new(
+            convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
+        ),
+        _ => unimplemented!("Statement type not implemented in good-ormning: {:?}", statement),
+    };
+    for (ident, _) in &input.param_types {
+        let s = ident.to_string();
+        let s = s.trim_start_matches("r#");
+        if !used_params.contains(s) {
+            panic!("Parameter {} not used in query", ident);
+        }
+    }
+    return Query {
+        name: "unnamed".to_string(),
+        body,
+        // Dummy
+        res_count: QueryResCount::Many,
+        res_name: None,
+    };
+}
+
+fn convert_returning(
+    input: &GoodQueryInput,
+    returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+    default_table: Option<&TableRef>,
+) -> Vec<Returning> {
+    let mut out = vec![];
+    if let Some(items) = returning {
+        for item in items {
+            match item {
+                sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
+                    e: convert_expr(input, e, used_params, custom_types, field_lookup),
+                    rename: None,
+                }),
+                sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
+                    e: convert_expr(input, expr, used_params, custom_types, field_lookup),
+                    rename: Some(alias.value.clone()),
+                }),
+                sql::SelectItem::Wildcard(_) => {
+                    let table_ref = default_table.expect("Wildcard returning without default table");
+                    let table_info = field_lookup.get(table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
+                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
+                    let table_ref = TableRef(match name.0.last().unwrap() {
+                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                    });
+                    let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
+                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::Expr(_), _) => panic!(
+                    "Qualified wildcard with expression is not supported by SQLite"
+                ),
+            }
+        }
+    }
+    return out;
+}
+
+fn convert_select(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    s: &sql::Select,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Select {
+    let table = if s.from.is_empty() {
+        NamedSelectSource {
+            source: JoinSource::Empty,
+            alias: None,
+            index_hint: None,
+        }
+    } else {
+        // Special handling for rarray in table position
+        if let sql::TableFactor::Table { name, alias, args, .. } = &s.from[0].relation {
+            if let Some(args) = args {
+                let name_str = name.to_string().to_lowercase();
+                if name_str == "rarray" {
+                    if !args.args.is_empty() {
+                        if let sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) = &args.args[0] {
+                            let expr = convert_expr(input, e, used_params, custom_types, field_lookup);
+                            return Select {
+                                with: None,
+                                table: NamedSelectSource {
+                                    source: JoinSource::Func("__good_ormning_rarray".to_string(), vec![expr]),
+                                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                                    index_hint: None,
+                                },
+                                returning: convert_returning(
+                                    input,
+                                    &Some(s.projection.clone()),
+                                    used_params,
+                                    custom_types,
+                                    field_lookup,
+                                    None,
+                                ),
+                                junction: vec![],
+                                join: vec![],
+                                where_: s
+                                    .selection
+                                    .as_ref()
+                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+                                group: match &s.group_by {
+                                    sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
+                                    sql::GroupByExpr::Expressions(exprs, _) => exprs
+                                        .iter()
+                                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                                        .collect(),
+                                },
+                                having: s
+                                    .having
+                                    .as_ref()
+                                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+                                order: vec![],
+                                limit: None,
+                                distinct: s.distinct.is_some(),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        convert_table_factor_sqlite(input, &s.from[0].relation, used_params, custom_types, field_lookup)
+    };
+    let join = if s.from.is_empty() {
+        vec![]
+    } else {
+        convert_sql_joins_sqlite(input, &s.from[0].joins, used_params, custom_types, field_lookup)
+    };
+    let mut order = vec![];
+    if let Some(order_by) = &q.order_by {
+        let exprs = match &order_by.kind {
+            sqlparser::ast::OrderByKind::Expressions(exprs) => exprs,
+            _ => panic!("Unsupported order by kind"),
+        };
+        for o in exprs {
+            let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
+            let dir = match o.options.asc {
+                Some(true) | None => Order::Asc,
+                Some(false) => Order::Desc,
+            };
+            order.push((e, dir));
+        }
+    }
+    return Select {
+        with: None,
+        table: table.clone(),
+        returning: convert_returning(
+            input,
+            &Some(s.projection.clone()),
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&match &table.source {
+                JoinSource::Table(tr) => tr.clone(),
+                _ => TableRef("".into()),
+            }),
+        ),
+        junction: vec![],
+        join,
+        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        group: match &s.group_by {
+            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
+            sql::GroupByExpr::Expressions(exprs, _) => exprs
+                .iter()
+                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                .collect(),
+        },
+        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        order,
+        limit: q.limit_clause.as_ref().and_then(|lc| match lc {
+            sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
+            _ => None,
+        }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        distinct: s.distinct.is_some(),
+    };
+}
+
+fn convert_select_query(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Select {
+    let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
+    if let Some(with) = &q.with {
+        sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
+    }
+    return sel;
+}
+
+fn convert_select_query_expr(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    expr: &sql::SetExpr,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Select {
+    match expr {
+        sql::SetExpr::Select(s) => return convert_select(input, q, s, used_params, custom_types, field_lookup),
+        sql::SetExpr::SetOperation { left, op, right, set_quantifier } => {
+            let mut l = convert_select_query_expr(input, q, left, used_params, custom_types, field_lookup);
+            let r = convert_select_query_expr(input, q, right, used_params, custom_types, field_lookup);
+            let operator = match op {
+                sql::SetOperator::Union => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::UnionAll
+                    } else {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Union
+                    }
+                },
+                sql::SetOperator::Intersect => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        panic!("INTERSECT ALL is not supported by SQLite")
+                    } else {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Intersect
+                    }
+                },
+                sql::SetOperator::Minus => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        panic!("MINUS ALL is not supported by SQLite")
+                    } else {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
+                sql::SetOperator::Except => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        panic!("EXCEPT ALL is not supported by SQLite")
+                    } else {
+                        good_ormning_core::sqlite::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
+            };
+            l.junction.push(good_ormning_core::sqlite::query::select_body::SelectJunction {
+                op: operator,
+                body: Box::new(r),
+            });
+            return l;
+        },
+        _ => unimplemented!("SetExpr type not implemented in good-ormning: {:?}", expr),
+    }
+}
+
+fn convert_sql_joins_sqlite(
+    input: &GoodQueryInput,
+    joins: &[sql::Join],
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Vec<Join> {
+    let mut out = vec![];
+    for j in joins {
+        let source = convert_table_factor_sqlite(input, &j.relation, used_params, custom_types, field_lookup);
+        let (type_, on) = match &j.join_operator {
+            sql::JoinOperator::Join(constraint) | sql::JoinOperator::Inner(constraint) => {
+                (JoinType::Inner, Some(convert_on(input, constraint, used_params, custom_types, field_lookup)))
+            },
+            sql::JoinOperator::Left(constraint) | sql::JoinOperator::LeftOuter(constraint) => {
+                (JoinType::Left, Some(convert_on(input, constraint, used_params, custom_types, field_lookup)))
+            },
+            sql::JoinOperator::Right(constraint) | sql::JoinOperator::RightOuter(constraint) => {
+                (JoinType::Right, Some(convert_on(input, constraint, used_params, custom_types, field_lookup)))
+            },
+            sql::JoinOperator::FullOuter(constraint) => {
+                (JoinType::Full, Some(convert_on(input, constraint, used_params, custom_types, field_lookup)))
+            },
+            sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
+            sql::JoinOperator::Semi(_) |
+            sql::JoinOperator::LeftSemi(_) |
+            sql::JoinOperator::RightSemi(_) |
+            sql::JoinOperator::Anti(_) |
+            sql::JoinOperator::LeftAnti(_) |
+            sql::JoinOperator::RightAnti(_) |
+            sql::JoinOperator::CrossApply |
+            sql::JoinOperator::OuterApply |
+            sql::JoinOperator::AsOf { .. } |
+            sql::JoinOperator::StraightJoin(_) => {
+                panic!("Join operator is not supported by SQLite: {:?}", j.join_operator)
+            },
+        };
+        out.push(Join {
+            source: source,
+            type_,
+            on: on,
+        });
+    }
+    return out;
+}
+
+fn convert_table_factor_sqlite(
+    input: &GoodQueryInput,
+    tf: &sql::TableFactor,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> NamedSelectSource {
+    match tf {
+        sql::TableFactor::Table { name, alias, .. } => {
+            NamedSelectSource {
+                source: JoinSource::Table(get_table_ref(name)),
+                alias: Some(
+                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                ),
+                index_hint: None,
+            }
+        },
+        sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+            source: JoinSource::Subsel(
+                Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+            ),
+            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            index_hint: None,
+        },
+        sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+            source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                    convert_expr(input, e, used_params, custom_types, field_lookup)
+                },
+                _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
+            }).collect()),
+            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            index_hint: None,
+        },
+        sql::TableFactor::NestedJoin { table_with_joins, alias } => {
+            let base =
+                convert_table_factor_sqlite(
+                    input,
+                    &table_with_joins.relation,
+                    used_params,
+                    custom_types,
+                    field_lookup,
+                );
+            let joins =
+                convert_sql_joins_sqlite(input, &table_with_joins.joins, used_params, custom_types, field_lookup);
+            NamedSelectSource {
+                source: JoinSource::NestedJoin(Box::new(base), joins),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+                index_hint: None,
+            }
+        },
+        sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
+        sql::TableFactor::UNNEST { .. } => panic!("UNNEST is not supported by SQLite"),
+        sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
+        sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
+        sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
+        sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
+        sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
+        sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
+    }
+}
+
+fn convert_update(
+    input: &GoodQueryInput,
+    table: &sql::TableWithJoins,
+    assignments: &[sql::Assignment],
+    selection: &Option<sql::Expr>,
+    returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
+) -> Update {
+    let table_ref = match &table.relation {
+        sql::TableFactor::Table { name, .. } => {
+            get_table_ref(name)
+        },
+        _ => unimplemented!("Update table factor not implemented in good-ormning: {:?}", table.relation),
+    };
+    let mut values = vec![];
+    for a in assignments {
+        let target_name = match &a.target {
+            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+            },
+            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
+        };
+        let field = FieldRef {
+            table_id: table_ref.0.clone(),
+            field_id: target_name,
+        };
+        values.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
+    }
+    return Update {
+        table: table_ref.clone(),
+        values,
+        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        returning: convert_returning(input, returning, used_params, custom_types, field_lookup, Some(&table_ref)),
+        index_hint: None,
+    };
+}
+
 fn convert_window_frame_bound(
     input: &GoodQueryInput,
     b: &sql::WindowFrameBound,
@@ -1300,5 +1181,103 @@ fn convert_with(
     return good_ormning_core::sqlite::query::utils::With {
         recursive: with.recursive,
         ctes,
+    };
+}
+
+fn get_table_ref(name: &sql::ObjectName) -> TableRef {
+    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
+        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+    });
+}
+
+pub fn param_type_to_sqlite_type(pt: &ParamType, custom_types: &BTreeMap<String, SqliteCustomType>) -> SqliteType {
+    let (simple_type, custom) = match pt.base.as_str() {
+        "i16" => (SqliteSimpleSimpleType::I16, None),
+        "i32" => (SqliteSimpleSimpleType::I32, None),
+        "i64" => (SqliteSimpleSimpleType::I64, None),
+        "u32" => (SqliteSimpleSimpleType::U32, None),
+        "f32" => (SqliteSimpleSimpleType::F32, None),
+        "f64" => (SqliteSimpleSimpleType::F64, None),
+        "bool" => (SqliteSimpleSimpleType::Bool, None),
+        "string" => (SqliteSimpleSimpleType::String, None),
+        "bytes" => (SqliteSimpleSimpleType::Bytes, None),
+        #[cfg(feature = "chrono")]
+        "utctime_s_chrono" => (SqliteSimpleSimpleType::UtcTimeSChrono, None),
+        #[cfg(feature = "chrono")]
+        "utctime_ms_chrono" => (SqliteSimpleSimpleType::UtcTimeMsChrono, None),
+        #[cfg(feature = "jiff")]
+        "utctime_s_jiff" => (SqliteSimpleSimpleType::UtcTimeSJiff, None),
+        #[cfg(feature = "jiff")]
+        "utctime_ms_jiff" => (SqliteSimpleSimpleType::UtcTimeMsJiff, None),
+        "auto" => (SqliteSimpleSimpleType::Auto, None),
+        _ => {
+            if let Some(ct) = custom_types.get(&pt.base) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (SqliteSimpleSimpleType::I32, Some(pt.base.clone()))
+            }
+        },
+    };
+    return SqliteType {
+        type_: SqliteSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: pt.opt,
+        arr: pt.arr,
+    };
+}
+
+pub fn sql_type_to_sqlite_type(
+    t: &sqlparser::ast::DataType,
+    custom_types: &BTreeMap<String, SqliteCustomType>,
+) -> SqliteType {
+    let (simple_type, custom) = match t {
+        sqlparser::ast::DataType::SmallInt(_) => (SqliteSimpleSimpleType::I16, None),
+        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (
+            SqliteSimpleSimpleType::I32,
+            None,
+        ),
+        sqlparser::ast::DataType::BigInt(_) => (SqliteSimpleSimpleType::I64, None),
+        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (SqliteSimpleSimpleType::F32, None),
+        sqlparser::ast::DataType::DoublePrecision => (SqliteSimpleSimpleType::F64, None),
+        sqlparser::ast::DataType::Boolean => (SqliteSimpleSimpleType::Bool, None),
+        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (
+            SqliteSimpleSimpleType::String,
+            None,
+        ),
+        sqlparser::ast::DataType::Binary(_) |
+        sqlparser::ast::DataType::Varbinary(_) |
+        sqlparser::ast::DataType::Blob(_) => (
+            SqliteSimpleSimpleType::Bytes,
+            None,
+        ),
+        sqlparser::ast::DataType::Timestamp(..) => {
+            #[cfg(feature = "chrono")]
+            {
+                (SqliteSimpleSimpleType::UtcTimeSChrono, None)
+            }
+            #[cfg(not(feature = "chrono"))]
+            {
+                (SqliteSimpleSimpleType::I32, None)
+            }
+        },
+        sqlparser::ast::DataType::Custom(name, ..) => {
+            let name_str = name.to_string();
+            if let Some(ct) = custom_types.get(&name_str) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (SqliteSimpleSimpleType::I32, Some(name_str))
+            }
+        },
+        _ => (SqliteSimpleSimpleType::I32, None),
+    };
+    return SqliteType {
+        type_: SqliteSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: false,
+        arr: false,
     };
 }

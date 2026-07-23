@@ -6,10 +6,7 @@ async fn test_deadpool_sqlite() -> Result<(), loga::Error> {
     let dir = tempfile::tempdir().map_err(|e| loga::err(e))?;
     let db_path = dir.path().join("test.db");
     let cfg = deadpool_sqlite::Config::new(db_path);
-    let pool =
-        cfg
-            .create_pool(deadpool_sqlite::Runtime::Tokio1)
-            .map_err(|e| loga::err(e))?;
+    let pool = cfg.create_pool(deadpool_sqlite::Runtime::Tokio1).map_err(|e| loga::err(e))?;
 
     // Get a connection and migrate + insert + query through interact()
     let conn = pool.get().await.map_err(|e| loga::err(e))?;

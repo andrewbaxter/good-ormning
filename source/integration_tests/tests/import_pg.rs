@@ -3,11 +3,9 @@ use {
         codegen,
         pg,
     },
-    good_ormning_core::{
-        pg::{
-            schema::constraint::ConstraintType,
-            types::SimpleSimpleType,
-        },
+    good_ormning_core::pg::{
+        schema::constraint::ConstraintType,
+        types::SimpleSimpleType,
     },
     pglite_oxide::PgliteServer,
 };

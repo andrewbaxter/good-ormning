@@ -1,3 +1,5 @@
+mod convert;
+
 use {
     convert_case::{
         Case,
@@ -58,22 +60,74 @@ use {
     },
 };
 
-mod convert;
+fn get_db_info(_engine: &str, provided_db_name: String) -> String {
+    provided_db_name
+}
 
-struct ParamType {
-    arr: bool,
-    opt: bool,
-    base: String,
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_many_pg(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_pg(input, good_ormning_core::QueryResCount::Many).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_many_sqlite(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::Many).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_one_pg(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_pg(input, good_ormning_core::QueryResCount::One).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_one_sqlite(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::One).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_opt_pg(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_pg(input, good_ormning_core::QueryResCount::MaybeOne).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_opt_sqlite(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::MaybeOne).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_pg(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_pg(input, good_ormning_core::QueryResCount::None).into()
+}
+
+/// See the `good_query` macro help in the readme.
+#[proc_macro]
+pub fn good_query_sqlite(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as GoodQueryInput);
+    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::None).into()
 }
 
 struct GoodQueryInput {
-    db_mod: Ident,
-    version: Option<usize>,
-    db_name: String,
-    sql: String,
-    param_types: Vec<(Ident, ParamType)>,
     conn: syn::Expr,
+    db_mod: Ident,
+    db_name: String,
+    param_types: Vec<(Ident, ParamType)>,
     params: Vec<syn::Expr>,
+    sql: String,
+    version: Option<usize>,
 }
 
 impl Parse for GoodQueryInput {
@@ -203,54 +257,10 @@ impl Parse for GoodQueryInput {
     }
 }
 
-fn parse_inline_param(
-    input: ParseStream,
-    type_str: &str,
-    val_str: &str,
-    current_params_len: usize,
-) -> syn::Result<(usize, Ident, ParamType, syn::Expr)> {
-    let val: syn::Expr = syn::parse_str(val_str).map_err(|e| {
-        syn::Error::new(input.span(), format!("Failed to parse inline parameter value: {}", e))
-    })?;
-    let type_tokens: proc_macro2::TokenStream = type_str.parse().map_err(|e| {
-        syn::Error::new(input.span(), format!("Failed to parse inline parameter type tokens: {}", e))
-    })?;
-
-    use syn::parse::Parser;
-
-    let (arr_p, opt_p, base_p) = (|type_input: ParseStream| {
-        let mut arr = false;
-        let mut opt = false;
-        let mut base = String::new();
-        while type_input.peek(Ident) {
-            let id: Ident = type_input.parse()?;
-            if id == "arr" {
-                arr = true;
-            } else if id == "opt" {
-                opt = true;
-            } else {
-                base = id.to_string();
-                break;
-            }
-        }
-        Ok((arr, opt, base))
-    }).parse2(type_tokens).map_err(|e| {
-        syn::Error::new(input.span(), format!("Failed to parse inline parameter type: {}", e))
-    })?;
-    if base_p.is_empty() {
-        return Err(input.error("Expected base type in inline parameter"));
-    }
-    let param_idx = current_params_len + 1;
-    let name = format_ident!("p{}", param_idx);
-    Ok((param_idx, name, ParamType {
-        arr: arr_p,
-        opt: opt_p,
-        base: base_p,
-    }, val))
-}
-
-fn get_db_info(_engine: &str, provided_db_name: String) -> String {
-    provided_db_name
+struct ParamType {
+    arr: bool,
+    base: String,
+    opt: bool,
 }
 
 fn parse_and_generate_pg(
@@ -464,58 +474,48 @@ fn parse_and_generate_sqlite(
     }
 }
 
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_pg(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::None).into()
-}
+fn parse_inline_param(
+    input: ParseStream,
+    type_str: &str,
+    val_str: &str,
+    current_params_len: usize,
+) -> syn::Result<(usize, Ident, ParamType, syn::Expr)> {
+    let val: syn::Expr = syn::parse_str(val_str).map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter value: {}", e))
+    })?;
+    let type_tokens: proc_macro2::TokenStream = type_str.parse().map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter type tokens: {}", e))
+    })?;
 
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_one_pg(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::One).into()
-}
+    use syn::parse::Parser;
 
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_opt_pg(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::MaybeOne).into()
-}
-
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_many_pg(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::Many).into()
-}
-
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_sqlite(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::None).into()
-}
-
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_one_sqlite(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::One).into()
-}
-
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_opt_sqlite(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::MaybeOne).into()
-}
-
-/// See the `good_query` macro help in the readme.
-#[proc_macro]
-pub fn good_query_many_sqlite(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::Many).into()
+    let (arr_p, opt_p, base_p) = (|type_input: ParseStream| {
+        let mut arr = false;
+        let mut opt = false;
+        let mut base = String::new();
+        while type_input.peek(Ident) {
+            let id: Ident = type_input.parse()?;
+            if id == "arr" {
+                arr = true;
+            } else if id == "opt" {
+                opt = true;
+            } else {
+                base = id.to_string();
+                break;
+            }
+        }
+        Ok((arr, opt, base))
+    }).parse2(type_tokens).map_err(|e| {
+        syn::Error::new(input.span(), format!("Failed to parse inline parameter type: {}", e))
+    })?;
+    if base_p.is_empty() {
+        return Err(input.error("Expected base type in inline parameter"));
+    }
+    let param_idx = current_params_len + 1;
+    let name = format_ident!("p{}", param_idx);
+    Ok((param_idx, name, ParamType {
+        arr: arr_p,
+        opt: opt_p,
+        base: base_p,
+    }, val))
 }

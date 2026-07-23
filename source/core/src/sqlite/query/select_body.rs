@@ -29,23 +29,79 @@ use {
     },
 };
 
+pub fn build_select_junction(
+    ctx: &mut SqliteQueryCtx,
+    path: &rpds::Vector<String>,
+    base_type: &ExprType,
+    body_junctions: &[SelectJunction],
+) -> Tokens {
+    let mut out = Tokens::new();
+    for (i, j) in body_junctions.iter().enumerate() {
+        let path = path.push_back(format!("Junction clause {} - {:?}", i, j.op));
+        match j.op {
+            SelectJunctionOperator::Union => {
+                out.s("union");
+            },
+            SelectJunctionOperator::UnionAll => {
+                out.s("union all");
+            },
+            SelectJunctionOperator::Intersect => {
+                out.s("intersect");
+            },
+            SelectJunctionOperator::Except => {
+                out.s("except");
+            },
+        }
+        let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
+        if j_body_type.0.len() != base_type.0.len() {
+            ctx
+                .errs
+                .err(
+                    &path,
+                    format!(
+                        "Select returns {} columns but the base select has {} columns and these must match exactly",
+                        j_body_type.0.len(),
+                        base_type.0.len()
+                    ),
+                );
+            continue;
+        }
+        for (i, ((_, got), (_, want))) in Iterator::zip(j_body_type.0.iter(), base_type.0.iter()).enumerate() {
+            let path = path.push_back(format!("Select return {}", i));
+            check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
+        }
+        out.s(&j_body_tokens.to_string());
+    }
+    return out;
+}
+
 #[derive(Clone, Debug)]
-pub enum Order {
-    Asc,
-    Desc,
+pub struct Join {
+    pub on: Option<Expr>,
+    pub source: Box<NamedSelectSource>,
+    pub type_: JoinType,
 }
 
 #[derive(Clone, Debug)]
 pub enum JoinSource {
+    Func(String, Vec<Expr>),
     Subsel(Box<SelectBody>),
     Table(TableRef),
-    Func(String, Vec<Expr>),
+}
+
+#[derive(Clone, Debug)]
+pub enum JoinType {
+    Cross,
+    Full,
+    Inner,
+    Left,
+    Right,
 }
 
 #[derive(Clone, Debug)]
 pub struct NamedSelectSource {
-    pub source: JoinSource,
     pub alias: Option<String>,
+    pub source: JoinSource,
 }
 
 impl NamedSelectSource {
@@ -113,43 +169,22 @@ impl NamedSelectSource {
 }
 
 #[derive(Clone, Debug)]
-pub enum JoinType {
-    Inner,
-    Left,
-    Right,
-    Full,
-    Cross,
-}
-
-#[derive(Clone, Debug)]
-pub struct Join {
-    pub source: Box<NamedSelectSource>,
-    pub type_: JoinType,
-    pub on: Option<Expr>,
+pub enum Order {
+    Asc,
+    Desc,
 }
 
 #[derive(Clone, Debug)]
 pub struct SelectBody {
-    pub table: NamedSelectSource,
     pub distinct: bool,
-    pub returning: Vec<Returning>,
-    pub join: Vec<Join>,
-    pub where_: Option<Expr>,
     pub group: Vec<Expr>,
-    pub order: Vec<(Expr, Order)>,
-    pub limit: Option<Expr>,
+    pub join: Vec<Join>,
     pub junctions: Vec<SelectJunction>,
-}
-
-impl QueryBody for SelectBody {
-    fn build(
-        &self,
-        ctx: &mut SqliteQueryCtx,
-        path: &rpds::Vector<String>,
-        res_count: QueryResCount,
-    ) -> (ExprType, Tokens) {
-        return self.build_internal(ctx, &HashMap::new(), path, res_count);
-    }
+    pub limit: Option<Expr>,
+    pub order: Vec<(Expr, Order)>,
+    pub returning: Vec<Returning>,
+    pub table: NamedSelectSource,
+    pub where_: Option<Expr>,
 }
 
 impl SelectBody {
@@ -302,62 +337,27 @@ impl SelectBody {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
-pub enum SelectJunctionOperator {
-    Union,
-    UnionAll,
-    Intersect,
-    Except,
+impl QueryBody for SelectBody {
+    fn build(
+        &self,
+        ctx: &mut SqliteQueryCtx,
+        path: &rpds::Vector<String>,
+        res_count: QueryResCount,
+    ) -> (ExprType, Tokens) {
+        return self.build_internal(ctx, &HashMap::new(), path, res_count);
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct SelectJunction {
-    pub op: SelectJunctionOperator,
     pub body: Box<dyn QueryBody>,
+    pub op: SelectJunctionOperator,
 }
 
-pub fn build_select_junction(
-    ctx: &mut SqliteQueryCtx,
-    path: &rpds::Vector<String>,
-    base_type: &ExprType,
-    body_junctions: &[SelectJunction],
-) -> Tokens {
-    let mut out = Tokens::new();
-    for (i, j) in body_junctions.iter().enumerate() {
-        let path = path.push_back(format!("Junction clause {} - {:?}", i, j.op));
-        match j.op {
-            SelectJunctionOperator::Union => {
-                out.s("union");
-            },
-            SelectJunctionOperator::UnionAll => {
-                out.s("union all");
-            },
-            SelectJunctionOperator::Intersect => {
-                out.s("intersect");
-            },
-            SelectJunctionOperator::Except => {
-                out.s("except");
-            },
-        }
-        let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
-        if j_body_type.0.len() != base_type.0.len() {
-            ctx
-                .errs
-                .err(
-                    &path,
-                    format!(
-                        "Select returns {} columns but the base select has {} columns and these must match exactly",
-                        j_body_type.0.len(),
-                        base_type.0.len()
-                    ),
-                );
-            continue;
-        }
-        for (i, ((_, got), (_, want))) in Iterator::zip(j_body_type.0.iter(), base_type.0.iter()).enumerate() {
-            let path = path.push_back(format!("Select return {}", i));
-            check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
-        }
-        out.s(&j_body_tokens.to_string());
-    }
-    return out;
+#[derive(Clone, Debug, Copy)]
+pub enum SelectJunctionOperator {
+    Except,
+    Intersect,
+    Union,
+    UnionAll,
 }

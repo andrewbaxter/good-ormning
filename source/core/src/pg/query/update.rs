@@ -29,10 +29,10 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Update {
+    pub returning: Vec<Returning>,
     pub table: TableRef,
     pub values: Vec<(FieldRef, Expr)>,
     pub where_: Option<Expr>,
-    pub returning: Vec<Returning>,
 }
 
 impl QueryBody for Update {

@@ -1,4 +1,128 @@
+#[cfg(test)]
+mod test {
+    use super::{
+        GenerateArgs,
+        Version,
+        generate,
+        query::expr::SerialExpr,
+        schema::field::{
+            field_auto,
+            field_i32,
+            field_str,
+        },
+    };
+
+    #[test]
+    #[should_panic]
+    fn test_add_field_dup_bad() {
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("bananna");
+                    bananna.field("hizat", field_str().build());
+                    bananna.field("zomzom", field_i32().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_add_field_serial_bad() {
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    let bananna = v.table("bananna");
+                    bananna.field("hizat", field_str().build());
+                    bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_table_dup_bad() {
+        generate(GenerateArgs {
+            db_name: None,
+            versions: vec![
+                // Versions (previous)
+                (0usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+                (1usize, {
+                    let v = Version::new();
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.table("bananna").field("hizat", field_str().build());
+                    v.build()
+                }),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_res_count_none_bad() {
+        let v = Version::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    fn test_returning_none_bad() {
+        let v = Version::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+
+    #[test]
+    fn test_select_nothing_bad() {
+        let v = Version::new();
+        v.table("bananna").field("hizat", field_str().build());
+        assert!(generate(GenerateArgs {
+            db_name: None,
+            versions: vec![(0usize, v.build())],
+            ..Default::default()
+        }).is_err());
+    }
+}
+
 use {
+    convert_case::{
+        Case,
+        Casing,
+    },
     good_ormning_core::{
         sqlite::{
             graph::utils::SqliteMigrateCtx,
@@ -12,10 +136,6 @@ use {
             },
         },
         utils::Errs,
-    },
-    convert_case::{
-        Casing,
-        Case,
     },
     quote::{
         format_ident,
@@ -37,31 +157,6 @@ pub use {
         good_query_sqlite as good_query,
     },
 };
-
-pub struct GenerateArgs {
-    /// If you have multiple databases, use this to disambiguate them. You'll also need
-    /// to use it in `good_module!` and `good_query!`.
-    pub db_name: Option<String>,
-    /// A list of database version ids and schema versions. The ids must be consecutive
-    /// but can start from any number. Once a version has been applied to a production
-    /// database it shouldn't be modified again (modifications should be done in a new
-    /// version).
-    ///
-    /// These will be turned into migrations as part of the `migrate` function.
-    pub versions: Vec<(usize, Version)>,
-    /// A list of queries to generate type-safe functions for.
-    pub queries: Vec<Query>,
-}
-
-impl Default for GenerateArgs {
-    fn default() -> Self {
-        Self {
-            db_name: None,
-            versions: vec![],
-            queries: vec![],
-        }
-    }
-}
 
 /// Generate Rust code for migrations and queries. Also saves schema type info for
 /// proc_macros to refer to.
@@ -311,124 +406,27 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-#[cfg(test)]
-mod test {
-    use {
-        super::{
-            generate,
-            GenerateArgs,
-            query::expr::SerialExpr,
-            schema::field::{
-                field_auto,
-                field_i32,
-                field_str,
-            },
-            Version,
-        },
-    };
+pub struct GenerateArgs {
+    /// If you have multiple databases, use this to disambiguate them. You'll also need
+    /// to use it in `good_module!` and `good_query!`.
+    pub db_name: Option<String>,
+    /// A list of queries to generate type-safe functions for.
+    pub queries: Vec<Query>,
+    /// A list of database version ids and schema versions. The ids must be consecutive
+    /// but can start from any number. Once a version has been applied to a production
+    /// database it shouldn't be modified again (modifications should be done in a new
+    /// version).
+    ///
+    /// These will be turned into migrations as part of the `migrate` function.
+    pub versions: Vec<(usize, Version)>,
+}
 
-    #[test]
-    fn test_add_field_serial_bad() {
-        assert!(generate(GenerateArgs {
+impl Default for GenerateArgs {
+    fn default() -> Self {
+        Self {
             db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("bananna").field("hizat", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    let bananna = v.table("bananna");
-                    bananna.field("hizat", field_str().build());
-                    bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_add_field_dup_bad() {
-        generate(GenerateArgs {
-            db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("bananna").field("hizat", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    let bananna = v.table("bananna");
-                    bananna.field("hizat", field_str().build());
-                    bananna.field("zomzom", field_i32().build());
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_add_table_dup_bad() {
-        generate(GenerateArgs {
-            db_name: None,
-            versions: vec![
-                // Versions (previous)
-                (0usize, {
-                    let v = Version::new();
-                    v.table("bananna").field("hizat", field_str().build());
-                    v.build()
-                }),
-                (1usize, {
-                    let v = Version::new();
-                    v.table("bananna").field("hizat", field_str().build());
-                    v.table("bananna").field("hizat", field_str().build());
-                    v.build()
-                }),
-            ],
-            ..Default::default()
-        }).unwrap();
-    }
-
-    #[test]
-    fn test_res_count_none_bad() {
-        let v = Version::new();
-        let bananna = v.table("bananna");
-        bananna.field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    fn test_select_nothing_bad() {
-        let v = Version::new();
-        v.table("bananna").field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
-    }
-
-    #[test]
-    fn test_returning_none_bad() {
-        let v = Version::new();
-        let bananna = v.table("bananna");
-        bananna.field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
-            versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
+            versions: vec![],
+            queries: vec![],
+        }
     }
 }

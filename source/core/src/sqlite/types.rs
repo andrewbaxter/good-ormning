@@ -10,25 +10,31 @@ use {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SimpleSimpleType {
     Auto,
+    Bool,
+    Bytes,
+    F32,
+    F64,
+    #[cfg(feature = "chrono")]
+    FixedOffsetTimeChrono,
     I16,
     I32,
     I64,
-    U32,
-    F32,
-    F64,
-    Bool,
     String,
-    Bytes,
-    #[cfg(feature = "chrono")]
-    UtcTimeSChrono,
+    U32,
     #[cfg(feature = "chrono")]
     UtcTimeMsChrono,
-    #[cfg(feature = "chrono")]
-    FixedOffsetTimeChrono,
-    #[cfg(feature = "jiff")]
-    UtcTimeSJiff,
     #[cfg(feature = "jiff")]
     UtcTimeMsJiff,
+    #[cfg(feature = "chrono")]
+    UtcTimeSChrono,
+    #[cfg(feature = "jiff")]
+    UtcTimeSJiff,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SimpleType {
+    pub custom: Option<String>,
+    pub type_: SimpleSimpleType,
 }
 
 pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
@@ -142,33 +148,96 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct SimpleType {
-    pub type_: SimpleSimpleType,
-    pub custom: Option<String>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Type {
-    pub type_: SimpleType,
-    pub opt: bool,
     pub arr: bool,
+    pub opt: bool,
+    pub type_: SimpleType,
 }
 
 impl Type {
-    pub fn opt(mut self) -> Self {
-        self.opt = true;
-        return self;
-    }
-
     pub fn arr(mut self) -> Self {
         self.arr = true;
         return self;
     }
+
+    pub fn opt(mut self) -> Self {
+        self.opt = true;
+        return self;
+    }
+}
+
+pub fn type_auto() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::Auto);
+}
+
+pub fn type_bool() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::Bool);
+}
+
+pub fn type_bytes() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::Bytes);
+}
+
+pub fn type_f32() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::F32);
+}
+
+pub fn type_f64() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::F64);
+}
+
+pub fn type_i16() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::I16);
+}
+
+pub fn type_i32() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::I32);
+}
+
+pub fn type_i64() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::I64);
+}
+
+pub fn type_str() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::String);
+}
+
+pub fn type_u32() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::U32);
+}
+
+#[cfg(feature = "chrono")]
+pub fn type_utctime_ms_chrono() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::UtcTimeMsChrono);
+}
+
+#[cfg(feature = "jiff")]
+pub fn type_utctime_ms_jiff() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::UtcTimeMsJiff);
+}
+
+#[cfg(feature = "chrono")]
+pub fn type_utctime_s_chrono() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::UtcTimeSChrono);
+}
+
+#[cfg(feature = "jiff")]
+pub fn type_utctime_s_jiff() -> TypeBuilder {
+    return TypeBuilder::new(SimpleSimpleType::UtcTimeSJiff);
 }
 
 pub struct TypeBuilder(pub Type);
 
 impl TypeBuilder {
+    pub fn arr(mut self) -> Self {
+        self.0.arr = true;
+        return self;
+    }
+
+    pub fn build(self) -> Type {
+        return self.0;
+    }
+
     pub fn new(t: SimpleSimpleType) -> Self {
         return Self(Type {
             type_: SimpleType {
@@ -184,73 +253,4 @@ impl TypeBuilder {
         self.0.opt = true;
         return self;
     }
-
-    pub fn arr(mut self) -> Self {
-        self.0.arr = true;
-        return self;
-    }
-
-    pub fn build(self) -> Type {
-        return self.0;
-    }
-}
-
-pub fn type_auto() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::Auto);
-}
-
-pub fn type_i16() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::I16);
-}
-
-pub fn type_i32() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::I32);
-}
-
-pub fn type_i64() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::I64);
-}
-
-pub fn type_u32() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::U32);
-}
-
-pub fn type_f32() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::F32);
-}
-
-pub fn type_f64() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::F64);
-}
-
-pub fn type_bool() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::Bool);
-}
-
-pub fn type_str() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::String);
-}
-
-pub fn type_bytes() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::Bytes);
-}
-
-#[cfg(feature = "chrono")]
-pub fn type_utctime_s_chrono() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::UtcTimeSChrono);
-}
-
-#[cfg(feature = "chrono")]
-pub fn type_utctime_ms_chrono() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::UtcTimeMsChrono);
-}
-
-#[cfg(feature = "jiff")]
-pub fn type_utctime_s_jiff() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::UtcTimeSJiff);
-}
-
-#[cfg(feature = "jiff")]
-pub fn type_utctime_ms_jiff() -> TypeBuilder {
-    return TypeBuilder::new(SimpleSimpleType::UtcTimeMsJiff);
 }

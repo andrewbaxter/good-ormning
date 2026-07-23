@@ -54,393 +54,6 @@ use {
     },
 };
 
-pub fn param_type_to_pg_type(pt: &ParamType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
-    let (simple_type, custom) = match pt.base.as_str() {
-        "i16" => (PgSimpleSimpleType::I16, None),
-        "i32" => (PgSimpleSimpleType::I32, None),
-        "i64" => (PgSimpleSimpleType::I64, None),
-        "u32" => (PgSimpleSimpleType::U32, None),
-        "f32" => (PgSimpleSimpleType::F32, None),
-        "f64" => (PgSimpleSimpleType::F64, None),
-        "bool" => (PgSimpleSimpleType::Bool, None),
-        "string" => (PgSimpleSimpleType::String, None),
-        "bytes" => (PgSimpleSimpleType::Bytes, None),
-        #[cfg(feature = "chrono")]
-        "utctime_s_chrono" => (PgSimpleSimpleType::UtcTimeSChrono, None),
-        #[cfg(feature = "chrono")]
-        "utctime_ms_chrono" => (PgSimpleSimpleType::UtcTimeMsChrono, None),
-        #[cfg(feature = "jiff")]
-        "utctime_s_jiff" => (PgSimpleSimpleType::UtcTimeSJiff, None),
-        #[cfg(feature = "jiff")]
-        "utctime_ms_jiff" => (PgSimpleSimpleType::UtcTimeMsJiff, None),
-        "auto" => (PgSimpleSimpleType::Auto, None),
-        _ => {
-            if let Some(ct) = custom_types.get(&pt.base) {
-                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
-            } else {
-                (PgSimpleSimpleType::I32, Some(pt.base.clone()))
-            }
-        },
-    };
-    return PgType {
-        type_: PgSimpleType {
-            type_: simple_type,
-            custom,
-        },
-        opt: pt.opt,
-        arr: pt.arr,
-    };
-}
-
-pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
-    let (simple_type, custom) = match t {
-        sqlparser::ast::DataType::SmallInt(_) => (PgSimpleSimpleType::I16, None),
-        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (PgSimpleSimpleType::I32, None),
-        sqlparser::ast::DataType::BigInt(_) => (PgSimpleSimpleType::I64, None),
-        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (PgSimpleSimpleType::F32, None),
-        sqlparser::ast::DataType::DoublePrecision => (PgSimpleSimpleType::F64, None),
-        sqlparser::ast::DataType::Boolean => (PgSimpleSimpleType::Bool, None),
-        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (PgSimpleSimpleType::String, None),
-        sqlparser::ast::DataType::Bytea |
-        sqlparser::ast::DataType::Binary(_) |
-        sqlparser::ast::DataType::Varbinary(_) => (
-            PgSimpleSimpleType::Bytes,
-            None,
-        ),
-        sqlparser::ast::DataType::Timestamp(_precision, _tz) => {
-            // Very simplified
-            #[cfg(feature = "chrono")]
-            {
-                (PgSimpleSimpleType::UtcTimeSChrono, None)
-            }
-            #[cfg(not(feature = "chrono"))]
-            {
-                (PgSimpleSimpleType::I32, None)
-            }
-        },
-        sqlparser::ast::DataType::Custom(name, ..) => {
-            let name_str = name.to_string();
-            if let Some(ct) = custom_types.get(&name_str) {
-                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
-            } else {
-                (PgSimpleSimpleType::I32, Some(name_str))
-            }
-        },
-        _ => (PgSimpleSimpleType::I32, None),
-    };
-    return PgType {
-        type_: PgSimpleType {
-            type_: simple_type,
-            custom,
-        },
-        opt: false,
-        arr: false,
-    };
-}
-
-pub fn convert_query(
-    input: &GoodQueryInput,
-    statement: &sql::Statement,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Query {
-    let mut used_params = HashSet::new();
-    let body: Box<dyn QueryBody> = match statement {
-        sql::Statement::Query(q) => {
-            if let sql::SetExpr::Delete(sql::Statement::Delete(d)) = &*q.body {
-                let mut del = convert_delete(input, d, &mut used_params, custom_types, field_lookup);
-                if let Some(with) = &q.with {
-                    del.with = Some(convert_with(input, with, &mut used_params, custom_types, field_lookup));
-                }
-                Box::new(del)
-            } else {
-                Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup))
-            }
-        },
-        sql::Statement::Insert(insert) => Box::new(
-            convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
-        ),
-        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
-            convert_update(
-                input,
-                table,
-                assignments,
-                selection,
-                returning,
-                &mut used_params,
-                custom_types,
-                field_lookup,
-            ),
-        ),
-        sql::Statement::Delete(delete) => Box::new(
-            convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
-        ),
-        _ => unimplemented!("Statement type not implemented in good-ormning: {:?}", statement),
-    };
-    for (ident, _) in &input.param_types {
-        let s = ident.to_string();
-        let s = s.trim_start_matches("r#");
-        if !used_params.contains(s) {
-            panic!("Parameter {} not used in query", ident);
-        }
-    }
-    return Query {
-        name: "unnamed".to_string(),
-        body,
-        // Dummy
-        res_count: QueryResCount::Many,
-        res_name: None,
-    };
-}
-
-fn convert_select_query(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Select {
-    let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
-    if let Some(with) = &q.with {
-        sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
-    }
-    return sel;
-}
-
-fn convert_select_query_expr(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    expr: &sql::SetExpr,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Select {
-    match expr {
-        sql::SetExpr::Select(s) => return convert_select(input, q, s, used_params, custom_types, field_lookup),
-        sql::SetExpr::SetOperation { op, left, right, set_quantifier } => {
-            let mut l = convert_select_query_expr(input, q, left, used_params, custom_types, field_lookup);
-            let r = convert_select_query_expr(input, q, right, used_params, custom_types, field_lookup);
-            let junction_op = match op {
-                sql::SetOperator::Union => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::UnionAll
-                    } else {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Union
-                    }
-                },
-                sql::SetOperator::Intersect => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::IntersectAll
-                    } else {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Intersect
-                    }
-                },
-                sql::SetOperator::Minus => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::ExceptAll
-                    } else {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Except
-                    }
-                },
-                sql::SetOperator::Except => {
-                    if matches!(set_quantifier, sql::SetQuantifier::All) {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::ExceptAll
-                    } else {
-                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Except
-                    }
-                },
-            };
-            l.junctions.push(good_ormning_core::pg::query::select_body::SelectJunction {
-                op: junction_op,
-                body: Box::new(r),
-            });
-            return l;
-        },
-        _ => unimplemented!("SetExpr type not implemented in good-ormning: {:?}", expr),
-    }
-}
-
-fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
-        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-    });
-}
-
-fn convert_returning(
-    input: &GoodQueryInput,
-    returning: &Option<Vec<sql::SelectItem>>,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-    default_table: Option<&TableRef>,
-) -> Vec<Returning> {
-    let mut out = vec![];
-    if let Some(items) = returning {
-        for item in items {
-            match item {
-                sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
-                    e: convert_expr(input, e, used_params, custom_types, field_lookup),
-                    rename: None,
-                }),
-                sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
-                    e: convert_expr(input, expr, used_params, custom_types, field_lookup),
-                    rename: Some(alias.value.clone()),
-                }),
-                sql::SelectItem::Wildcard(_) => {
-                    let table_ref = default_table.expect("Wildcard returning without default table");
-                    let table_info = field_lookup.get(table_ref).expect("Table not found in field_lookup");
-                    for (field_ref, field_info) in &table_info.fields {
-                        out.push(Returning {
-                            e: Expr::Field(field_ref.clone()),
-                            rename: Some(field_info.sql_name.clone()),
-                        });
-                    }
-                },
-                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
-                    let table_ref = TableRef(match name.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    });
-                    let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
-                    for (field_ref, field_info) in &table_info.fields {
-                        out.push(Returning {
-                            e: Expr::Field(field_ref.clone()),
-                            rename: Some(field_info.sql_name.clone()),
-                        });
-                    }
-                },
-                sql::SelectItem::QualifiedWildcard(
-                    sql::SelectItemQualifiedWildcardKind::Expr(_),
-                    _,
-                ) => unimplemented!(
-                    "QualifiedWildcard with expression not implemented in good-ormning"
-                ),
-            }
-        }
-    }
-    return out;
-}
-
-fn convert_insert(
-    input: &GoodQueryInput,
-    insert: &sql::Insert,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Insert {
-    let table = get_table_ref(match &insert.table {
-        sqlparser::ast::TableObject::TableName(n) => n,
-        _ => panic!("Unsupported table object"),
-    });
-    let mut values = vec![];
-    if let Some(q) = &insert.source {
-        if let sql::SetExpr::Values(v) = &*q.body {
-            if let Some(row) = v.rows.first() {
-                for (i, expr) in row.iter().enumerate() {
-                    let field = FieldRef {
-                        table_id: table.0.clone(),
-                        field_id: insert.columns[i].value.clone(),
-                    };
-                    values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
-                }
-            }
-        } else {
-            unimplemented!("Insert source SetExpr not implemented in good-ormning: {:?}", q.body)
-        }
-    }
-    let on_conflict = if let Some(on) = &insert.on {
-        match on {
-            sql::OnInsert::OnConflict(oc) => match &oc.action {
-                sql::OnConflictAction::DoNothing => Some(InsertConflict::DoNothing),
-                sql::OnConflictAction::DoUpdate(du) => {
-                    let mut updates = vec![];
-                    for a in &du.assignments {
-                        let target_name = match &a.target {
-                            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                            },
-                            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
-                        };
-                        let field = FieldRef {
-                            table_id: table.0.clone(),
-                            field_id: target_name,
-                        };
-                        updates.push(
-                            (field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)),
-                        );
-                    }
-                    let conflict = if let Some(target) = &oc.conflict_target {
-                        match target {
-                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
-                                table_id: table.0.clone(),
-                                field_id: id.value.clone(),
-                            }).collect(),
-                            _ => vec![],
-                        }
-                    } else {
-                        vec![]
-                    };
-                    Some(InsertConflict::DoUpdate {
-                        conflict,
-                        set: updates,
-                    })
-                },
-            },
-            _ => None,
-        }
-    } else {
-        None
-    };
-    return Insert {
-        table: table.clone(),
-        values,
-        on_conflict,
-        returning: convert_returning(
-            input,
-            &insert.returning,
-            used_params,
-            custom_types,
-            field_lookup,
-            Some(&table),
-        ),
-    };
-}
-
-fn convert_update(
-    input: &GoodQueryInput,
-    table: &sql::TableWithJoins,
-    assignments: &[sql::Assignment],
-    selection: &Option<sql::Expr>,
-    returning: &Option<Vec<sql::SelectItem>>,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Update {
-    let table_ref = match &table.relation {
-        sql::TableFactor::Table { name, .. } => get_table_ref(name),
-        _ => unimplemented!("Update table factor not implemented in good-ormning: {:?}", table.relation),
-    };
-    let mut sets = vec![];
-    for a in assignments {
-        let target_name = match &a.target {
-            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-            },
-            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
-        };
-        let field = FieldRef {
-            table_id: table_ref.0.clone(),
-            field_id: target_name,
-        };
-        sets.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
-    }
-    return Update {
-        table: table_ref.clone(),
-        values: sets,
-        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        returning: convert_returning(input, returning, used_params, custom_types, field_lookup, Some(&table_ref)),
-    };
-}
-
 fn convert_delete(
     input: &GoodQueryInput,
     delete: &sql::Delete,
@@ -469,247 +82,6 @@ fn convert_delete(
             Some(&table_ref),
         ),
     };
-}
-
-fn convert_select(
-    input: &GoodQueryInput,
-    q: &sql::Query,
-    s: &sql::Select,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Select {
-    let table = if s.from.is_empty() {
-        NamedSelectSource {
-            source: JoinSource::Empty,
-            alias: None,
-        }
-    } else {
-        match &s.from[0].relation {
-            sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
-                source: JoinSource::Table(get_table_ref(name)),
-                alias: Some(
-                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
-                ),
-            },
-            sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                source: JoinSource::Subsel(
-                    Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-                ),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-            },
-            sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-                source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                    sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                        convert_expr(input, e, used_params, custom_types, field_lookup)
-                    },
-                    _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
-                }).collect()),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-            },
-            sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
-                source: JoinSource::Func(
-                    "unnest".to_string(),
-                    array_exprs
-                        .iter()
-                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                        .collect(),
-                ),
-                alias: alias.as_ref().map(|a| a.name.value.clone()),
-            },
-            sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
-            sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable not implemented in good-ormning"),
-            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin not implemented in good-ormning"),
-            sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
-            sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
-            sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by PostgreSQL"),
-            sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by PostgreSQL"),
-            sql::TableFactor::XmlTable { .. } => unimplemented!("XMLTABLE is not implemented in good-ormning"),
-        }
-    };
-    let mut join = vec![];
-    if !s.from.is_empty() {
-        for j in &s.from[0].joins {
-            let source = match &j.relation {
-                sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Table(get_table_ref(name)),
-                    alias: Some(
-                        alias
-                            .as_ref()
-                            .map(|a| a.name.value.clone())
-                            .unwrap_or_else(|| get_table_ref(name).0.clone()),
-                    ),
-                },
-                sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Subsel(
-                        Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-                    ),
-                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                },
-                sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-                    source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                        sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                            convert_expr(input, e, used_params, custom_types, field_lookup)
-                        },
-                        _ => unimplemented!("FunctionArg in join not implemented in good-ormning: {:?}", a),
-                    }).collect()),
-                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                },
-                sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
-                    source: JoinSource::Func(
-                        "unnest".to_string(),
-                        array_exprs
-                            .iter()
-                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                            .collect(),
-                    ),
-                    alias: alias.as_ref().map(|a| a.name.value.clone()),
-                },
-                sql::TableFactor::TableFunction { .. } => unimplemented!(
-                    "TableFunction in join not implemented in good-ormning"
-                ),
-                sql::TableFactor::JsonTable { .. } => unimplemented!(
-                    "JsonTable in join not implemented in good-ormning"
-                ),
-                sql::TableFactor::NestedJoin { .. } => unimplemented!(
-                    "NestedJoin in join not implemented in good-ormning"
-                ),
-                sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
-                sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
-                sql::TableFactor::MatchRecognize { .. } => {
-                    panic!("MATCH_RECOGNIZE is not supported by PostgreSQL")
-                },
-                sql::TableFactor::OpenJsonTable { .. } => {
-                    panic!("OPENJSON is not supported by PostgreSQL")
-                },
-                sql::TableFactor::XmlTable { .. } => unimplemented!(
-                    "XMLTABLE in join is not implemented in good-ormning"
-                ),
-            };
-            let (type_, on) = match &j.join_operator {
-                sql::JoinOperator::Join(constraint) |
-                sql::JoinOperator::Inner(constraint) => {
-                    (
-                        good_ormning_core::pg::query::select::JoinType::Inner,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::Left(constraint) |
-                sql::JoinOperator::LeftOuter(constraint) => {
-                    (
-                        good_ormning_core::pg::query::select::JoinType::Left,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::Right(constraint) |
-                sql::JoinOperator::RightOuter(constraint) => {
-                    (
-                        good_ormning_core::pg::query::select::JoinType::Right,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::FullOuter(constraint) => {
-                    (
-                        good_ormning_core::pg::query::select::JoinType::Full,
-                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
-                    )
-                },
-                sql::JoinOperator::CrossJoin => {
-                    (good_ormning_core::pg::query::select::JoinType::Cross, None)
-                },
-                sql::JoinOperator::Semi(_) |
-                sql::JoinOperator::LeftSemi(_) |
-                sql::JoinOperator::RightSemi(_) |
-                sql::JoinOperator::Anti(_) |
-                sql::JoinOperator::LeftAnti(_) |
-                sql::JoinOperator::RightAnti(_) |
-                sql::JoinOperator::CrossApply |
-                sql::JoinOperator::OuterApply |
-                sql::JoinOperator::AsOf { .. } |
-                sql::JoinOperator::StraightJoin(_) => {
-                    panic!(
-                        "Join operator is not supported by PostgreSQL: {:?}",
-                        j.join_operator
-                    )
-                },
-            };
-            join.push(good_ormning_core::pg::query::select::Join {
-                source: Box::new(source),
-                type_,
-                on: on,
-            });
-        }
-    }
-    let mut order = vec![];
-    if let Some(order_by) = &q.order_by {
-        let exprs = match &order_by.kind {
-            sqlparser::ast::OrderByKind::Expressions(exprs) => exprs,
-            _ => panic!("Unsupported order by kind"),
-        };
-        for o in exprs {
-            let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-            let dir = match o.options.asc {
-                Some(true) | None => Order::Asc,
-                Some(false) => Order::Desc,
-            };
-            order.push((e, dir));
-        }
-    }
-    return Select {
-        with: None,
-        table: table.clone(),
-        returning: convert_returning(
-            input,
-            &Some(s.projection.clone()),
-            used_params,
-            custom_types,
-            field_lookup,
-            Some(&match &table.source {
-                JoinSource::Table(tr) => tr.clone(),
-                _ => TableRef("".into()),
-            }),
-        ),
-        join,
-        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        group: match &s.group_by {
-            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by PostgreSQL"),
-            sql::GroupByExpr::Expressions(exprs, _) => exprs
-                .iter()
-                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                .collect(),
-        },
-        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        order,
-        limit: q.limit_clause.as_ref().and_then(|lc| match lc {
-            sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
-            _ => None,
-        }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
-        distinct: s.distinct.is_some(),
-        junctions: vec![],
-    };
-}
-
-fn convert_on(
-    input: &GoodQueryInput,
-    constraint: &sql::JoinConstraint,
-    used_params: &mut HashSet<String>,
-    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
-    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
-) -> Expr {
-    match constraint {
-        sql::JoinConstraint::On(e) => {
-            return convert_expr(input, e, used_params, custom_types, field_lookup);
-        },
-        sql::JoinConstraint::Using(_) => {
-            unimplemented!("JOIN ... USING is not implemented in good-ormning")
-        },
-        sql::JoinConstraint::Natural => {
-            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
-        },
-        sql::JoinConstraint::None => {
-            panic!("JOIN requires an ON clause")
-        },
-    }
 }
 
 fn convert_expr(
@@ -1208,6 +580,538 @@ fn convert_expr(
     }
 }
 
+fn convert_insert(
+    input: &GoodQueryInput,
+    insert: &sql::Insert,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Insert {
+    let table = get_table_ref(match &insert.table {
+        sqlparser::ast::TableObject::TableName(n) => n,
+        _ => panic!("Unsupported table object"),
+    });
+    let mut values = vec![];
+    if let Some(q) = &insert.source {
+        if let sql::SetExpr::Values(v) = &*q.body {
+            if let Some(row) = v.rows.first() {
+                for (i, expr) in row.iter().enumerate() {
+                    let field = FieldRef {
+                        table_id: table.0.clone(),
+                        field_id: insert.columns[i].value.clone(),
+                    };
+                    values.push((field, convert_expr(input, expr, used_params, custom_types, field_lookup)));
+                }
+            }
+        } else {
+            unimplemented!("Insert source SetExpr not implemented in good-ormning: {:?}", q.body)
+        }
+    }
+    let on_conflict = if let Some(on) = &insert.on {
+        match on {
+            sql::OnInsert::OnConflict(oc) => match &oc.action {
+                sql::OnConflictAction::DoNothing => Some(InsertConflict::DoNothing),
+                sql::OnConflictAction::DoUpdate(du) => {
+                    let mut updates = vec![];
+                    for a in &du.assignments {
+                        let target_name = match &a.target {
+                            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                            },
+                            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
+                        };
+                        let field = FieldRef {
+                            table_id: table.0.clone(),
+                            field_id: target_name,
+                        };
+                        updates.push(
+                            (field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)),
+                        );
+                    }
+                    let conflict = if let Some(target) = &oc.conflict_target {
+                        match target {
+                            sql::ConflictTarget::Columns(idents) => idents.iter().map(|id| FieldRef {
+                                table_id: table.0.clone(),
+                                field_id: id.value.clone(),
+                            }).collect(),
+                            _ => vec![],
+                        }
+                    } else {
+                        vec![]
+                    };
+                    Some(InsertConflict::DoUpdate {
+                        conflict,
+                        set: updates,
+                    })
+                },
+            },
+            _ => None,
+        }
+    } else {
+        None
+    };
+    return Insert {
+        table: table.clone(),
+        values,
+        on_conflict,
+        returning: convert_returning(
+            input,
+            &insert.returning,
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&table),
+        ),
+    };
+}
+
+fn convert_on(
+    input: &GoodQueryInput,
+    constraint: &sql::JoinConstraint,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Expr {
+    match constraint {
+        sql::JoinConstraint::On(e) => {
+            return convert_expr(input, e, used_params, custom_types, field_lookup);
+        },
+        sql::JoinConstraint::Using(_) => {
+            unimplemented!("JOIN ... USING is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::Natural => {
+            unimplemented!("NATURAL JOIN is not implemented in good-ormning")
+        },
+        sql::JoinConstraint::None => {
+            panic!("JOIN requires an ON clause")
+        },
+    }
+}
+
+pub fn convert_query(
+    input: &GoodQueryInput,
+    statement: &sql::Statement,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Query {
+    let mut used_params = HashSet::new();
+    let body: Box<dyn QueryBody> = match statement {
+        sql::Statement::Query(q) => {
+            if let sql::SetExpr::Delete(sql::Statement::Delete(d)) = &*q.body {
+                let mut del = convert_delete(input, d, &mut used_params, custom_types, field_lookup);
+                if let Some(with) = &q.with {
+                    del.with = Some(convert_with(input, with, &mut used_params, custom_types, field_lookup));
+                }
+                Box::new(del)
+            } else {
+                Box::new(convert_select_query(input, q, &mut used_params, custom_types, field_lookup))
+            }
+        },
+        sql::Statement::Insert(insert) => Box::new(
+            convert_insert(input, insert, &mut used_params, custom_types, field_lookup),
+        ),
+        sql::Statement::Update { table, assignments, selection, returning, .. } => Box::new(
+            convert_update(
+                input,
+                table,
+                assignments,
+                selection,
+                returning,
+                &mut used_params,
+                custom_types,
+                field_lookup,
+            ),
+        ),
+        sql::Statement::Delete(delete) => Box::new(
+            convert_delete(input, delete, &mut used_params, custom_types, field_lookup),
+        ),
+        _ => unimplemented!("Statement type not implemented in good-ormning: {:?}", statement),
+    };
+    for (ident, _) in &input.param_types {
+        let s = ident.to_string();
+        let s = s.trim_start_matches("r#");
+        if !used_params.contains(s) {
+            panic!("Parameter {} not used in query", ident);
+        }
+    }
+    return Query {
+        name: "unnamed".to_string(),
+        body,
+        // Dummy
+        res_count: QueryResCount::Many,
+        res_name: None,
+    };
+}
+
+fn convert_returning(
+    input: &GoodQueryInput,
+    returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+    default_table: Option<&TableRef>,
+) -> Vec<Returning> {
+    let mut out = vec![];
+    if let Some(items) = returning {
+        for item in items {
+            match item {
+                sql::SelectItem::UnnamedExpr(e) => out.push(Returning {
+                    e: convert_expr(input, e, used_params, custom_types, field_lookup),
+                    rename: None,
+                }),
+                sql::SelectItem::ExprWithAlias { expr, alias } => out.push(Returning {
+                    e: convert_expr(input, expr, used_params, custom_types, field_lookup),
+                    rename: Some(alias.value.clone()),
+                }),
+                sql::SelectItem::Wildcard(_) => {
+                    let table_ref = default_table.expect("Wildcard returning without default table");
+                    let table_info = field_lookup.get(table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
+                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
+                    let table_ref = TableRef(match name.0.last().unwrap() {
+                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+                    });
+                    let table_info = field_lookup.get(&table_ref).expect("Table not found in field_lookup");
+                    for (field_ref, field_info) in &table_info.fields {
+                        out.push(Returning {
+                            e: Expr::Field(field_ref.clone()),
+                            rename: Some(field_info.sql_name.clone()),
+                        });
+                    }
+                },
+                sql::SelectItem::QualifiedWildcard(
+                    sql::SelectItemQualifiedWildcardKind::Expr(_),
+                    _,
+                ) => unimplemented!(
+                    "QualifiedWildcard with expression not implemented in good-ormning"
+                ),
+            }
+        }
+    }
+    return out;
+}
+
+fn convert_select(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    s: &sql::Select,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Select {
+    let table = if s.from.is_empty() {
+        NamedSelectSource {
+            source: JoinSource::Empty,
+            alias: None,
+        }
+    } else {
+        match &s.from[0].relation {
+            sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
+                source: JoinSource::Table(get_table_ref(name)),
+                alias: Some(
+                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                ),
+            },
+            sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+                source: JoinSource::Subsel(
+                    Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+                ),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
+            sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+                source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                    sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                        convert_expr(input, e, used_params, custom_types, field_lookup)
+                    },
+                    _ => unimplemented!("FunctionArg not implemented in good-ormning: {:?}", a),
+                }).collect()),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
+            sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
+                source: JoinSource::Func(
+                    "unnest".to_string(),
+                    array_exprs
+                        .iter()
+                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                        .collect(),
+                ),
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            },
+            sql::TableFactor::TableFunction { .. } => unimplemented!("TableFunction not implemented in good-ormning"),
+            sql::TableFactor::JsonTable { .. } => unimplemented!("JsonTable not implemented in good-ormning"),
+            sql::TableFactor::NestedJoin { .. } => unimplemented!("NestedJoin not implemented in good-ormning"),
+            sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
+            sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
+            sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by PostgreSQL"),
+            sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by PostgreSQL"),
+            sql::TableFactor::XmlTable { .. } => unimplemented!("XMLTABLE is not implemented in good-ormning"),
+        }
+    };
+    let mut join = vec![];
+    if !s.from.is_empty() {
+        for j in &s.from[0].joins {
+            let source = match &j.relation {
+                sql::TableFactor::Table { name, alias, .. } => NamedSelectSource {
+                    source: JoinSource::Table(get_table_ref(name)),
+                    alias: Some(
+                        alias
+                            .as_ref()
+                            .map(|a| a.name.value.clone())
+                            .unwrap_or_else(|| get_table_ref(name).0.clone()),
+                    ),
+                },
+                sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
+                    source: JoinSource::Subsel(
+                        Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
+                    ),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                },
+                sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
+                    source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+                        sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                            convert_expr(input, e, used_params, custom_types, field_lookup)
+                        },
+                        _ => unimplemented!("FunctionArg in join not implemented in good-ormning: {:?}", a),
+                    }).collect()),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                },
+                sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
+                    source: JoinSource::Func(
+                        "unnest".to_string(),
+                        array_exprs
+                            .iter()
+                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                            .collect(),
+                    ),
+                    alias: alias.as_ref().map(|a| a.name.value.clone()),
+                },
+                sql::TableFactor::TableFunction { .. } => unimplemented!(
+                    "TableFunction in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::JsonTable { .. } => unimplemented!(
+                    "JsonTable in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::NestedJoin { .. } => unimplemented!(
+                    "NestedJoin in join not implemented in good-ormning"
+                ),
+                sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by PostgreSQL"),
+                sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by PostgreSQL"),
+                sql::TableFactor::MatchRecognize { .. } => {
+                    panic!("MATCH_RECOGNIZE is not supported by PostgreSQL")
+                },
+                sql::TableFactor::OpenJsonTable { .. } => {
+                    panic!("OPENJSON is not supported by PostgreSQL")
+                },
+                sql::TableFactor::XmlTable { .. } => unimplemented!(
+                    "XMLTABLE in join is not implemented in good-ormning"
+                ),
+            };
+            let (type_, on) = match &j.join_operator {
+                sql::JoinOperator::Join(constraint) | sql::JoinOperator::Inner(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Inner,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::Left(constraint) | sql::JoinOperator::LeftOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Left,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::Right(constraint) | sql::JoinOperator::RightOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Right,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::FullOuter(constraint) => {
+                    (
+                        good_ormning_core::pg::query::select::JoinType::Full,
+                        Some(convert_on(input, constraint, used_params, custom_types, field_lookup)),
+                    )
+                },
+                sql::JoinOperator::CrossJoin => {
+                    (good_ormning_core::pg::query::select::JoinType::Cross, None)
+                },
+                sql::JoinOperator::Semi(_) |
+                sql::JoinOperator::LeftSemi(_) |
+                sql::JoinOperator::RightSemi(_) |
+                sql::JoinOperator::Anti(_) |
+                sql::JoinOperator::LeftAnti(_) |
+                sql::JoinOperator::RightAnti(_) |
+                sql::JoinOperator::CrossApply |
+                sql::JoinOperator::OuterApply |
+                sql::JoinOperator::AsOf { .. } |
+                sql::JoinOperator::StraightJoin(_) => {
+                    panic!("Join operator is not supported by PostgreSQL: {:?}", j.join_operator)
+                },
+            };
+            join.push(good_ormning_core::pg::query::select::Join {
+                source: Box::new(source),
+                type_,
+                on: on,
+            });
+        }
+    }
+    let mut order = vec![];
+    if let Some(order_by) = &q.order_by {
+        let exprs = match &order_by.kind {
+            sqlparser::ast::OrderByKind::Expressions(exprs) => exprs,
+            _ => panic!("Unsupported order by kind"),
+        };
+        for o in exprs {
+            let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
+            let dir = match o.options.asc {
+                Some(true) | None => Order::Asc,
+                Some(false) => Order::Desc,
+            };
+            order.push((e, dir));
+        }
+    }
+    return Select {
+        with: None,
+        table: table.clone(),
+        returning: convert_returning(
+            input,
+            &Some(s.projection.clone()),
+            used_params,
+            custom_types,
+            field_lookup,
+            Some(&match &table.source {
+                JoinSource::Table(tr) => tr.clone(),
+                _ => TableRef("".into()),
+            }),
+        ),
+        join,
+        where_: s.selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        group: match &s.group_by {
+            sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by PostgreSQL"),
+            sql::GroupByExpr::Expressions(exprs, _) => exprs
+                .iter()
+                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                .collect(),
+        },
+        having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        order,
+        limit: q.limit_clause.as_ref().and_then(|lc| match lc {
+            sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
+            _ => None,
+        }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        distinct: s.distinct.is_some(),
+        junctions: vec![],
+    };
+}
+
+fn convert_select_query(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Select {
+    let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
+    if let Some(with) = &q.with {
+        sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
+    }
+    return sel;
+}
+
+fn convert_select_query_expr(
+    input: &GoodQueryInput,
+    q: &sql::Query,
+    expr: &sql::SetExpr,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Select {
+    match expr {
+        sql::SetExpr::Select(s) => return convert_select(input, q, s, used_params, custom_types, field_lookup),
+        sql::SetExpr::SetOperation { op, left, right, set_quantifier } => {
+            let mut l = convert_select_query_expr(input, q, left, used_params, custom_types, field_lookup);
+            let r = convert_select_query_expr(input, q, right, used_params, custom_types, field_lookup);
+            let junction_op = match op {
+                sql::SetOperator::Union => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::UnionAll
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Union
+                    }
+                },
+                sql::SetOperator::Intersect => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::IntersectAll
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Intersect
+                    }
+                },
+                sql::SetOperator::Minus => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::ExceptAll
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
+                sql::SetOperator::Except => {
+                    if matches!(set_quantifier, sql::SetQuantifier::All) {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::ExceptAll
+                    } else {
+                        good_ormning_core::pg::query::select_body::SelectJunctionOperator::Except
+                    }
+                },
+            };
+            l.junctions.push(good_ormning_core::pg::query::select_body::SelectJunction {
+                op: junction_op,
+                body: Box::new(r),
+            });
+            return l;
+        },
+        _ => unimplemented!("SetExpr type not implemented in good-ormning: {:?}", expr),
+    }
+}
+
+fn convert_update(
+    input: &GoodQueryInput,
+    table: &sql::TableWithJoins,
+    assignments: &[sql::Assignment],
+    selection: &Option<sql::Expr>,
+    returning: &Option<Vec<sql::SelectItem>>,
+    used_params: &mut HashSet<String>,
+    custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
+    field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
+) -> Update {
+    let table_ref = match &table.relation {
+        sql::TableFactor::Table { name, .. } => get_table_ref(name),
+        _ => unimplemented!("Update table factor not implemented in good-ormning: {:?}", table.relation),
+    };
+    let mut sets = vec![];
+    for a in assignments {
+        let target_name = match &a.target {
+            sql::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
+                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+            },
+            _ => unimplemented!("AssignmentTarget not implemented in good-ormning: {:?}", a.target),
+        };
+        let field = FieldRef {
+            table_id: table_ref.0.clone(),
+            field_id: target_name,
+        };
+        sets.push((field, convert_expr(input, &a.value, used_params, custom_types, field_lookup)));
+    }
+    return Update {
+        table: table_ref.clone(),
+        values: sets,
+        where_: selection.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        returning: convert_returning(input, returning, used_params, custom_types, field_lookup, Some(&table_ref)),
+    };
+}
+
 fn convert_window_frame_bound(
     input: &GoodQueryInput,
     b: &sql::WindowFrameBound,
@@ -1269,5 +1173,95 @@ fn convert_with(
     return good_ormning_core::pg::query::utils::With {
         recursive: with.recursive,
         ctes,
+    };
+}
+
+fn get_table_ref(name: &sql::ObjectName) -> TableRef {
+    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
+        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
+    });
+}
+
+pub fn param_type_to_pg_type(pt: &ParamType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
+    let (simple_type, custom) = match pt.base.as_str() {
+        "i16" => (PgSimpleSimpleType::I16, None),
+        "i32" => (PgSimpleSimpleType::I32, None),
+        "i64" => (PgSimpleSimpleType::I64, None),
+        "u32" => (PgSimpleSimpleType::U32, None),
+        "f32" => (PgSimpleSimpleType::F32, None),
+        "f64" => (PgSimpleSimpleType::F64, None),
+        "bool" => (PgSimpleSimpleType::Bool, None),
+        "string" => (PgSimpleSimpleType::String, None),
+        "bytes" => (PgSimpleSimpleType::Bytes, None),
+        #[cfg(feature = "chrono")]
+        "utctime_s_chrono" => (PgSimpleSimpleType::UtcTimeSChrono, None),
+        #[cfg(feature = "chrono")]
+        "utctime_ms_chrono" => (PgSimpleSimpleType::UtcTimeMsChrono, None),
+        #[cfg(feature = "jiff")]
+        "utctime_s_jiff" => (PgSimpleSimpleType::UtcTimeSJiff, None),
+        #[cfg(feature = "jiff")]
+        "utctime_ms_jiff" => (PgSimpleSimpleType::UtcTimeMsJiff, None),
+        "auto" => (PgSimpleSimpleType::Auto, None),
+        _ => {
+            if let Some(ct) = custom_types.get(&pt.base) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (PgSimpleSimpleType::I32, Some(pt.base.clone()))
+            }
+        },
+    };
+    return PgType {
+        type_: PgSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: pt.opt,
+        arr: pt.arr,
+    };
+}
+
+pub fn sql_type_to_pg_type(t: &sqlparser::ast::DataType, custom_types: &BTreeMap<String, PgCustomType>) -> PgType {
+    let (simple_type, custom) = match t {
+        sqlparser::ast::DataType::SmallInt(_) => (PgSimpleSimpleType::I16, None),
+        sqlparser::ast::DataType::Int(_) | sqlparser::ast::DataType::Integer(_) => (PgSimpleSimpleType::I32, None),
+        sqlparser::ast::DataType::BigInt(_) => (PgSimpleSimpleType::I64, None),
+        sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (PgSimpleSimpleType::F32, None),
+        sqlparser::ast::DataType::DoublePrecision => (PgSimpleSimpleType::F64, None),
+        sqlparser::ast::DataType::Boolean => (PgSimpleSimpleType::Bool, None),
+        sqlparser::ast::DataType::Text | sqlparser::ast::DataType::Varchar(_) => (PgSimpleSimpleType::String, None),
+        sqlparser::ast::DataType::Bytea |
+        sqlparser::ast::DataType::Binary(_) |
+        sqlparser::ast::DataType::Varbinary(_) => (
+            PgSimpleSimpleType::Bytes,
+            None,
+        ),
+        sqlparser::ast::DataType::Timestamp(_precision, _tz) => {
+            // Very simplified
+            #[cfg(feature = "chrono")]
+            {
+                (PgSimpleSimpleType::UtcTimeSChrono, None)
+            }
+            #[cfg(not(feature = "chrono"))]
+            {
+                (PgSimpleSimpleType::I32, None)
+            }
+        },
+        sqlparser::ast::DataType::Custom(name, ..) => {
+            let name_str = name.to_string();
+            if let Some(ct) = custom_types.get(&name_str) {
+                (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
+            } else {
+                (PgSimpleSimpleType::I32, Some(name_str))
+            }
+        },
+        _ => (PgSimpleSimpleType::I32, None),
+    };
+    return PgType {
+        type_: PgSimpleType {
+            type_: simple_type,
+            custom,
+        },
+        opt: false,
+        arr: false,
     };
 }

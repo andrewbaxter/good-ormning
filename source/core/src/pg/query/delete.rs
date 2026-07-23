@@ -25,10 +25,10 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Delete {
-    pub with: Option<crate::pg::query::utils::With>,
+    pub returning: Vec<Returning>,
     pub table: TableRef,
     pub where_: Option<Expr>,
-    pub returning: Vec<Returning>,
+    pub with: Option<crate::pg::query::utils::With>,
 }
 
 impl QueryBody for Delete {

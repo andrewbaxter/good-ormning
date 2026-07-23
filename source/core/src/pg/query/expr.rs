@@ -1,21 +1,5 @@
-use serde::{
-    Serialize,
-    Deserialize,
-};
 #[cfg(feature = "chrono")]
 use chrono::FixedOffset;
-use {
-    quote::{
-        ToTokens,
-        format_ident,
-        quote,
-    },
-    std::{
-        collections::HashMap,
-        fmt::Display,
-        rc::Rc,
-    },
-};
 #[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
@@ -46,465 +30,59 @@ use crate::{
 };
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
+use serde::{
+    Serialize,
+    Deserialize,
+};
 use super::select::{
     Select,
     Order,
 };
-
-#[derive(Clone)]
-pub struct ExprType(pub Vec<(ExprValName, Type)>);
-
-impl ExprType {
-    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
-        if self.0.len() != 1 {
-            errs.err(
-                path,
-                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
-            );
-            return None;
-        }
-        Some(self.0[0].1.clone())
-    }
-}
-
-pub struct ComputeType(pub Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
-
-impl Clone for ComputeType {
-    fn clone(&self) -> Self {
-        return ComputeType(self.0.clone());
-    }
-}
-
-impl std::fmt::Debug for ComputeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f.write_str("ComputeType");
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameType {
-    Rows,
-    Range,
-    Groups,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameBound {
-    UnboundedPreceding,
-    Preceding(Box<SerialExpr>),
-    CurrentRow,
-    Following(Box<SerialExpr>),
-    UnboundedFollowing,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialWindowFrameExclude {
-    CurrentRow,
-    Group,
-    Ties,
-    NoOthers,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SerialWindowFrame {
-    pub type_: SerialWindowFrameType,
-    pub start: SerialWindowFrameBound,
-    pub end: Option<SerialWindowFrameBound>,
-    pub exclude: Option<SerialWindowFrameExclude>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SerialExpr {
-    LitArray(Vec<SerialExpr>),
-    LitNull(SimpleType),
-    LitBool(bool),
-    LitAuto(i64),
-    LitI16(i16),
-    LitI32(i32),
-    LitI64(i64),
-    LitU32(u32),
-    LitF32(f32),
-    LitF64(f64),
-    LitString(String),
-    LitBytes(Vec<u8>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeJiff(Timestamp),
-    BinOp {
-        left: Box<SerialExpr>,
-        op: BinOp,
-        right: Box<SerialExpr>,
+use {
+    quote::{
+        ToTokens,
+        format_ident,
+        quote,
     },
-    BinOpChain {
-        op: BinOp,
-        exprs: Vec<SerialExpr>,
+    std::{
+        collections::HashMap,
+        fmt::Display,
+        rc::Rc,
     },
-    PrefixOp {
-        op: PrefixOp,
-        right: Box<SerialExpr>,
-    },
-    Cast(Box<SerialExpr>, Type),
-    Collate(Box<SerialExpr>, String),
-    Like {
-        expr: Box<SerialExpr>,
-        pattern: Box<SerialExpr>,
-        escape: Option<Box<SerialExpr>>,
-        ilike: bool,
-    },
-    Between {
-        e: Box<SerialExpr>,
-        negated: bool,
-        low: Box<SerialExpr>,
-        high: Box<SerialExpr>,
-    },
-}
-
-impl From<SerialWindowFrameType> for WindowFrameType {
-    fn from(s: SerialWindowFrameType) -> Self {
-        match s {
-            SerialWindowFrameType::Rows => WindowFrameType::Rows,
-            SerialWindowFrameType::Range => WindowFrameType::Range,
-            SerialWindowFrameType::Groups => WindowFrameType::Groups,
-        }
-    }
-}
-
-impl From<SerialWindowFrameBound> for WindowFrameBound {
-    fn from(s: SerialWindowFrameBound) -> Self {
-        match s {
-            SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
-            SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
-            SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
-            SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
-            SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
-        }
-    }
-}
-
-impl From<SerialWindowFrameExclude> for WindowFrameExclude {
-    fn from(s: SerialWindowFrameExclude) -> Self {
-        match s {
-            SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
-            SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
-            SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
-            SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
-        }
-    }
-}
-
-impl From<SerialWindowFrame> for WindowFrame {
-    fn from(s: SerialWindowFrame) -> Self {
-        WindowFrame {
-            type_: WindowFrameType::from(s.type_),
-            start: WindowFrameBound::from(s.start),
-            end: s.end.map(WindowFrameBound::from),
-            exclude: s.exclude.map(WindowFrameExclude::from),
-        }
-    }
-}
-
-impl From<SerialExpr> for Expr {
-    fn from(s: SerialExpr) -> Self {
-        match s {
-            SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
-            SerialExpr::LitNull(t) => Expr::LitNull(t),
-            SerialExpr::LitBool(b) => Expr::LitBool(b),
-            SerialExpr::LitAuto(v) => Expr::LitAuto(v),
-            SerialExpr::LitI16(v) => Expr::LitI16(v),
-            SerialExpr::LitI32(v) => Expr::LitI32(v),
-            SerialExpr::LitI64(v) => Expr::LitI64(v),
-            SerialExpr::LitU32(v) => Expr::LitU32(v),
-            SerialExpr::LitF32(v) => Expr::LitF32(v),
-            SerialExpr::LitF64(v) => Expr::LitF64(v),
-            SerialExpr::LitString(v) => Expr::LitString(v),
-            SerialExpr::LitBytes(v) => Expr::LitBytes(v),
-            #[cfg(feature = "chrono")]
-            SerialExpr::LitUtcTimeChrono(v) => Expr::LitUtcTimeChrono(v),
-            #[cfg(feature = "chrono")]
-            SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
-            #[cfg(feature = "jiff")]
-            SerialExpr::LitUtcTimeJiff(v) => Expr::LitUtcTimeJiff(v),
-            SerialExpr::BinOp { left, op, right } => Expr::BinOp {
-                left: Box::new(Expr::from(*left)),
-                op: op,
-                right: Box::new(Expr::from(*right)),
-            },
-            SerialExpr::BinOpChain { op, exprs } => Expr::BinOpChain {
-                op: op,
-                exprs: exprs.into_iter().map(Expr::from).collect(),
-            },
-            SerialExpr::PrefixOp { op, right } => Expr::PrefixOp {
-                op: op,
-                right: Box::new(Expr::from(*right)),
-            },
-            SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
-            SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
-            SerialExpr::Like { expr, pattern, escape, ilike } => Expr::Like {
-                expr: Box::new(Expr::from(*expr)),
-                pattern: Box::new(Expr::from(*pattern)),
-                escape: escape.map(|e| Box::new(Expr::from(*e))),
-                ilike,
-            },
-            SerialExpr::Between { e, negated, low, high } => Expr::Between {
-                e: Box::new(Expr::from(*e)),
-                negated,
-                low: Box::new(Expr::from(*low)),
-                high: Box::new(Expr::from(*high)),
-            },
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameType {
-    Rows,
-    Range,
-    Groups,
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameBound {
-    UnboundedPreceding,
-    Preceding(Box<Expr>),
-    CurrentRow,
-    Following(Box<Expr>),
-    UnboundedFollowing,
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowFrameExclude {
-    CurrentRow,
-    Group,
-    Ties,
-    NoOthers,
-}
-
-#[derive(Clone, Debug)]
-pub struct WindowFrame {
-    pub type_: WindowFrameType,
-    pub start: WindowFrameBound,
-    pub end: Option<WindowFrameBound>,
-    pub exclude: Option<WindowFrameExclude>,
-}
-
-#[derive(Clone, Debug)]
-pub enum Expr {
-    LitArray(Vec<Expr>),
-    // A null value needs a type for type checking purposes. It will always be trated
-    // as an optional value.
-    LitNull(SimpleType),
-    LitBool(bool),
-    LitAuto(i64),
-    LitI16(i16),
-    LitI32(i32),
-    LitI64(i64),
-    LitU32(u32),
-    LitF32(f32),
-    LitF64(f64),
-    LitString(String),
-    LitBytes(Vec<u8>),
-    #[cfg(feature = "chrono")]
-    LitUtcTimeChrono(DateTime<Utc>),
-    #[cfg(feature = "chrono")]
-    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
-    #[cfg(feature = "jiff")]
-    LitUtcTimeJiff(Timestamp),
-    /// A query parameter. This will become a parameter to the generated Rust function
-    /// with the specified `name` and `type_`.
-    Param {
-        name: String,
-        type_: Type,
-    },
-    /// This evaluates to the value of a field in the query main or joined tables. If
-    /// you've aliased tables or field names, you'll have to instantiate `FieldId`
-    /// yourself with the appropriate values. For synthetic values like function
-    /// results you may need a `FieldId` with an empty `TableId` (`""`).
-    Field(FieldRef),
-    BinOp {
-        left: Box<Expr>,
-        op: BinOp,
-        right: Box<Expr>,
-    },
-    BinOpChain {
-        op: BinOp,
-        exprs: Vec<Expr>,
-    },
-    PrefixOp {
-        op: PrefixOp,
-        right: Box<Expr>,
-    },
-    Call {
-        func: String,
-        args: Vec<Expr>,
-        compute_type: ComputeType,
-        filter: Option<Box<Expr>>,
-    },
-    Window {
-        expr: Box<Expr>,
-        partition_by: Vec<Expr>,
-        order_by: Vec<(Expr, Order)>,
-        frame: Option<WindowFrame>,
-    },
-    /// A sub SELECT query.
-    Select(Box<Select>),
-    /// This is a synthetic expression, saying to treat the result of the expression as
-    /// having the specified type. Use this for casting between primitive types and
-    /// Rust new-types for instance.
-    Cast(Box<Expr>, Type),
-    Exists(Box<super::select::Select>),
-    Collate(Box<Expr>, String),
-    Like {
-        expr: Box<Expr>,
-        pattern: Box<Expr>,
-        escape: Option<Box<Expr>>,
-        ilike: bool,
-    },
-    Between {
-        e: Box<Expr>,
-        negated: bool,
-        low: Box<Expr>,
-        high: Box<Expr>,
-    },
-    Case {
-        operand: Option<Box<Expr>>,
-        conditions: Vec<(Expr, Expr)>,
-        else_: Option<Box<Expr>>,
-    },
-    Paren(Box<Expr>),
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct ExprValName {
-    pub table_id: String,
-    pub id: String,
-}
-
-impl ExprValName {
-    pub fn local(name: String) -> Self {
-        ExprValName {
-            table_id: "".into(),
-            id: name,
-        }
-    }
-
-    pub fn empty() -> Self {
-        ExprValName {
-            table_id: "".into(),
-            id: "".into(),
-        }
-    }
-
-    pub fn field(f: &FieldRef) -> Self {
-        ExprValName {
-            table_id: f.table_id.clone(),
-            id: f.field_id.clone(),
-        }
-    }
-
-    pub fn with_alias(&self, s: &str) -> ExprValName {
-        ExprValName {
-            table_id: s.into(),
-            id: self.id.clone(),
-        }
-    }
-}
-
-impl Display for ExprValName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.table_id.is_empty() {
-            return Display::fmt(&self.id, f);
-        } else {
-            return Display::fmt(&format!("{}.{}", self.table_id, self.id), f);
-        }
-    }
-}
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BinOp {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
     And,
-    Or,
-    Equals,
-    NotEquals,
-    Is,
-    IsNot,
-    LessThan,
-    LessThanEqualTo,
-    GreaterThan,
-    GreaterThanEqualTo,
-    In,
-    NotIn,
-    Like,
-    ILike,
-    StringConcat,
-    Mod,
     BitwiseAnd,
     BitwiseOr,
-    BitwiseXor,
     BitwiseShiftLeft,
     BitwiseShiftRight,
-    IsDistinctFrom,
-    IsNotDistinctFrom,
+    BitwiseXor,
+    Divide,
+    Equals,
     Glob,
-    Regexp,
+    GreaterThan,
+    GreaterThanEqualTo,
+    ILike,
+    In,
+    Is,
+    IsDistinctFrom,
+    IsNot,
+    IsNotDistinctFrom,
+    LessThan,
+    LessThanEqualTo,
+    Like,
     Match,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PrefixOp {
-    Not,
-    BitwiseNot,
     Minus,
-}
-
-pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
-    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
-    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
-    if left.opt != right.opt {
-        errs.err(
-            path,
-            format!("Operator arms optionality don't match: left has {} and right has {}", left.opt, right.opt),
-        );
-    }
-    if left.type_.custom != right.type_.custom {
-        errs.err(
-            path,
-            format!(
-                "Operator arms custom types don't match: left has type {:?} and right has {:?}",
-                left.type_.custom,
-                right.type_.custom
-            ),
-        );
-    }
-    if left.type_.type_ != right.type_.type_ {
-        errs.err(
-            path,
-            format!(
-                "Operator arms types don't match: left has type {:?} and right has {:?}",
-                left.type_.type_,
-                right.type_.type_
-            ),
-        );
-    }
-    Some(left.clone())
-}
-
-pub fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
-    let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
-        return;
-    };
-    if t.opt {
-        ctx.errs.err(path, "Expected non-optional bool but got optional bool".to_string());
-    }
-    if !matches!(t.type_.type_, SimpleSimpleType::Bool) {
-        ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.type_.type_));
-    }
+    Mod,
+    Multiply,
+    NotEquals,
+    NotIn,
+    Or,
+    Plus,
+    Regexp,
+    StringConcat,
 }
 
 pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &ExprType) {
@@ -519,6 +97,18 @@ pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Typ
     }
     if !left.opt && right.opt {
         errs.err(path, "Expression is optional but destination is not".to_string());
+    }
+}
+
+pub fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprType) {
+    let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
+        return;
+    };
+    if t.opt {
+        ctx.errs.err(path, "Expected non-optional bool but got optional bool".to_string());
+    }
+    if !matches!(t.type_.type_, SimpleSimpleType::Bool) {
+        ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.type_.type_));
     }
 }
 
@@ -558,83 +148,136 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>
     }
 }
 
-impl WindowFrame {
-    pub fn build(
-        &self,
-        ctx: &mut PgQueryCtx,
-        path: &rpds::Vector<String>,
-        scope: &HashMap<ExprValName, Type>,
-    ) -> Tokens {
-        let mut out = Tokens::new();
-        match self.type_ {
-            WindowFrameType::Rows => {
-                out.s("rows");
-            },
-            WindowFrameType::Range => {
-                out.s("range");
-            },
-            WindowFrameType::Groups => {
-                out.s("groups");
-            },
-        }
-        if let Some(end) = &self.end {
-            out.s("between");
-            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
-            out.s("and");
-            out.s(&end.build(ctx, &path.push_back("End".into()), scope).to_string());
-        } else {
-            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
-        }
-        if let Some(exclude) = &self.exclude {
-            out.s("exclude");
-            match exclude {
-                WindowFrameExclude::CurrentRow => {
-                    out.s("current row");
-                },
-                WindowFrameExclude::Group => {
-                    out.s("group");
-                },
-                WindowFrameExclude::Ties => {
-                    out.s("ties");
-                },
-                WindowFrameExclude::NoOthers => {
-                    out.s("no others");
-                },
-            }
-        }
-        out
+pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
+    let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
+    let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
+    if left.opt != right.opt {
+        errs.err(
+            path,
+            format!("Operator arms optionality don't match: left has {} and right has {}", left.opt, right.opt),
+        );
+    }
+    if left.type_.custom != right.type_.custom {
+        errs.err(
+            path,
+            format!(
+                "Operator arms custom types don't match: left has type {:?} and right has {:?}",
+                left.type_.custom,
+                right.type_.custom
+            ),
+        );
+    }
+    if left.type_.type_ != right.type_.type_ {
+        errs.err(
+            path,
+            format!(
+                "Operator arms types don't match: left has type {:?} and right has {:?}",
+                left.type_.type_,
+                right.type_.type_
+            ),
+        );
+    }
+    Some(left.clone())
+}
+
+pub struct ComputeType(pub Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
+
+impl Clone for ComputeType {
+    fn clone(&self) -> Self {
+        return ComputeType(self.0.clone());
     }
 }
 
-impl WindowFrameBound {
-    pub fn build(
-        &self,
-        ctx: &mut PgQueryCtx,
-        path: &rpds::Vector<String>,
-        scope: &HashMap<ExprValName, Type>,
-    ) -> Tokens {
-        let mut out = Tokens::new();
-        match self {
-            WindowFrameBound::UnboundedPreceding => {
-                out.s("unbounded preceding");
-            },
-            WindowFrameBound::Preceding(e) => {
-                let (_, tokens) = e.build(ctx, path, scope);
-                out.s(&tokens.to_string()).s("preceding");
-            },
-            WindowFrameBound::CurrentRow => {
-                out.s("current row");
-            },
-            WindowFrameBound::Following(e) => {
-                let (_, tokens) = e.build(ctx, path, scope);
-                out.s(&tokens.to_string()).s("following");
-            },
-            WindowFrameBound::UnboundedFollowing => {
-                out.s("unbounded following");
-            },
-        }
-        out
+impl std::fmt::Debug for ComputeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return f.write_str("ComputeType");
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum Expr {
+    Between {
+        e: Box<Expr>,
+        negated: bool,
+        low: Box<Expr>,
+        high: Box<Expr>,
+    },
+    BinOp {
+        left: Box<Expr>,
+        op: BinOp,
+        right: Box<Expr>,
+    },
+    BinOpChain {
+        op: BinOp,
+        exprs: Vec<Expr>,
+    },
+    Call {
+        func: String,
+        args: Vec<Expr>,
+        compute_type: ComputeType,
+        filter: Option<Box<Expr>>,
+    },
+    Case {
+        operand: Option<Box<Expr>>,
+        conditions: Vec<(Expr, Expr)>,
+        else_: Option<Box<Expr>>,
+    },
+    /// This is a synthetic expression, saying to treat the result of the expression as
+    /// having the specified type. Use this for casting between primitive types and
+    /// Rust new-types for instance.
+    Cast(Box<Expr>, Type),
+    Collate(Box<Expr>, String),
+    Exists(Box<super::select::Select>),
+    /// This evaluates to the value of a field in the query main or joined tables. If
+    /// you've aliased tables or field names, you'll have to instantiate `FieldId`
+    /// yourself with the appropriate values. For synthetic values like function
+    /// results you may need a `FieldId` with an empty `TableId` (`""`).
+    Field(FieldRef),
+    Like {
+        expr: Box<Expr>,
+        pattern: Box<Expr>,
+        escape: Option<Box<Expr>>,
+        ilike: bool,
+    },
+    LitArray(Vec<Expr>),
+    LitAuto(i64),
+    LitBool(bool),
+    LitBytes(Vec<u8>),
+    LitF32(f32),
+    LitF64(f64),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    LitI16(i16),
+    LitI32(i32),
+    LitI64(i64),
+    // A null value needs a type for type checking purposes. It will always be trated
+    // as an optional value.
+    LitNull(SimpleType),
+    LitString(String),
+    LitU32(u32),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeJiff(Timestamp),
+    /// A query parameter. This will become a parameter to the generated Rust function
+    /// with the specified `name` and `type_`.
+    Param {
+        name: String,
+        type_: Type,
+    },
+    Paren(Box<Expr>),
+    PrefixOp {
+        op: PrefixOp,
+        right: Box<Expr>,
+    },
+    /// A sub SELECT query.
+    Select(Box<Select>),
+    Window {
+        expr: Box<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<(Expr, Order)>,
+        frame: Option<WindowFrame>,
+    },
 }
 
 impl Expr {
@@ -1477,6 +1120,363 @@ impl Expr {
                 out.s("(").s(&tokens.to_string()).s(")");
                 return (t, out);
             },
+        }
+    }
+}
+
+impl From<SerialExpr> for Expr {
+    fn from(s: SerialExpr) -> Self {
+        match s {
+            SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
+            SerialExpr::LitNull(t) => Expr::LitNull(t),
+            SerialExpr::LitBool(b) => Expr::LitBool(b),
+            SerialExpr::LitAuto(v) => Expr::LitAuto(v),
+            SerialExpr::LitI16(v) => Expr::LitI16(v),
+            SerialExpr::LitI32(v) => Expr::LitI32(v),
+            SerialExpr::LitI64(v) => Expr::LitI64(v),
+            SerialExpr::LitU32(v) => Expr::LitU32(v),
+            SerialExpr::LitF32(v) => Expr::LitF32(v),
+            SerialExpr::LitF64(v) => Expr::LitF64(v),
+            SerialExpr::LitString(v) => Expr::LitString(v),
+            SerialExpr::LitBytes(v) => Expr::LitBytes(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitUtcTimeChrono(v) => Expr::LitUtcTimeChrono(v),
+            #[cfg(feature = "chrono")]
+            SerialExpr::LitFixedOffsetTimeChrono(v) => Expr::LitFixedOffsetTimeChrono(v),
+            #[cfg(feature = "jiff")]
+            SerialExpr::LitUtcTimeJiff(v) => Expr::LitUtcTimeJiff(v),
+            SerialExpr::BinOp { left, op, right } => Expr::BinOp {
+                left: Box::new(Expr::from(*left)),
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::BinOpChain { op, exprs } => Expr::BinOpChain {
+                op: op,
+                exprs: exprs.into_iter().map(Expr::from).collect(),
+            },
+            SerialExpr::PrefixOp { op, right } => Expr::PrefixOp {
+                op: op,
+                right: Box::new(Expr::from(*right)),
+            },
+            SerialExpr::Cast(e, t) => Expr::Cast(Box::new(Expr::from(*e)), t),
+            SerialExpr::Collate(e, s) => Expr::Collate(Box::new(Expr::from(*e)), s),
+            SerialExpr::Like { expr, pattern, escape, ilike } => Expr::Like {
+                expr: Box::new(Expr::from(*expr)),
+                pattern: Box::new(Expr::from(*pattern)),
+                escape: escape.map(|e| Box::new(Expr::from(*e))),
+                ilike,
+            },
+            SerialExpr::Between { e, negated, low, high } => Expr::Between {
+                e: Box::new(Expr::from(*e)),
+                negated,
+                low: Box::new(Expr::from(*low)),
+                high: Box::new(Expr::from(*high)),
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ExprType(pub Vec<(ExprValName, Type)>);
+
+impl ExprType {
+    pub fn assert_scalar(&self, errs: &mut Errs, path: &rpds::Vector<String>) -> Option<Type> {
+        if self.0.len() != 1 {
+            errs.err(
+                path,
+                format!("Select outputs must be scalars, but got result with more than one field: {}", self.0.len()),
+            );
+            return None;
+        }
+        Some(self.0[0].1.clone())
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ExprValName {
+    pub id: String,
+    pub table_id: String,
+}
+
+impl ExprValName {
+    pub fn empty() -> Self {
+        ExprValName {
+            table_id: "".into(),
+            id: "".into(),
+        }
+    }
+
+    pub fn field(f: &FieldRef) -> Self {
+        ExprValName {
+            table_id: f.table_id.clone(),
+            id: f.field_id.clone(),
+        }
+    }
+
+    pub fn local(name: String) -> Self {
+        ExprValName {
+            table_id: "".into(),
+            id: name,
+        }
+    }
+
+    pub fn with_alias(&self, s: &str) -> ExprValName {
+        ExprValName {
+            table_id: s.into(),
+            id: self.id.clone(),
+        }
+    }
+}
+
+impl Display for ExprValName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.table_id.is_empty() {
+            return Display::fmt(&self.id, f);
+        } else {
+            return Display::fmt(&format!("{}.{}", self.table_id, self.id), f);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PrefixOp {
+    BitwiseNot,
+    Minus,
+    Not,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialExpr {
+    Between {
+        e: Box<SerialExpr>,
+        negated: bool,
+        low: Box<SerialExpr>,
+        high: Box<SerialExpr>,
+    },
+    BinOp {
+        left: Box<SerialExpr>,
+        op: BinOp,
+        right: Box<SerialExpr>,
+    },
+    BinOpChain {
+        op: BinOp,
+        exprs: Vec<SerialExpr>,
+    },
+    Cast(Box<SerialExpr>, Type),
+    Collate(Box<SerialExpr>, String),
+    Like {
+        expr: Box<SerialExpr>,
+        pattern: Box<SerialExpr>,
+        escape: Option<Box<SerialExpr>>,
+        ilike: bool,
+    },
+    LitArray(Vec<SerialExpr>),
+    LitAuto(i64),
+    LitBool(bool),
+    LitBytes(Vec<u8>),
+    LitF32(f32),
+    LitF64(f64),
+    #[cfg(feature = "chrono")]
+    LitFixedOffsetTimeChrono(DateTime<FixedOffset>),
+    LitI16(i16),
+    LitI32(i32),
+    LitI64(i64),
+    LitNull(SimpleType),
+    LitString(String),
+    LitU32(u32),
+    #[cfg(feature = "chrono")]
+    LitUtcTimeChrono(DateTime<Utc>),
+    #[cfg(feature = "jiff")]
+    LitUtcTimeJiff(Timestamp),
+    PrefixOp {
+        op: PrefixOp,
+        right: Box<SerialExpr>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SerialWindowFrame {
+    pub end: Option<SerialWindowFrameBound>,
+    pub exclude: Option<SerialWindowFrameExclude>,
+    pub start: SerialWindowFrameBound,
+    pub type_: SerialWindowFrameType,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameBound {
+    CurrentRow,
+    Following(Box<SerialExpr>),
+    Preceding(Box<SerialExpr>),
+    UnboundedFollowing,
+    UnboundedPreceding,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameExclude {
+    CurrentRow,
+    Group,
+    NoOthers,
+    Ties,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SerialWindowFrameType {
+    Groups,
+    Range,
+    Rows,
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowFrame {
+    pub end: Option<WindowFrameBound>,
+    pub exclude: Option<WindowFrameExclude>,
+    pub start: WindowFrameBound,
+    pub type_: WindowFrameType,
+}
+
+impl WindowFrame {
+    pub fn build(
+        &self,
+        ctx: &mut PgQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<ExprValName, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self.type_ {
+            WindowFrameType::Rows => {
+                out.s("rows");
+            },
+            WindowFrameType::Range => {
+                out.s("range");
+            },
+            WindowFrameType::Groups => {
+                out.s("groups");
+            },
+        }
+        if let Some(end) = &self.end {
+            out.s("between");
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
+            out.s("and");
+            out.s(&end.build(ctx, &path.push_back("End".into()), scope).to_string());
+        } else {
+            out.s(&self.start.build(ctx, &path.push_back("Start".into()), scope).to_string());
+        }
+        if let Some(exclude) = &self.exclude {
+            out.s("exclude");
+            match exclude {
+                WindowFrameExclude::CurrentRow => {
+                    out.s("current row");
+                },
+                WindowFrameExclude::Group => {
+                    out.s("group");
+                },
+                WindowFrameExclude::Ties => {
+                    out.s("ties");
+                },
+                WindowFrameExclude::NoOthers => {
+                    out.s("no others");
+                },
+            }
+        }
+        out
+    }
+}
+
+impl From<SerialWindowFrame> for WindowFrame {
+    fn from(s: SerialWindowFrame) -> Self {
+        WindowFrame {
+            type_: WindowFrameType::from(s.type_),
+            start: WindowFrameBound::from(s.start),
+            end: s.end.map(WindowFrameBound::from),
+            exclude: s.exclude.map(WindowFrameExclude::from),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameBound {
+    CurrentRow,
+    Following(Box<Expr>),
+    Preceding(Box<Expr>),
+    UnboundedFollowing,
+    UnboundedPreceding,
+}
+
+impl WindowFrameBound {
+    pub fn build(
+        &self,
+        ctx: &mut PgQueryCtx,
+        path: &rpds::Vector<String>,
+        scope: &HashMap<ExprValName, Type>,
+    ) -> Tokens {
+        let mut out = Tokens::new();
+        match self {
+            WindowFrameBound::UnboundedPreceding => {
+                out.s("unbounded preceding");
+            },
+            WindowFrameBound::Preceding(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("preceding");
+            },
+            WindowFrameBound::CurrentRow => {
+                out.s("current row");
+            },
+            WindowFrameBound::Following(e) => {
+                let (_, tokens) = e.build(ctx, path, scope);
+                out.s(&tokens.to_string()).s("following");
+            },
+            WindowFrameBound::UnboundedFollowing => {
+                out.s("unbounded following");
+            },
+        }
+        out
+    }
+}
+
+impl From<SerialWindowFrameBound> for WindowFrameBound {
+    fn from(s: SerialWindowFrameBound) -> Self {
+        match s {
+            SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
+            SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
+            SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
+            SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameExclude {
+    CurrentRow,
+    Group,
+    NoOthers,
+    Ties,
+}
+
+impl From<SerialWindowFrameExclude> for WindowFrameExclude {
+    fn from(s: SerialWindowFrameExclude) -> Self {
+        match s {
+            SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
+            SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
+            SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
+            SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum WindowFrameType {
+    Groups,
+    Range,
+    Rows,
+}
+
+impl From<SerialWindowFrameType> for WindowFrameType {
+    fn from(s: SerialWindowFrameType) -> Self {
+        match s {
+            SerialWindowFrameType::Rows => WindowFrameType::Rows,
+            SerialWindowFrameType::Range => WindowFrameType::Range,
+            SerialWindowFrameType::Groups => WindowFrameType::Groups,
         }
     }
 }

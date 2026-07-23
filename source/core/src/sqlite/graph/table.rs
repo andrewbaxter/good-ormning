@@ -19,8 +19,8 @@ use {
 
 #[derive(Clone)]
 pub struct NodeTable_ {
-    pub table_id: String,
     pub def: Table,
+    pub table_id: String,
 }
 
 impl NodeTable_ {
@@ -44,32 +44,6 @@ impl NodeData for NodeTable_ {
 }
 
 impl NodeDataDispatch for NodeTable_ {
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        match other {
-            Node::Field(f) if f.table_id == self.table_id => {
-                None
-            },
-            Node::Constraint(c) if c.table_id == self.table_id => {
-                self.def.constraints.insert(c.def.id.clone(), c.def.clone());
-                None
-            },
-            Node::Index(i) if i.table_id == self.table_id => {
-                self.def.indices.insert(i.def.id.clone(), i.def.clone());
-                None
-            },
-            other => Some(other),
-        }
-    }
-
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        match other {
-            Node::Field(f) if f.table_id == self.table_id => None,
-            Node::Constraint(e) if e.table_id == self.table_id => None,
-            Node::Index(e) if e.table_id == self.table_id => None,
-            other => Some(other),
-        }
-    }
-
     fn create(&self, ctx: &mut SqliteMigrateCtx) {
         let mut stmt = Tokens::new();
         stmt.s("create table").id(&self.def.id).s("(");
@@ -142,7 +116,33 @@ impl NodeDataDispatch for NodeTable_ {
         }
     }
 
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        match other {
+            Node::Field(f) if f.table_id == self.table_id => {
+                None
+            },
+            Node::Constraint(c) if c.table_id == self.table_id => {
+                self.def.constraints.insert(c.def.id.clone(), c.def.clone());
+                None
+            },
+            Node::Index(i) if i.table_id == self.table_id => {
+                self.def.indices.insert(i.def.id.clone(), i.def.clone());
+                None
+            },
+            other => Some(other),
+        }
+    }
+
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
         ctx.statements.push(Tokens::new().s("drop table").id(&self.def.id).to_string());
+    }
+
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        match other {
+            Node::Field(f) if f.table_id == self.table_id => None,
+            Node::Constraint(e) if e.table_id == self.table_id => None,
+            Node::Index(e) if e.table_id == self.table_id => None,
+            other => Some(other),
+        }
     }
 }

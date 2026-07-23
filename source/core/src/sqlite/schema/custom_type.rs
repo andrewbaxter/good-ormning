@@ -8,8 +8,8 @@ use {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomType {
+    pub base_type: Type,
     pub id: String,
     pub renamed_from: Option<String>,
     pub rust_type: String,
-    pub base_type: Type,
 }

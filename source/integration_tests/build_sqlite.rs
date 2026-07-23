@@ -31,11 +31,6 @@ use good_ormning::{
     sqlite_type_utctime_s_jiff as type_utctime_s_jiff,
 };
 
-fn get_type(f: &FieldHandle) -> Type {
-    let version = f.table.version.0.borrow();
-    version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone()
-}
-
 pub fn build() {
     // # Hello world example
     {
@@ -48,7 +43,7 @@ pub fn build() {
             db_name: Some("sqlite_gen_hello_world".to_string()),
             versions: vec![
                 // Versions
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -536,7 +531,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -558,7 +553,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -581,7 +576,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -605,7 +600,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -627,7 +622,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -653,7 +648,7 @@ pub fn build() {
                     let x = v.build();
                     x
                 }),
-                (1usize, v.build())
+                (1usize, v.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -681,22 +676,18 @@ pub fn build() {
         triple.field("object", field_str().build());
         triple.field("commit_", field_i64().build());
         triple.field("exists", field_bool().build());
-
         let subjobj = v.table("subjobj");
         let subjobj_value = subjobj.field("value", field_str().build());
         subjobj.unique_index("subjobj_value_idx", &[&subjobj_value]);
-
         let predicate = v.table("predicate");
         let predicate_value = predicate.field("value", field_str().build());
         predicate.unique_index("predicate_value_idx", &[&predicate_value]);
-
         let triple2 = v.table("triple2");
         triple2.field("subject", field_str().build());
         triple2.field("predicate", field_str().build());
         triple2.field("object", field_str().build());
         triple2.field("commit_", field_i64().build());
         triple2.field("exists", field_bool().build());
-
         let triple_snapshot = v.table("triple_snapshot");
         let triple_snapshot_subject = triple_snapshot.field("subject", field_str().build());
         let triple_snapshot_predicate = triple_snapshot.field("predicate", field_str().build());
@@ -706,7 +697,6 @@ pub fn build() {
             "triple_snapshot_spo",
             &[&triple_snapshot_subject, &triple_snapshot_predicate, &triple_snapshot_object],
         );
-
         generate(GenerateArgs {
             db_name: Some("sqlite_gen_insert_select".to_string()),
             versions: vec![(1usize, v.build())],
@@ -759,7 +749,7 @@ pub fn build() {
             versions: vec![
                 // Versions (previous)
                 (0usize, v0.build()),
-                (1usize, v1.build())
+                (1usize, v1.build()),
             ],
             ..Default::default()
         }).unwrap();
@@ -908,6 +898,7 @@ pub fn build() {
     }
 
     // # Generated query functions compile test
+    //
     // This ensures query functions generated in build.rs use valid generic syntax.
     {
         let v = SqliteVersion::new();
@@ -954,4 +945,9 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
+}
+
+fn get_type(f: &FieldHandle) -> Type {
+    let version = f.table.version.0.borrow();
+    version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone()
 }

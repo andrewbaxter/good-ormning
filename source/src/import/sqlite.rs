@@ -1,5 +1,6 @@
 use {
     good_ormning_core::sqlite::{
+        Version,
         schema::{
             constraint::{
                 Constraint,
@@ -19,7 +20,6 @@ use {
             SimpleType,
             Type,
         },
-        Version,
     },
     loga::ResultContext,
     rusqlite::Connection,
@@ -28,6 +28,20 @@ use {
         HashMap,
     },
 };
+
+fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
+    return FieldType {
+        type_: Type {
+            type_: SimpleType {
+                type_: sst,
+                custom: None,
+            },
+            opt: opt,
+            arr: false,
+        },
+        migration_default: None,
+    };
+}
 
 fn map_type(type_str: &str) -> Result<SimpleSimpleType, loga::Error> {
     let t = type_str.to_lowercase();
@@ -44,20 +58,6 @@ fn map_type(type_str: &str) -> Result<SimpleSimpleType, loga::Error> {
     } else {
         return Err(loga::err(format!("Unknown SQLite type: {:?}", type_str)));
     }
-}
-
-fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
-    return FieldType {
-        type_: Type {
-            type_: SimpleType {
-                type_: sst,
-                custom: None,
-            },
-            opt: opt,
-            arr: false,
-        },
-        migration_default: None,
-    };
 }
 
 /// Read the current schema from a SQLite connection, returning a `Version` using
@@ -91,25 +91,25 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
     // per-table map of sql_name → field_id for use when resolving FK targets.
     struct RawFk {
         fk_id: i64,
-        seq: i64,
-        remote_table: String,
         local_col: String,
         remote_col: String,
+        remote_table: String,
+        seq: i64,
     }
 
     struct TableRaw {
-        table: Table,
-        sql_to_field_id: HashMap<String, String>,
         raw_fks: Vec<RawFk>,
+        sql_to_field_id: HashMap<String, String>,
+        table: Table,
     }
 
     let mut table_raws: Vec<(String, TableRaw)> = vec![];
     for table_name in &table_names {
         struct ColInfo {
             name: String,
-            type_str: String,
             notnull: bool,
             pk_pos: i64,
+            type_str: String,
         }
 
         let cols: Vec<ColInfo> = {

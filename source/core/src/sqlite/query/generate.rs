@@ -1,38 +1,38 @@
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+use crate::sqlite::types::SimpleSimpleType;
 use {
-    proc_macro2::{
-        TokenStream,
-        Ident,
-    },
-    quote::{
-        quote,
-        format_ident,
-        ToTokens,
-    },
-    std::collections::HashMap,
     crate::{
+        QueryResCount,
         sqlite::{
-            types::{
-                to_rust_types,
-                Type,
-            },
+            Query,
             query::{
+                expr::Binding,
                 utils::{
                     SqliteQueryCtx,
                     SqliteTableInfo,
                 },
-                expr::Binding,
             },
-            Query,
+            types::{
+                Type,
+                to_rust_types,
+            },
         },
         utils::{
             Errs,
             sanitize_ident,
         },
-        QueryResCount,
     },
+    proc_macro2::{
+        Ident,
+        TokenStream,
+    },
+    quote::{
+        ToTokens,
+        format_ident,
+        quote,
+    },
+    std::collections::HashMap,
 };
-#[cfg(any(feature = "chrono", feature = "jiff"))]
-use crate::sqlite::types::SimpleSimpleType;
 
 pub fn generate_query_functions(
     errs: &mut Errs,
@@ -95,12 +95,10 @@ pub fn generate_query_functions(
                             quote!{
                                 let x: #ident = match r.get::< _,
                                 Option < good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >>(#i) ? {
-                                    Some(good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i)) => {
+                                    Some(good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::I64(i)) => {
                                         Some(#parse_i64)
                                     },
-                                    Some(
-                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s)
-                                    ) => {
+                                    Some(good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(s)) => {
                                         Some(#parse_string)
                                     },
                                     None => None,
@@ -137,12 +135,10 @@ pub fn generate_query_functions(
                             quote!{
                                 let x: #ident = match r.get::< _,
                                 Option < good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >>(#i) ? {
-                                    Some(good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i)) => {
+                                    Some(good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::I64(i)) => {
                                         Some(#parse_i64)
                                     },
-                                    Some(
-                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s)
-                                    ) => {
+                                    Some(good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(s)) => {
                                         Some(#parse_string)
                                     },
                                     None => None,

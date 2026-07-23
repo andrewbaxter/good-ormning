@@ -1,14 +1,38 @@
+pub mod graph;
+pub mod query;
+pub mod schema;
+pub mod types;
+
+#[cfg(feature = "chrono")]
+pub use crate::pg::types::type_utctime_s_chrono as pg_type_utctime_s_chrono;
+#[cfg(feature = "jiff")]
+pub use crate::pg::types::type_utctime_s_jiff as pg_type_utctime_s_jiff;
+pub use crate::pg::{
+    schema::field::FieldTypeBuilder as PgFieldTypeBuilder,
+    types::{
+        type_bool as pg_type_bool,
+        type_bytes as pg_type_bytes,
+        type_f32 as pg_type_f32,
+        type_f64 as pg_type_f64,
+        type_i32 as pg_type_i32,
+        type_i64 as pg_type_i64,
+        type_str as pg_type_str,
+        type_u32 as pg_type_u32,
+        Type as PgType,
+    },
+};
 use {
     crate::{
+        QueryResCount,
         pg::{
             graph::{
+                GraphId,
+                Node,
                 constraint::NodeConstraint_,
                 field::NodeField_,
                 index::NodeIndex_,
                 table::NodeTable_,
                 utils::MigrateNode,
-                GraphId,
-                Node,
             },
             query::{
                 delete::Delete,
@@ -47,16 +71,15 @@ use {
                     FieldRef,
                     FieldType,
                 },
+                index::Index,
                 table::{
                     Table,
                     TableRef,
                 },
-                index::Index,
             },
             types::Type,
         },
         utils::Errs,
-        QueryResCount,
     },
     serde::{
         Deserialize,
@@ -72,501 +95,89 @@ use {
         rc::Rc,
     },
 };
-pub use crate::pg::{
-    schema::field::FieldTypeBuilder as PgFieldTypeBuilder,
-    types::{
-        type_bool as pg_type_bool,
-        type_bytes as pg_type_bytes,
-        type_f32 as pg_type_f32,
-        type_f64 as pg_type_f64,
-        type_i32 as pg_type_i32,
-        type_i64 as pg_type_i64,
-        type_str as pg_type_str,
-        type_u32 as pg_type_u32,
-        Type as PgType,
-    },
-};
-#[cfg(feature = "chrono")]
-pub use crate::pg::types::type_utctime_s_chrono as pg_type_utctime_s_chrono;
-#[cfg(feature = "jiff")]
-pub use crate::pg::types::type_utctime_s_jiff as pg_type_utctime_s_jiff;
 
-pub struct Query {
-    pub name: String,
-    pub body: Box<dyn QueryBody>,
-    pub res_count: QueryResCount,
-    pub res_name: Option<String>,
-}
-pub mod types;
-pub mod query;
-pub mod schema;
-pub mod graph;
-
-pub struct InsertBuilder {
-    pub q: Insert,
+pub struct ConstraintHandle {
+    pub id: String,
+    pub table: TableHandle,
 }
 
-impl InsertBuilder {
-    pub fn on_conflict_do_update(mut self, f: &[&FieldHandle], v: Vec<(FieldHandle, Expr)>) -> Self {
-        self.q.on_conflict = Some(InsertConflict::DoUpdate {
-            conflict: f.iter().map(|f| f.to_ref()).collect(),
-            set: v.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+impl ConstraintHandle {
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
         });
         self
     }
+}
 
-    pub fn on_conflict_do_nothing(mut self) -> Self {
-        self.q.on_conflict = Some(InsertConflict::DoNothing);
-        self
+pub struct CustomTypeBuilder {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl CustomTypeBuilder {
+    pub fn rust_type(self, rust_type: &str) -> CustomTypeRustBuilder {
+        CustomTypeRustBuilder {
+            version: self.version,
+            id: self.id,
+            rust_type: rust_type.into(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct CustomTypeHandle {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl CustomTypeHandle {
+    pub fn field_type(&self) -> FieldType {
+        let (rust_type, base_type) = self.version.with(|v| {
+            let ct = v.custom_types.get(&self.id).expect("Custom type missing");
+            (ct.rust_type.clone(), ct.base_type.clone())
+        });
+        FieldType {
+            type_: Type {
+                type_: crate::pg::types::SimpleType {
+                    type_: base_type.type_.type_,
+                    custom: Some(rust_type),
+                },
+                opt: base_type.opt,
+                arr: base_type.arr,
+            },
+            migration_default: None,
+        }
     }
 
-    pub fn return_(mut self, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: None,
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.version.with(|v| {
+            v.custom_types.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
         });
         self
     }
+}
 
-    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: Some(name.to_string()),
-        });
-        self
-    }
+pub struct CustomTypeRustBuilder {
+    pub id: String,
+    pub rust_type: String,
+    pub version: VersionHandle,
+}
 
-    pub fn return_field(mut self, f: &FieldHandle) -> Self {
-        let sql_name =
-            f
-                .table
-                .version
-                .0
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .tables
-                .get(&f.table.id)
-                .unwrap()
-                .fields
-                .get(&f.id)
-                .unwrap()
-                .id
-                .clone();
-        self.q.returning.push(Returning {
-            e: Expr::Field(f.to_ref()),
-            rename: Some(sql_name),
-        });
-        self
-    }
-
-    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
-        for f in f {
-            let sql_name =
-                f
-                    .table
-                    .version
-                    .0
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .tables
-                    .get(&f.table.id)
-                    .unwrap()
-                    .fields
-                    .get(&f.id)
-                    .unwrap()
-                    .id
-                    .clone();
-            self.q.returning.push(Returning {
-                e: Expr::Field(f.to_ref()),
-                rename: Some(sql_name),
+impl CustomTypeRustBuilder {
+    pub fn base_type(self, base_type: Type) -> CustomTypeHandle {
+        self.version.with(|v| {
+            v.custom_types.insert(self.id.clone(), CustomType {
+                id: self.id.clone(),
+                renamed_from: None,
+                rust_type: self.rust_type.clone(),
+                base_type: base_type,
             });
-        }
-        self
-    }
-
-    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
-        self.q.returning.extend(f);
-        self
-    }
-
-    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: None,
-        }
-    }
-
-    pub fn build_query_named_res(
-        self,
-        name: impl ToString,
-        res_count: QueryResCount,
-        res_name: impl ToString,
-    ) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: Some(res_name.to_string()),
-        }
-    }
-}
-
-pub struct SelectBuilder {
-    pub q: Select,
-}
-
-pub struct SelectBodyBuilder {
-    pub q: SelectBody,
-}
-
-impl SelectBodyBuilder {
-    pub fn return_(mut self, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: None,
         });
-        self
-    }
-
-    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: Some(name.to_string()),
-        });
-        self
-    }
-
-    pub fn return_field(mut self, f: &FieldHandle) -> Self {
-        let sql_name =
-            f
-                .table
-                .version
-                .0
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .tables
-                .get(&f.table.id)
-                .unwrap()
-                .fields
-                .get(&f.id)
-                .unwrap()
-                .id
-                .clone();
-        self.q.returning.push(Returning {
-            e: Expr::Field(f.to_ref()),
-            rename: Some(sql_name),
-        });
-        self
-    }
-
-    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
-        for f in f {
-            let sql_name =
-                f
-                    .table
-                    .version
-                    .0
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .tables
-                    .get(&f.table.id)
-                    .unwrap()
-                    .fields
-                    .get(&f.id)
-                    .unwrap()
-                    .id
-                    .clone();
-            self.q.returning.push(Returning {
-                e: Expr::Field(f.to_ref()),
-                rename: Some(sql_name),
-            });
-        }
-        self
-    }
-
-    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
-        self.q.returning.extend(f);
-        self
-    }
-
-    pub fn join(mut self, join: Join) -> Self {
-        self.q.join.push(join);
-        self
-    }
-
-    pub fn where_(mut self, predicate: Expr) -> Self {
-        self.q.where_ = Some(predicate);
-        self
-    }
-
-    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
-        self.q.group = clauses;
-        self
-    }
-
-    pub fn order(mut self, expr: Expr, order: Order) -> Self {
-        self.q.order.push((expr, order));
-        self
-    }
-
-    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
-        self.q.order.extend(clauses);
-        self
-    }
-
-    pub fn distinct(mut self) -> Self {
-        self.q.distinct = true;
-        self
-    }
-
-    pub fn limit(mut self, v: Expr) -> Self {
-        self.q.limit = Some(v);
-        self
-    }
-
-    pub fn build(self) -> SelectBody {
-        self.q
-    }
-}
-
-impl SelectBuilder {
-    pub fn return_(mut self, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: None,
-        });
-        self
-    }
-
-    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: Some(name.to_string()),
-        });
-        self
-    }
-
-    pub fn return_field(mut self, f: &FieldHandle) -> Self {
-        let sql_name =
-            f
-                .table
-                .version
-                .0
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .tables
-                .get(&f.table.id)
-                .unwrap()
-                .fields
-                .get(&f.id)
-                .unwrap()
-                .id
-                .clone();
-        self.q.returning.push(Returning {
-            e: Expr::Field(f.to_ref()),
-            rename: Some(sql_name),
-        });
-        self
-    }
-
-    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
-        for f in f {
-            let sql_name =
-                f
-                    .table
-                    .version
-                    .0
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .tables
-                    .get(&f.table.id)
-                    .unwrap()
-                    .fields
-                    .get(&f.id)
-                    .unwrap()
-                    .id
-                    .clone();
-            self.q.returning.push(Returning {
-                e: Expr::Field(f.to_ref()),
-                rename: Some(sql_name),
-            });
-        }
-        self
-    }
-
-    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
-        self.q.returning.extend(f);
-        self
-    }
-
-    pub fn with(mut self, with: self::query::utils::With) -> Self {
-        self.q.with = Some(with);
-        self
-    }
-
-    pub fn join(mut self, join: Join) -> Self {
-        self.q.join.push(join);
-        self
-    }
-
-    pub fn where_(mut self, predicate: Expr) -> Self {
-        self.q.where_ = Some(predicate);
-        self
-    }
-
-    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
-        self.q.group = clauses;
-        self
-    }
-
-    pub fn order(mut self, expr: Expr, order: Order) -> Self {
-        self.q.order.push((expr, order));
-        self
-    }
-
-    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
-        self.q.order.extend(clauses);
-        self
-    }
-
-    pub fn limit(mut self, v: Expr) -> Self {
-        self.q.limit = Some(v);
-        self
-    }
-
-    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: None,
-        }
-    }
-
-    pub fn build_query_named_res(
-        self,
-        name: impl ToString,
-        res_count: QueryResCount,
-        res_name: impl ToString,
-    ) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: Some(res_name.to_string()),
-        }
-    }
-}
-
-pub struct UpdateBuilder {
-    pub q: Update,
-}
-
-impl UpdateBuilder {
-    pub fn where_(mut self, v: Expr) -> Self {
-        self.q.where_ = Some(v);
-        self
-    }
-
-    pub fn return_(mut self, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: None,
-        });
-        self
-    }
-
-    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: Some(name.to_string()),
-        });
-        self
-    }
-
-    pub fn return_field(mut self, f: &FieldHandle) -> Self {
-        let sql_name =
-            f
-                .table
-                .version
-                .0
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .tables
-                .get(&f.table.id)
-                .unwrap()
-                .fields
-                .get(&f.id)
-                .unwrap()
-                .id
-                .clone();
-        self.q.returning.push(Returning {
-            e: Expr::Field(f.to_ref()),
-            rename: Some(sql_name),
-        });
-        self
-    }
-
-    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
-        for f in f {
-            let sql_name =
-                f
-                    .table
-                    .version
-                    .0
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .tables
-                    .get(&f.table.id)
-                    .unwrap()
-                    .fields
-                    .get(&f.id)
-                    .unwrap()
-                    .id
-                    .clone();
-            self.q.returning.push(Returning {
-                e: Expr::Field(f.to_ref()),
-                rename: Some(sql_name),
-            });
-        }
-        self
-    }
-
-    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
-        self.q.returning.extend(f);
-        self
-    }
-
-    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: None,
-        }
-    }
-
-    pub fn build_query_named_res(
-        self,
-        name: impl ToString,
-        res_count: QueryResCount,
-        res_name: impl ToString,
-    ) -> Query {
-        Query {
-            name: name.to_string(),
-            body: Box::new(self.q),
-            res_count: res_count,
-            res_name: Some(res_name.to_string()),
+        CustomTypeHandle {
+            version: self.version,
+            id: self.id,
         }
     }
 }
@@ -576,28 +187,33 @@ pub struct DeleteBuilder {
 }
 
 impl DeleteBuilder {
-    pub fn with(mut self, w: crate::pg::query::utils::With) -> Self {
-        self.q.with = Some(w);
-        self
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
     }
 
-    pub fn where_(mut self, v: Expr) -> Self {
-        self.q.where_ = Some(v);
-        self
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
         self.q.returning.push(Returning {
             e: v,
             rename: None,
-        });
-        self
-    }
-
-    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
-        self.q.returning.push(Returning {
-            e: v,
-            rename: Some(name.to_string()),
         });
         self
     }
@@ -652,11 +268,104 @@ impl DeleteBuilder {
         self
     }
 
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
         self
     }
 
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        self
+    }
+
+    pub fn with(mut self, w: crate::pg::query::utils::With) -> Self {
+        self.q.with = Some(w);
+        self
+    }
+}
+
+impl DeleteBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup: HashMap<TableRef, PgTableInfo> = HashMap::new();
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+            let mut fields: HashMap<FieldRef, PgFieldInfo> = HashMap::new();
+            for (field_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
+                }, PgFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                });
+            }
+            field_lookup.insert(TableRef(table_id.clone()), PgTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = PgQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
+#[derive(Clone)]
+pub struct FieldHandle {
+    pub id: String,
+    pub table: TableHandle,
+}
+
+impl FieldHandle {
+    pub fn r#type(&self) -> FieldType {
+        self.table.version.with(|v| {
+            v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone()
+        })
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().fields.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        self
+    }
+
+    pub fn to_ref(&self) -> FieldRef {
+        FieldRef {
+            table_id: self.table.id.clone(),
+            field_id: self.id.clone(),
+        }
+    }
+}
+
+pub struct IndexHandle {
+    pub id: String,
+    pub table: TableHandle,
+}
+
+impl IndexHandle {
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().indices.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        self
+    }
+}
+
+pub struct InsertBuilder {
+    pub q: Insert,
+}
+
+impl InsertBuilder {
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
         Query {
             name: name.to_string(),
@@ -679,21 +388,90 @@ impl DeleteBuilder {
             res_name: Some(res_name.to_string()),
         }
     }
-}
 
-pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> InsertBuilder {
-    let mut unique = HashSet::new();
-    for v in &values {
-        if !unique.insert(v.0.id.clone()) {
-            panic!("Duplicate field {:?} in insert", v.0.id);
-        }
+    pub fn on_conflict_do_nothing(mut self) -> Self {
+        self.q.on_conflict = Some(InsertConflict::DoNothing);
+        self
     }
-    InsertBuilder { q: Insert {
-        table: table.to_ref(),
-        values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
-        on_conflict: None,
-        returning: vec![],
-    } }
+
+    pub fn on_conflict_do_update(mut self, f: &[&FieldHandle], v: Vec<(FieldHandle, Expr)>) -> Self {
+        self.q.on_conflict = Some(InsertConflict::DoUpdate {
+            conflict: f.iter().map(|f| f.to_ref()).collect(),
+            set: v.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+        });
+        self
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
 }
 
 impl InsertBuilder {
@@ -719,6 +497,30 @@ impl InsertBuilder {
         let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
         return res.1.to_string();
     }
+}
+
+pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
+    DeleteBuilder { q: Delete {
+        with: None,
+        table: table.to_ref(),
+        returning: vec![],
+        where_: None,
+    } }
+}
+
+pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> InsertBuilder {
+    let mut unique = HashSet::new();
+    for v in &values {
+        if !unique.insert(v.0.id.clone()) {
+            panic!("Duplicate field {:?} in insert", v.0.id);
+        }
+    }
+    InsertBuilder { q: Insert {
+        table: table.to_ref(),
+        values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+        on_conflict: None,
+        returning: vec![],
+    } }
 }
 
 pub fn new_select(table: &TableHandle) -> SelectBuilder {
@@ -789,41 +591,471 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
     } }
 }
 
-impl UpdateBuilder {
-    pub fn build_migration(self, version: &VersionHandle) -> String {
-        let mut field_lookup: HashMap<TableRef, PgTableInfo> = HashMap::new();
-        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
-            let mut fields: HashMap<FieldRef, PgFieldInfo> = HashMap::new();
-            for (field_id, field) in &table.fields {
-                fields.insert(FieldRef {
-                    table_id: table_id.clone(),
-                    field_id: field_id.clone(),
-                }, PgFieldInfo {
-                    sql_name: field.id.clone(),
-                    type_: field.type_.type_.clone(),
-                });
-            }
-            field_lookup.insert(TableRef(table_id.clone()), PgTableInfo {
-                sql_name: table.id.clone(),
-                fields: fields,
+pub struct Query {
+    pub body: Box<dyn QueryBody>,
+    pub name: String,
+    pub res_count: QueryResCount,
+    pub res_name: Option<String>,
+}
+
+pub struct SelectBodyBuilder {
+    pub q: SelectBody,
+}
+
+impl SelectBodyBuilder {
+    pub fn build(self) -> SelectBody {
+        self.q
+    }
+
+    pub fn distinct(mut self) -> Self {
+        self.q.distinct = true;
+        self
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
+        self
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        self
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        self
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        self
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
+        self
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
             });
         }
-        let mut ctx = PgQueryCtx::new(Errs::new(), field_lookup);
-        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
-        return res.1.to_string();
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
+        self
     }
 }
 
-pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
-    DeleteBuilder { q: Delete {
-        with: None,
-        table: table.to_ref(),
-        returning: vec![],
-        where_: None,
-    } }
+pub struct SelectBuilder {
+    pub q: Select,
 }
 
-impl DeleteBuilder {
+impl SelectBuilder {
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
+        self
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        self
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        self
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        self
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
+        self
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
+        self
+    }
+
+    pub fn with(mut self, with: self::query::utils::With) -> Self {
+        self.q.with = Some(with);
+        self
+    }
+}
+
+#[derive(Clone)]
+pub struct TableHandle {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl TableHandle {
+    pub fn field(&self, id: &str, type_: FieldType) -> FieldHandle {
+        self.version.with(|v| {
+            let table = v.tables.get_mut(&self.id).unwrap();
+            if table.fields.contains_key(id) {
+                panic!("Field {} already exists on table {}", id, self.id);
+            }
+            table.fields.insert(id.into(), Field {
+                id: id.into(),
+                renamed_from: None,
+                type_: type_,
+            });
+        });
+        FieldHandle {
+            table: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
+        let remote_table = fields.first().unwrap().1.table.id.clone();
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
+                id: id.into(),
+                renamed_from: None,
+                type_: ConstraintType::ForeignKey(ForeignKeyDef {
+                    remote_table: remote_table,
+                    fields: fields.iter().map(|(l, r)| (l.id.clone(), r.id.clone())).collect(),
+                }),
+            });
+        });
+        ConstraintHandle {
+            table: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    pub fn index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
+                id: id.into(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
+                unique: false,
+            });
+        });
+        IndexHandle {
+            table: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    pub fn primary_key(&self, id: &str, fields: &[&FieldHandle]) -> ConstraintHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
+                id: id.into(),
+                renamed_from: None,
+                type_: ConstraintType::PrimaryKey(
+                    PrimaryKeyDef { fields: fields.iter().map(|f| f.id.clone()).collect() },
+                ),
+            });
+        });
+        ConstraintHandle {
+            table: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
+        });
+        self
+    }
+
+    pub fn to_ref(&self) -> TableRef {
+        TableRef(self.id.clone())
+    }
+
+    pub fn unique_index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
+                id: id.into(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
+                unique: true,
+            });
+        });
+        IndexHandle {
+            table: self.clone(),
+            id: id.into(),
+        }
+    }
+}
+
+pub struct UpdateBuilder {
+    pub q: Update,
+}
+
+impl UpdateBuilder {
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        }
+    }
+
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        }
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        self
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        self
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        self
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        self
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        self
+    }
+
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        self
+    }
+}
+
+impl UpdateBuilder {
     pub fn build_migration(self, version: &VersionHandle) -> String {
         let mut field_lookup: HashMap<TableRef, PgTableInfo> = HashMap::new();
         for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
@@ -850,289 +1082,14 @@ impl DeleteBuilder {
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Version {
-    pub tables: BTreeMap<String, Table>,
     pub custom_types: BTreeMap<String, CustomType>,
+    pub tables: BTreeMap<String, Table>,
 }
 
 impl Version {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> VersionHandle {
         VersionHandle(Rc::new(RefCell::new(Some(Version::default()))), Rc::new(std::cell::Cell::new(false)))
-    }
-}
-
-#[derive(Clone)]
-pub struct VersionHandle(pub Rc<RefCell<Option<Version>>>, pub Rc<std::cell::Cell<bool>>);
-
-impl VersionHandle {
-    fn with<R>(&self, f: impl FnOnce(&mut Version) -> R) -> R {
-        if self.1.get() {
-            panic!("Version already built");
-        }
-        let mut v = self.0.borrow_mut();
-        f(v.as_mut().expect("Version already built"))
-    }
-
-    pub fn build(&self) -> Version {
-        self.1.set(true);
-        self.0.borrow().as_ref().expect("Version already built").clone()
-    }
-
-    pub fn table(&self, id: &str) -> TableHandle {
-        self.with(|v| {
-            if v.tables.contains_key(id) {
-                panic!("Table {} already exists", id);
-            }
-            v.tables.insert(id.into(), Table {
-                id: id.into(),
-                renamed_from: None,
-                fields: BTreeMap::new(),
-                indices: BTreeMap::new(),
-                constraints: BTreeMap::new(),
-            });
-        });
-        TableHandle {
-            version: self.clone(),
-            id: id.into(),
-        }
-    }
-
-    pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
-        CustomTypeBuilder {
-            version: self.clone(),
-            id: id.into(),
-        }
-    }
-}
-
-pub struct CustomTypeBuilder {
-    pub version: VersionHandle,
-    pub id: String,
-}
-
-impl CustomTypeBuilder {
-    pub fn rust_type(self, rust_type: &str) -> CustomTypeRustBuilder {
-        CustomTypeRustBuilder {
-            version: self.version,
-            id: self.id,
-            rust_type: rust_type.into(),
-        }
-    }
-}
-
-pub struct CustomTypeRustBuilder {
-    pub version: VersionHandle,
-    pub id: String,
-    pub rust_type: String,
-}
-
-impl CustomTypeRustBuilder {
-    pub fn base_type(self, base_type: Type) -> CustomTypeHandle {
-        self.version.with(|v| {
-            v.custom_types.insert(self.id.clone(), CustomType {
-                id: self.id.clone(),
-                renamed_from: None,
-                rust_type: self.rust_type.clone(),
-                base_type: base_type,
-            });
-        });
-        CustomTypeHandle {
-            version: self.version,
-            id: self.id,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct CustomTypeHandle {
-    pub version: VersionHandle,
-    pub id: String,
-}
-
-impl CustomTypeHandle {
-    pub fn field_type(&self) -> FieldType {
-        let (rust_type, base_type) = self.version.with(|v| {
-            let ct = v.custom_types.get(&self.id).expect("Custom type missing");
-            (ct.rust_type.clone(), ct.base_type.clone())
-        });
-        FieldType {
-            type_: Type {
-                type_: crate::pg::types::SimpleType {
-                    type_: base_type.type_.type_,
-                    custom: Some(rust_type),
-                },
-                opt: base_type.opt,
-                arr: base_type.arr,
-            },
-            migration_default: None,
-        }
-    }
-
-    pub fn renamed_from(self, old_name: &str) -> Self {
-        self.version.with(|v| {
-            v.custom_types.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
-        });
-        self
-    }
-}
-
-#[derive(Clone)]
-pub struct TableHandle {
-    pub version: VersionHandle,
-    pub id: String,
-}
-
-impl TableHandle {
-    pub fn to_ref(&self) -> TableRef {
-        TableRef(self.id.clone())
-    }
-
-    pub fn renamed_from(self, old_name: &str) -> Self {
-        self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
-        });
-        self
-    }
-
-    pub fn field(&self, id: &str, type_: FieldType) -> FieldHandle {
-        self.version.with(|v| {
-            let table = v.tables.get_mut(&self.id).unwrap();
-            if table.fields.contains_key(id) {
-                panic!("Field {} already exists on table {}", id, self.id);
-            }
-            table.fields.insert(id.into(), Field {
-                id: id.into(),
-                renamed_from: None,
-                type_: type_,
-            });
-        });
-        FieldHandle {
-            table: self.clone(),
-            id: id.into(),
-        }
-    }
-
-    pub fn index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
-        self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
-                id: id.into(),
-                renamed_from: None,
-                fields: fields.iter().map(|f| f.id.clone()).collect(),
-                unique: false,
-            });
-        });
-        IndexHandle {
-            table: self.clone(),
-            id: id.into(),
-        }
-    }
-
-    pub fn unique_index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
-        self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
-                id: id.into(),
-                renamed_from: None,
-                fields: fields.iter().map(|f| f.id.clone()).collect(),
-                unique: true,
-            });
-        });
-        IndexHandle {
-            table: self.clone(),
-            id: id.into(),
-        }
-    }
-
-    pub fn primary_key(&self, id: &str, fields: &[&FieldHandle]) -> ConstraintHandle {
-        self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
-                id: id.into(),
-                renamed_from: None,
-                type_: ConstraintType::PrimaryKey(
-                    PrimaryKeyDef { fields: fields.iter().map(|f| f.id.clone()).collect() },
-                ),
-            });
-        });
-        ConstraintHandle {
-            table: self.clone(),
-            id: id.into(),
-        }
-    }
-
-    pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
-        let remote_table = fields.first().unwrap().1.table.id.clone();
-        self.version.with(|v| {
-            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
-                id: id.into(),
-                renamed_from: None,
-                type_: ConstraintType::ForeignKey(ForeignKeyDef {
-                    remote_table: remote_table,
-                    fields: fields.iter().map(|(l, r)| (l.id.clone(), r.id.clone())).collect(),
-                }),
-            });
-        });
-        ConstraintHandle {
-            table: self.clone(),
-            id: id.into(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct FieldHandle {
-    pub table: TableHandle,
-    pub id: String,
-}
-
-impl FieldHandle {
-    pub fn to_ref(&self) -> FieldRef {
-        FieldRef {
-            table_id: self.table.id.clone(),
-            field_id: self.id.clone(),
-        }
-    }
-
-    pub fn r#type(&self) -> FieldType {
-        self.table.version.with(|v| {
-            v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone()
-        })
-    }
-
-    pub fn renamed_from(self, old_name: &str) -> Self {
-        self.table.version.with(|v| {
-            v.tables.get_mut(&self.table.id).unwrap().fields.get_mut(&self.id).unwrap().renamed_from =
-                Some(old_name.into());
-        });
-        self
-    }
-}
-
-pub struct IndexHandle {
-    pub table: TableHandle,
-    pub id: String,
-}
-
-impl IndexHandle {
-    pub fn renamed_from(self, old_name: &str) -> Self {
-        self.table.version.with(|v| {
-            v.tables.get_mut(&self.table.id).unwrap().indices.get_mut(&self.id).unwrap().renamed_from =
-                Some(old_name.into());
-        });
-        self
-    }
-}
-
-pub struct ConstraintHandle {
-    pub table: TableHandle,
-    pub id: String,
-}
-
-impl ConstraintHandle {
-    pub fn renamed_from(self, old_name: &str) -> Self {
-        self.table.version.with(|v| {
-            v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().renamed_from =
-                Some(old_name.into());
-        });
-        self
     }
 }
 
@@ -1195,5 +1152,49 @@ impl Version {
             }
         }
         return out;
+    }
+}
+
+#[derive(Clone)]
+pub struct VersionHandle(pub Rc<RefCell<Option<Version>>>, pub Rc<std::cell::Cell<bool>>);
+
+impl VersionHandle {
+    pub fn build(&self) -> Version {
+        self.1.set(true);
+        self.0.borrow().as_ref().expect("Version already built").clone()
+    }
+
+    pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
+        CustomTypeBuilder {
+            version: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    pub fn table(&self, id: &str) -> TableHandle {
+        self.with(|v| {
+            if v.tables.contains_key(id) {
+                panic!("Table {} already exists", id);
+            }
+            v.tables.insert(id.into(), Table {
+                id: id.into(),
+                renamed_from: None,
+                fields: BTreeMap::new(),
+                indices: BTreeMap::new(),
+                constraints: BTreeMap::new(),
+            });
+        });
+        TableHandle {
+            version: self.clone(),
+            id: id.into(),
+        }
+    }
+
+    fn with<R>(&self, f: impl FnOnce(&mut Version) -> R) -> R {
+        if self.1.get() {
+            panic!("Version already built");
+        }
+        let mut v = self.0.borrow_mut();
+        f(v.as_mut().expect("Version already built"))
     }
 }

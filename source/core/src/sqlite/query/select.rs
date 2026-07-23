@@ -35,47 +35,41 @@ use {
 };
 
 #[derive(Clone, Debug)]
-pub enum Order {
-    Asc,
-    Desc,
-}
-
-#[derive(Clone, Debug)]
-pub enum JoinType {
-    Inner,
-    Left,
-    Right,
-    Full,
-    Cross,
-}
-
-#[derive(Clone, Debug)]
-pub struct Join {
-    pub type_: JoinType,
-    pub source: NamedSelectSource,
-    pub on: Option<Expr>,
-}
-
-#[derive(Clone, Debug)]
 pub enum IndexHint {
     IndexedBy(String),
     NotIndexed,
 }
 
 #[derive(Clone, Debug)]
+pub struct Join {
+    pub on: Option<Expr>,
+    pub source: NamedSelectSource,
+    pub type_: JoinType,
+}
+
+#[derive(Clone, Debug)]
 pub enum JoinSource {
-    Subsel(Box<Select>),
-    Table(TableRef),
+    Empty,
     Func(String, Vec<Expr>),
     NestedJoin(Box<NamedSelectSource>, Vec<Join>),
-    Empty,
+    Subsel(Box<Select>),
+    Table(TableRef),
+}
+
+#[derive(Clone, Debug)]
+pub enum JoinType {
+    Cross,
+    Full,
+    Inner,
+    Left,
+    Right,
 }
 
 #[derive(Clone, Debug)]
 pub struct NamedSelectSource {
-    pub source: JoinSource,
     pub alias: Option<String>,
     pub index_hint: Option<IndexHint>,
+    pub source: JoinSource,
 }
 
 impl NamedSelectSource {
@@ -252,18 +246,24 @@ impl NamedSelectSource {
 }
 
 #[derive(Clone, Debug)]
+pub enum Order {
+    Asc,
+    Desc,
+}
+
+#[derive(Clone, Debug)]
 pub struct Select {
-    pub with: Option<With>,
-    pub table: NamedSelectSource,
-    pub returning: Vec<Returning>,
-    pub junction: Vec<SelectJunction>,
-    pub join: Vec<Join>,
-    pub where_: Option<Expr>,
+    pub distinct: bool,
     pub group: Vec<Expr>,
     pub having: Option<Expr>,
-    pub order: Vec<(Expr, Order)>,
+    pub join: Vec<Join>,
+    pub junction: Vec<SelectJunction>,
     pub limit: Option<Expr>,
-    pub distinct: bool,
+    pub order: Vec<(Expr, Order)>,
+    pub returning: Vec<Returning>,
+    pub table: NamedSelectSource,
+    pub where_: Option<Expr>,
+    pub with: Option<With>,
 }
 
 impl QueryBody for Select {

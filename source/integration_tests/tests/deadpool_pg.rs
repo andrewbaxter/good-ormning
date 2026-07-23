@@ -10,9 +10,7 @@ async fn test_deadpool_pg_object() -> Result<(), loga::Error> {
 
     // Migrate using a raw client first (pglite is single-connection)
     let (client, db_conn) =
-        tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls)
-            .await
-            .map_err(|e| loga::err(e))?;
+        tokio_postgres::connect(&server.connection_uri(), tokio_postgres::NoTls).await.map_err(|e| loga::err(e))?;
     tokio::spawn(async move {
         if let Err(e) = db_conn.await {
             eprintln!("connection error: {}", e);

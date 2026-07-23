@@ -10,20 +10,7 @@ pub struct Graph<T> {
     edges: BTreeMap<usize, Vec<usize>>,
 }
 
-impl<T> Default for Graph<T> {
-    fn default() -> Self {
-        return Self::new();
-    }
-}
-
 impl<T> Graph<T> {
-    pub fn new() -> Self {
-        Graph {
-            data: Default::default(),
-            edges: Default::default(),
-        }
-    }
-
     pub fn add(&mut self, v: T) -> usize {
         let id = self.data.len();
         self.data.push(v);
@@ -41,12 +28,25 @@ impl<T> Graph<T> {
         };
     }
 
+    pub fn new() -> Self {
+        Graph {
+            data: Default::default(),
+            edges: Default::default(),
+        }
+    }
+
     pub fn reverse_edges(&mut self) {
         let mut replace = BTreeMap::new();
         for (k, v) in &mut self.edges {
             replace.insert(*k, v.split_off(0));
         }
         self.edges = replace;
+    }
+}
+
+impl<T> Default for Graph<T> {
+    fn default() -> Self {
+        return Self::new();
     }
 }
 
@@ -57,23 +57,19 @@ pub struct TopoWalker {
 }
 
 impl TopoWalker {
-    pub fn new_whole_graph<T>(g: &Graph<T>) -> TopoWalker {
-        let mut dep_counts = HashMap::new();
-        for n in 0 .. g.data.len() {
-            for dest in g.edges.get(&n).iter().flat_map(|x| *x) {
-                *dep_counts.entry(*dest).or_insert(0usize) += 1;
+    pub fn enter<T>(&mut self, g: &Graph<T>) {
+        let source = self.stack.pop().unwrap();
+        for dest in g.edges.get(&source).iter().flat_map(|x| *x) {
+            let dep_count = self.dep_counts.get_mut(dest).unwrap();
+            *dep_count -= 1;
+            if *dep_count == 0 {
+                self.stack.push(*dest);
             }
         }
-        let mut stack = vec![];
-        for n in 0 .. g.data.len() {
-            if dep_counts.get(&n).copied().unwrap_or_default() == 0 {
-                stack.push(n);
-            }
-        }
-        TopoWalker {
-            dep_counts: dep_counts,
-            stack: stack,
-        }
+    }
+
+    pub fn get(&self) -> Option<usize> {
+        return self.stack.last().copied();
     }
 
     pub fn new_rooted_at<T>(g: &Graph<T>, n: usize) -> TopoWalker {
@@ -96,25 +92,29 @@ impl TopoWalker {
         }
     }
 
-    pub fn get(&self) -> Option<usize> {
-        return self.stack.last().copied();
+    pub fn new_whole_graph<T>(g: &Graph<T>) -> TopoWalker {
+        let mut dep_counts = HashMap::new();
+        for n in 0 .. g.data.len() {
+            for dest in g.edges.get(&n).iter().flat_map(|x| *x) {
+                *dep_counts.entry(*dest).or_insert(0usize) += 1;
+            }
+        }
+        let mut stack = vec![];
+        for n in 0 .. g.data.len() {
+            if dep_counts.get(&n).copied().unwrap_or_default() == 0 {
+                stack.push(n);
+            }
+        }
+        TopoWalker {
+            dep_counts: dep_counts,
+            stack: stack,
+        }
     }
 
     pub fn skip<T>(&mut self, g: &Graph<T>) {
         let source = self.stack.pop().unwrap();
         for dest in g.edges.get(&source).iter().flat_map(|x| *x) {
             *self.dep_counts.get_mut(dest).unwrap() -= 1;
-        }
-    }
-
-    pub fn enter<T>(&mut self, g: &Graph<T>) {
-        let source = self.stack.pop().unwrap();
-        for dest in g.edges.get(&source).iter().flat_map(|x| *x) {
-            let dep_count = self.dep_counts.get_mut(dest).unwrap();
-            *dep_count -= 1;
-            if *dep_count == 0 {
-                self.stack.push(*dest);
-            }
         }
     }
 }

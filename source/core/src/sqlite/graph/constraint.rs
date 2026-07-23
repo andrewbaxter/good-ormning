@@ -15,9 +15,9 @@ use {
 
 #[derive(Clone)]
 pub struct NodeConstraint_ {
+    pub def: Constraint,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
-    pub def: Constraint,
 }
 
 impl NodeConstraint_ {
@@ -39,11 +39,11 @@ impl NodeData for NodeConstraint_ {
 impl NodeDataDispatch for NodeConstraint_ {
     fn create(&self, _ctx: &mut SqliteMigrateCtx) { }
 
-    fn delete(&self, _ctx: &mut SqliteMigrateCtx) { }
-
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
     }
+
+    fn delete(&self, _ctx: &mut SqliteMigrateCtx) { }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)

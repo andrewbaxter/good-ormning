@@ -16,9 +16,9 @@ use {
 
 #[derive(Clone)]
 pub struct NodeIndex_ {
+    pub def: Index,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
-    pub def: Index,
 }
 
 impl NodeIndex_ {
@@ -55,12 +55,12 @@ impl NodeDataDispatch for NodeIndex_ {
         ctx.statements.push(stmt.to_string());
     }
 
-    fn delete(&self, ctx: &mut PgMigrateCtx) {
-        ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
-    }
-
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)
+    }
+
+    fn delete(&self, ctx: &mut PgMigrateCtx) {
+        ctx.statements.push(Tokens::new().s("drop index").id(&self.def.id).to_string());
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {

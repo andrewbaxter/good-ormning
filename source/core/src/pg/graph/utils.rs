@@ -7,6 +7,8 @@ use {
     super::Node,
 };
 
+pub type MigrateNode = crate::graphmigrate::Node<Node>;
+
 pub struct PgMigrateCtx {
     pub errs: Errs,
     pub statements: Vec<String>,
@@ -24,5 +26,3 @@ impl PgMigrateCtx {
         }
     }
 }
-
-pub type MigrateNode = crate::graphmigrate::Node<Node>;

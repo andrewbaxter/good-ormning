@@ -1,20 +1,30 @@
+mod codegen;
+mod pg;
+mod sqlite;
+
 use {
     aargvark::{
+        Aargvark,
         help::{
             HelpPattern,
             HelpPatternElement,
             HelpState,
         },
         traits_impls::AargvarkFromStr,
-        Aargvark,
         vark,
     },
     loga::ResultContext,
 };
 
-mod codegen;
-mod pg;
-mod sqlite;
+#[derive(Aargvark)]
+struct Args {
+    /// Connection string (for pg: postgres://..., for sqlite: path to file)
+    connection: String,
+    /// Database name used in the generated build.rs (default: "db")
+    db_name: Option<String>,
+    /// Database engine type: pg or sqlite
+    engine: Engine,
+}
 
 #[derive(Clone)]
 enum Engine {
@@ -23,6 +33,10 @@ enum Engine {
 }
 
 impl AargvarkFromStr for Engine {
+    fn build_help_pattern(_state: &mut HelpState) -> HelpPattern {
+        return HelpPattern(vec![HelpPatternElement::Type("pg|sqlite".to_string())]);
+    }
+
     fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "pg" => return Ok(Engine::Pg),
@@ -30,20 +44,6 @@ impl AargvarkFromStr for Engine {
             other => return Err(format!("Unknown engine {:?}, expected pg or sqlite", other)),
         }
     }
-
-    fn build_help_pattern(_state: &mut HelpState) -> HelpPattern {
-        return HelpPattern(vec![HelpPatternElement::Type("pg|sqlite".to_string())]);
-    }
-}
-
-#[derive(Aargvark)]
-struct Args {
-    /// Database engine type: pg or sqlite
-    engine: Engine,
-    /// Connection string (for pg: postgres://..., for sqlite: path to file)
-    connection: String,
-    /// Database name used in the generated build.rs (default: "db")
-    db_name: Option<String>,
 }
 
 #[tokio::main]

@@ -17,10 +17,30 @@ use {
     },
 };
 
-/// Generates a field element for instert and update statements, to set a field
-/// from a parameter of the same type.
-pub fn set_field(param_name: impl Into<String>, f: &FieldHandle) -> (FieldHandle, Expr) {
-    (f.clone(), field_param(param_name, f))
+/// Generates an expression checking for equality of a field and a parameter and
+/// the same type.
+pub fn eq_field(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
+    Expr::BinOp {
+        left: Box::new(Expr::Field(f.to_ref())),
+        op: BinOp::Equals,
+        right: Box::new(field_param(param_name, f)),
+    }
+}
+
+/// Shortcut for chain AND expressions.
+pub fn expr_and(exprs: Vec<Expr>) -> Expr {
+    Expr::BinOpChain {
+        op: BinOp::And,
+        exprs: exprs,
+    }
+}
+
+/// Shortcut for chain OR expressions.
+pub fn expr_or(exprs: Vec<Expr>) -> Expr {
+    Expr::BinOpChain {
+        op: BinOp::Or,
+        exprs: exprs,
+    }
 }
 
 /// Generates a param matching a field in name in type
@@ -34,13 +54,157 @@ pub fn field_param(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
     }
 }
 
-/// Generates an expression checking for equality of a field and a parameter and
-/// the same type.
-pub fn eq_field(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
-    Expr::BinOp {
-        left: Box::new(Expr::Field(f.to_ref())),
-        op: BinOp::Equals,
-        right: Box::new(field_param(param_name, f)),
+pub fn fn_avg(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "avg".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
+            };
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(ExprValName::empty(), out_t)]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_count(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "count".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_, _, _| {
+            return ExprType(vec![(ExprValName::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_dense_rank() -> Expr {
+    return Expr::Call {
+        func: "dense_rank".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_, _, _| {
+            return ExprType(vec![(ExprValName::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_max(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "max".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
+            };
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(ExprValName::empty(), out_t)]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_min(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "min".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
+            };
+            let mut out_t = t;
+            out_t.opt = true;
+            return ExprType(vec![(ExprValName::empty(), out_t)]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_rank() -> Expr {
+    return Expr::Call {
+        func: "rank".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_, _, _| {
+            return ExprType(vec![(ExprValName::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_row_number() -> Expr {
+    return Expr::Call {
+        func: "row_number".to_string(),
+        args: vec![],
+        compute_type: ComputeType(Rc::new(|_, _, _| {
+            return ExprType(vec![(ExprValName::empty(), Type {
+                type_: SimpleType {
+                    type_: SimpleSimpleType::I64,
+                    custom: None,
+                },
+                opt: false,
+                arr: false,
+            })]);
+        })),
+        filter: None,
+    }
+}
+
+pub fn fn_sum(expr: Expr) -> Expr {
+    return Expr::Call {
+        func: "sum".to_string(),
+        args: vec![expr],
+        compute_type: ComputeType(Rc::new(|_, _, args| {
+            let t = match args.first().and_then(|a| a.0.first()) {
+                Some(t) => t.1.clone(),
+                None => {
+                    return ExprType(vec![]);
+                },
+            };
+            let mut out_t = t;
+            match out_t.type_.type_ {
+                SimpleSimpleType::I16 | SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto => {
+                    out_t.type_.type_ = SimpleSimpleType::I64;
+                },
+                _ => { },
+            }
+            out_t.opt = true;
+            return ExprType(vec![(ExprValName::empty(), out_t)]);
+        })),
+        filter: None,
     }
 }
 
@@ -84,172 +248,8 @@ pub fn lte_field(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
     }
 }
 
-/// Shortcut for chain AND expressions.
-pub fn expr_and(exprs: Vec<Expr>) -> Expr {
-    Expr::BinOpChain {
-        op: BinOp::And,
-        exprs: exprs,
-    }
-}
-
-/// Shortcut for chain OR expressions.
-pub fn expr_or(exprs: Vec<Expr>) -> Expr {
-    Expr::BinOpChain {
-        op: BinOp::Or,
-        exprs: exprs,
-    }
-}
-
-pub fn fn_min(expr: Expr) -> Expr {
-    return Expr::Call {
-        func: "min".to_string(),
-        args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_, _, args| {
-            let t = match args.first().and_then(|a| a.0.first()) {
-                Some(t) => t.1.clone(),
-                None => {
-                    return ExprType(vec![]);
-                },
-            };
-            let mut out_t = t;
-            out_t.opt = true;
-            return ExprType(vec![(ExprValName::empty(), out_t)]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_max(expr: Expr) -> Expr {
-    return Expr::Call {
-        func: "max".to_string(),
-        args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_, _, args| {
-            let t = match args.first().and_then(|a| a.0.first()) {
-                Some(t) => t.1.clone(),
-                None => {
-                    return ExprType(vec![]);
-                },
-            };
-            let mut out_t = t;
-            out_t.opt = true;
-            return ExprType(vec![(ExprValName::empty(), out_t)]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_avg(expr: Expr) -> Expr {
-    return Expr::Call {
-        func: "avg".to_string(),
-        args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_, _, args| {
-            let t = match args.first().and_then(|a| a.0.first()) {
-                Some(t) => t.1.clone(),
-                None => {
-                    return ExprType(vec![]);
-                },
-            };
-            let mut out_t = t;
-            out_t.opt = true;
-            return ExprType(vec![(ExprValName::empty(), out_t)]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_sum(expr: Expr) -> Expr {
-    return Expr::Call {
-        func: "sum".to_string(),
-        args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_, _, args| {
-            let t = match args.first().and_then(|a| a.0.first()) {
-                Some(t) => t.1.clone(),
-                None => {
-                    return ExprType(vec![]);
-                },
-            };
-            let mut out_t = t;
-            match out_t.type_.type_ {
-                SimpleSimpleType::I16 | SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto => {
-                    out_t.type_.type_ = SimpleSimpleType::I64;
-                },
-                _ => { },
-            }
-            out_t.opt = true;
-            return ExprType(vec![(ExprValName::empty(), out_t)]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_count(expr: Expr) -> Expr {
-    return Expr::Call {
-        func: "count".to_string(),
-        args: vec![expr],
-        compute_type: ComputeType(Rc::new(|_, _, _| {
-            return ExprType(vec![(ExprValName::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::I64,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_row_number() -> Expr {
-    return Expr::Call {
-        func: "row_number".to_string(),
-        args: vec![],
-        compute_type: ComputeType(Rc::new(|_, _, _| {
-            return ExprType(vec![(ExprValName::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::I64,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_rank() -> Expr {
-    return Expr::Call {
-        func: "rank".to_string(),
-        args: vec![],
-        compute_type: ComputeType(Rc::new(|_, _, _| {
-            return ExprType(vec![(ExprValName::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::I64,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]);
-        })),
-        filter: None,
-    }
-}
-
-pub fn fn_dense_rank() -> Expr {
-    return Expr::Call {
-        func: "dense_rank".to_string(),
-        args: vec![],
-        compute_type: ComputeType(Rc::new(|_, _, _| {
-            return ExprType(vec![(ExprValName::empty(), Type {
-                type_: SimpleType {
-                    type_: SimpleSimpleType::I64,
-                    custom: None,
-                },
-                opt: false,
-                arr: false,
-            })]);
-        })),
-        filter: None,
-    }
+/// Generates a field element for instert and update statements, to set a field
+/// from a parameter of the same type.
+pub fn set_field(param_name: impl Into<String>, f: &FieldHandle) -> (FieldHandle, Expr) {
+    (f.clone(), field_param(param_name, f))
 }
