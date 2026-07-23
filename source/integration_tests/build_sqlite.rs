@@ -204,6 +204,54 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # (insert) Param: Opt`<datetime (seconds) (chrono)>`
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_utctime_s_chrono().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_utctime_s_chrono".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # (insert) Param: Opt`<datetime (ms) (chrono)>`
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_utctime_ms_chrono().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_utctime_ms_chrono".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # (insert) Param: Opt`<datetime (seconds) (jiff)>`
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_utctime_s_jiff().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_utctime_s_jiff".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # (insert) Param: Opt`<datetime (ms) (jiff)>`
+    {
+        let v = SqliteVersion::new();
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_utctime_ms_jiff().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_param_opt_utctime_ms_jiff".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # (insert) Param: All custom types
     {
         let v = SqliteVersion::new();

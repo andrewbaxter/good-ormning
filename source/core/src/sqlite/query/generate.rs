@@ -77,49 +77,89 @@ pub fn generate_query_functions(
                 let mut unforward = match &v.type_.type_ {
                     #[cfg(feature = "chrono")]
                     SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono => {
-                        quote!{
-                            let x: #ident = match r.get::< _,
-                            good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
-                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
-                                    chrono::DateTime::from_timestamp(i, 0).unwrap()
-                                },
-                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
-                                    chrono:: DateTime:: parse_from_rfc3339(
-                                        &s
-                                    ).map(
-                                        |d| d.with_timezone(&chrono::Utc)
-                                    ).map_err(
-                                        | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                            #i,
-                                            rusqlite::types::Type::Text,
-                                            Box::new(
-                                                GoodError(format!("Error parsing rfc3339 datetime {}: {:?}", s, e))
-                                            )
-                                        )
-                                    ) ?
-                                },
-                            };
+                        let parse_i64 = quote!(chrono::DateTime::from_timestamp(i, 0).unwrap());
+                        let parse_string = quote!{
+                            chrono:: DateTime:: parse_from_rfc3339(
+                                &s
+                            ).map(
+                                |d| d.with_timezone(&chrono::Utc)
+                            ).map_err(
+                                | e | rusqlite:: Error:: FromSqlConversionFailure(
+                                    #i,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(GoodError(format!("Error parsing rfc3339 datetime {}: {:?}", s, e)))
+                                )
+                            ) ?
+                        };
+                        if v.opt {
+                            quote!{
+                                let x: #ident = match r.get::< _,
+                                Option < good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >>(#i) ? {
+                                    Some(good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i)) => {
+                                        Some(#parse_i64)
+                                    },
+                                    Some(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s)
+                                    ) => {
+                                        Some(#parse_string)
+                                    },
+                                    None => None,
+                                };
+                            }
+                        } else {
+                            quote!{
+                                let x: #ident = match r.get::< _,
+                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
+                                    good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
+                                        #parse_i64
+                                    },
+                                    good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
+                                        #parse_string
+                                    },
+                                };
+                            }
                         }
                     },
                     #[cfg(feature = "jiff")]
                     SimpleSimpleType::UtcTimeSJiff | SimpleSimpleType::UtcTimeMsJiff => {
-                        quote!{
-                            let x: #ident = match r.get::< _,
-                            good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
-                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
-                                    jiff::Timestamp::from_second(i).unwrap()
-                                },
-                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
-                                    s.parse::< jiff:: Timestamp >(
-                                    ).map_err(
-                                        | e | rusqlite:: Error:: FromSqlConversionFailure(
-                                            #i,
-                                            rusqlite::types::Type::Text,
-                                            Box::new(GoodError(format!("Error parsing datetime {}: {:?}", s, e)))
-                                        )
-                                    ) ?
-                                },
-                            };
+                        let parse_i64 = quote!(jiff::Timestamp::from_second(i).unwrap());
+                        let parse_string = quote!{
+                            s.parse::< jiff:: Timestamp >(
+                            ).map_err(
+                                | e | rusqlite:: Error:: FromSqlConversionFailure(
+                                    #i,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(GoodError(format!("Error parsing datetime {}: {:?}", s, e)))
+                                )
+                            ) ?
+                        };
+                        if v.opt {
+                            quote!{
+                                let x: #ident = match r.get::< _,
+                                Option < good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >>(#i) ? {
+                                    Some(good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i)) => {
+                                        Some(#parse_i64)
+                                    },
+                                    Some(
+                                        good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s)
+                                    ) => {
+                                        Some(#parse_string)
+                                    },
+                                    None => None,
+                                };
+                            }
+                        } else {
+                            quote!{
+                                let x: #ident = match r.get::< _,
+                                good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp >(#i) ? {
+                                    good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: I64(i) => {
+                                        #parse_i64
+                                    },
+                                    good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(s) => {
+                                        #parse_string
+                                    },
+                                };
+                            }
                         }
                     },
                     _ => {

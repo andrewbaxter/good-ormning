@@ -439,6 +439,264 @@ fn test_param_opt_i32_null() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_param_opt_utctime_s_chrono() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_s_chrono");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
+        &mut db,
+        p1: opt utctime_s_chrono = Some(ref_date)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, Some(ref_date));
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_s_chrono_null() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_s_chrono");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, None);
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_ms_chrono() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_ms_chrono");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    let ref_date = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 1937, 12, 1, 0, 0, 0).unwrap();
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
+        &mut db,
+        p1: opt utctime_ms_chrono = Some(ref_date)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, Some(ref_date));
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_ms_chrono_null() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_ms_chrono");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_chrono",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, None);
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_s_jiff() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_s_jiff");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    let ref_date =
+        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp();
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
+        &mut db,
+        p1: opt utctime_s_jiff = Some(ref_date)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, Some(ref_date));
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_s_jiff_null() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_s_jiff");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_s_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, None);
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_ms_jiff() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_ms_jiff");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    let ref_date =
+        jiff::civil::DateTime::new(1937, 12, 1, 0, 0, 0, 0)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp();
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (?1)
+           "#;
+        &mut db,
+        p1: opt utctime_ms_jiff = Some(ref_date)
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, Some(ref_date));
+    Ok(())
+}
+
+#[test]
+fn test_param_opt_utctime_ms_jiff_null() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_param_opt_utctime_ms_jiff");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat")
+           values
+             (null)
+           "#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_param_opt_utctime_ms_jiff",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?, None);
+    Ok(())
+}
+
+#[test]
 fn test_param_arr_i32() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_param_arr_i32");
     let db = rusqlite::Connection::open_in_memory()?;
