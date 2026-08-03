@@ -1,8 +1,7 @@
 #[cfg(feature = "chrono")]
-use chrono::FixedOffset;
-#[cfg(feature = "chrono")]
 use chrono::{
     DateTime,
+    FixedOffset,
     Utc,
 };
 use crate::{
@@ -30,24 +29,24 @@ use crate::{
 };
 #[cfg(feature = "jiff")]
 use jiff::Timestamp;
-use serde::{
-    Serialize,
-    Deserialize,
-};
-use super::select::{
-    Select,
-    Order,
-};
 use {
     quote::{
         ToTokens,
         format_ident,
         quote,
     },
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     std::{
         collections::HashMap,
         fmt::Display,
         rc::Rc,
+    },
+    super::select::{
+        Order,
+        Select,
     },
 };
 

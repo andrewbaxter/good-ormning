@@ -362,6 +362,18 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Select offset
+    {
+        let v = PgVersion::new();
+        let bananna = v.table("bannanana");
+        bananna.field("hizat", field_i32().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_select_offset".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Select order
     {
         let v = PgVersion::new();

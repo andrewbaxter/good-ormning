@@ -537,6 +537,7 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        offset: None,
         distinct: false,
         junctions: vec![],
     } }
@@ -555,6 +556,7 @@ pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
         having: None,
         order: vec![],
         limit: None,
+        offset: None,
         distinct: false,
         junctions: vec![],
     } }
@@ -571,6 +573,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         having: None,
         order: vec![],
         limit: None,
+        offset: None,
         distinct: false,
         junctions: vec![],
     } }
@@ -624,6 +627,11 @@ impl SelectBodyBuilder {
 
     pub fn limit(mut self, v: Expr) -> Self {
         self.q.limit = Some(v);
+        self
+    }
+
+    pub fn offset(mut self, v: Expr) -> Self {
+        self.q.offset = Some(v);
         self
     }
 
@@ -754,6 +762,11 @@ impl SelectBuilder {
 
     pub fn limit(mut self, v: Expr) -> Self {
         self.q.limit = Some(v);
+        self
+    }
+
+    pub fn offset(mut self, v: Expr) -> Self {
+        self.q.offset = Some(v);
         self
     }
 

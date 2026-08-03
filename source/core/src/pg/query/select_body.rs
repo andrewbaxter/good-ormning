@@ -37,6 +37,7 @@ pub struct SelectBody {
     pub join: Vec<Join>,
     pub junctions: Vec<SelectJunction>,
     pub limit: Option<Expr>,
+    pub offset: Option<Expr>,
     pub order: Vec<(Expr, Order)>,
     pub returning: Vec<Returning>,
     pub table: NamedSelectSource,
@@ -196,6 +197,18 @@ impl SelectBody {
                 &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]),
             );
             out.s(&limit_tokens.to_string());
+        }
+        if let Some(o) = &self.offset {
+            out.s("offset");
+            let path = path.push_back("Offset".into());
+            let (offset_t, offset_tokens): (ExprType, Tokens) = o.build(ctx, &path, &scope);
+            crate::pg::query::expr::check_general_same(
+                ctx,
+                &path,
+                &offset_t,
+                &ExprType(vec![(ExprValName::empty(), crate::pg::types::type_i64().build())]),
+            );
+            out.s(&offset_tokens.to_string());
         }
         for (i, j) in self.junctions.iter().enumerate() {
             let path = path.push_back(format!("Junction {}", i));

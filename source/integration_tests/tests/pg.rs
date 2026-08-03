@@ -2249,6 +2249,68 @@ async fn test_select_limit() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_select_offset() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_select_offset");
+    let (db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, None).await?;
+    for v in [0, 1, 2, 3, 4] {
+        good_ormning::pg::good_query!(
+            dbm,
+            "pg_gen_select_offset",
+            //# genemichaels-external: sql-formatter-pg
+            r#"insert into
+                 "bannanana" ("hizat")
+               values
+                 ($1)
+               "#;
+            &mut db,
+            p1: i32 = v
+        ).await?;
+    }
+
+    // Parameterized offset skips the first `p1` rows.
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_offset",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           order by
+             "bannanana"."hizat" asc
+           limit
+             2
+           offset
+             $1
+           "#;
+        &mut db,
+        p1: i64 = 2
+    ).await?, vec![2, 3]);
+
+    // A different offset value yields a different window.
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_select_offset",
+        //# genemichaels-external: sql-formatter-pg
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           order by
+             "bannanana"."hizat" asc
+           limit
+             2
+           offset
+             $1
+           "#;
+        &mut db,
+        p1: i64 = 4
+    ).await?, vec![4]);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_select_order() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_select_order");
     let (db, _cont) = db().await?;

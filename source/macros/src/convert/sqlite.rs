@@ -837,6 +837,7 @@ fn convert_select(
                                     .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                                 order: vec![],
                                 limit: None,
+                                offset: None,
                                 distinct: s.distinct.is_some(),
                             };
                         }
@@ -896,6 +897,10 @@ fn convert_select(
             sqlparser::ast::LimitClause::LimitOffset { limit, .. } => limit.as_ref(),
             _ => None,
         }).map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+        offset: q.limit_clause.as_ref().and_then(|lc| match lc {
+            sqlparser::ast::LimitClause::LimitOffset { offset, .. } => offset.as_ref(),
+            _ => None,
+        }).map(|o| convert_expr(input, &o.value, used_params, custom_types, field_lookup)),
         distinct: s.distinct.is_some(),
     };
 }

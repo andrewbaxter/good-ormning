@@ -2166,17 +2166,17 @@ fn test_repeated_param() -> Result<(), loga::Error> {
              )
            values
              (
-               $repdate,
-               $genre,
-               $secondary,
-               $sort,
-               $rank,
-               $track
+               :repdate,
+               :genre,
+               :secondary,
+               :sort,
+               :rank,
+               :track
              )
            on conflict ("genre", "secondary", "sort", "track") do update
            set
-             "date" = $repdate,
-             "rank" = $rank
+             "date" = :repdate,
+             "rank" = :rank
            "#;
         &mut db,
         repdate: i32 = 20260501,
@@ -2201,17 +2201,17 @@ fn test_repeated_param() -> Result<(), loga::Error> {
              )
            values
              (
-               $repdate,
-               $genre,
-               $secondary,
-               $sort,
-               $rank,
-               $track
+               :repdate,
+               :genre,
+               :secondary,
+               :sort,
+               :rank,
+               :track
              )
            on conflict ("genre", "secondary", "sort", "track") do update
            set
-             "date" = $repdate,
-             "rank" = $rank
+             "date" = :repdate,
+             "rank" = :rank
            "#;
         &mut db,
         repdate: i32 = 20260502,
@@ -2887,6 +2887,68 @@ fn test_select_nested_join() -> Result<(), loga::Error> {
     )?;
     assert_eq!(res.val, 10);
     assert_eq!(res.label, Some("hello".into()));
+    Ok(())
+}
+
+#[test]
+fn test_select_offset() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_select_offset");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    for v in [0, 1, 2, 3, 4] {
+        good_ormning::sqlite::good_query!(
+            dbm,
+            "sqlite_gen_select_offset",
+            //# genemichaels-external: sql-formatter-sqlite
+            r#"insert into
+                 "bannanana" ("hizat")
+               values
+                 (?1)
+               "#;
+            &mut db,
+            p1: i32 = v
+        )?;
+    }
+
+    // Parameterized offset skips the first `p1` rows.
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_offset",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           order by
+             "bannanana"."hizat" asc
+           limit
+             2
+           offset
+             ?1
+           "#;
+        &mut db,
+        p1: i64 = 2
+    )?, vec![2, 3]);
+
+    // A different offset value yields a different window.
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_select_offset",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bannanana"."hizat" as "hizat"
+           from
+             "bannanana"
+           order by
+             "bannanana"."hizat" asc
+           limit
+             2
+           offset
+             ?1
+           "#;
+        &mut db,
+        p1: i64 = 4
+    )?, vec![4]);
     Ok(())
 }
 
