@@ -248,7 +248,10 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                 migration.push(quote!{
                     {
                         let query = #statement;
-                        db.execute(query, ()).to_good_error_query(query)?;
+                        match db.execute(query, ()).to_good_error_query(query) {
+                            Ok(_) => { },
+                            Err(e) => break 'body Err(e),
+                        };
                     };
                 });
             }
@@ -264,15 +267,23 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             if version < #version_i {
                 #(#migration) * {
                     let query = "update __good_version set version = ?";
-                    db.execute(query, (#version_i,)).to_good_error_query(query) ?;
+                    match db.execute(query, (#version_i,)).to_good_error_query(query) {
+                        Ok(_) => {
+                        },
+                        Err(e) => break 'body Err(e),
+                    };
                 }
                 if let Some(callback) = & callback {
                     let wrapper = #newtype_name(db);
                     let mut enum_val = #enum_name::#enum_variant(wrapper);
-                    callback(&mut enum_val)?;
+                    let res = callback(&mut enum_val);
                     db = match enum_val {
                         #enum_name::#enum_variant(wrapper) => wrapper.0,
                         _ => panic !("Migration callback returned wrong version enum variant"),
+                    };
+                    match res {
+                        Ok(_) => { },
+                        Err(e) => break 'body Err(e),
                     };
                 }
             }
@@ -337,33 +348,73 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         GoodError > {
             init_db(&mut db)?;
             loop {
-                let query = "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
-                let version = match db.query(query, (), |r| {
-                    let ver: i64 = r.get("version")?;
-                    Ok(ver)
-                }).to_good_error_query(query)?.pop() {
-                    Some(v) => v,
-                    None => {
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                        continue;
+                {
+                    let query = "begin immediate";
+                    match db.execute(query, ()) {
+                        Ok(_) => { },
+                        Err(good_ormning::runtime::sqlite::SqliteError::Busy) => {
+                            std::thread::sleep(std::time::Duration::from_millis(5000));
+                            continue;
+                        },
+                        Err(e) => return Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
+                    };
+                }
+                match 'body: {
+                    let query = "select version from __good_version where rid = 0";
+                    let version = match db.query(query, (), |r| {
+                        let ver: i64 = r.get(0usize)?;
+                        Ok(ver)
+                    }).to_good_error_query(query) {
+                        Ok(mut v) => v.pop().unwrap_or(-1i64),
+                        Err(e) => break 'body Err(e),
+                    };
+                    if version > #last_version_i {
+                        break 'body Err(
+                            GoodError(
+                                format!(
+                                    "The latest known version is {}, but the schema is at unknown version {}",
+                                    #last_version_i,
+                                    version
+                                ),
+                            ),
+                        );
+                    }
+                    #(#migrations) * {
+                        let query = "update __good_version set lock = 0";
+                        match db.execute(query, ()).to_good_error_query(query) {
+                            Ok(_) => { },
+                            Err(e) => break 'body Err(e),
+                        };
+                    }
+                    Ok(())
+                }
+                {
+                    Ok(_) => {
+                        let query = "commit";
+                        match db.execute(query, ()).to_good_error_query(query) {
+                            Ok(_) => return Ok(#latest_newtype_name(db)),
+                            Err(e) => {
+                                db.execute("rollback", ()).ok();
+                                return Err(e);
+                            },
+                        };
+                    },
+                    Err(e) => {
+                        let query = "rollback";
+                        match db.execute(query, ()) {
+                            Ok(_) => return Err(e),
+                            Err(e1) => return Err(
+                                GoodError(
+                                    format!(
+                                        "{}\n\nIn addition to the above error, rolling back the transaction failed: {}",
+                                        e,
+                                        e1
+                                    ),
+                                ),
+                            ),
+                        };
                     },
                 };
-                if version > #last_version_i {
-                    return Err(
-                        GoodError(
-                            format!(
-                                "The latest known version is {}, but the schema is at unknown version {}",
-                                #last_version_i,
-                                version
-                            ),
-                        ),
-                    );
-                }
-                #(#migrations) * {
-                    let query = "update __good_version set lock = 0";
-                    db.execute(query, ()).to_good_error_query(query)?;
-                }
-                return Ok(#latest_newtype_name(db));
             }
         }
         pub fn get_schema_version(
