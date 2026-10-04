@@ -158,6 +158,8 @@ pub use {
     },
 };
 
+const GOOD_VERSION: i64 = 1;
+
 /// Generate Rust code for migrations and queries. Also saves schema type info for
 /// proc_macros to refer to.
 ///
@@ -294,6 +296,52 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         prev_version_i = Some(version_i);
     }
 
+    let mut format_migrations = vec![];
+    for table in field_lookup.values() {
+        for field in table.fields.values() {
+            let suffix: Option<&str> = match &field.type_.type_.type_ {
+                #[cfg(feature = "chrono")]
+                good_ormning_core::sqlite::types::SimpleSimpleType::UtcTimeMsChrono => Some("+00:00"),
+                #[cfg(feature = "jiff")]
+                good_ormning_core::sqlite::types::SimpleSimpleType::UtcTimeMsJiff => Some("Z"),
+                _ => None,
+            };
+            let Some(suffix) = suffix else {
+                continue;
+            };
+
+            let query_suffixed =
+                format!(
+                    "update \"{t}\" set \"{c}\" = substr(\"{c}\", 1, 10) || ' ' || substr(\"{c}\", 12, 8) || '.' || substr(case when substr(\"{c}\", 20, 1) = '.' then substr(\"{c}\", 21, length(\"{c}\") - 20 - {n}) else '' end || '000', 1, 3) where typeof(\"{c}\") = 'text' and \"{c}\" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*' and substr(\"{c}\", -{n}) = '{suffix}'",
+                    t = table.sql_name,
+                    c = field.sql_name,
+                    n = suffix.len(),
+                    suffix = suffix
+                );
+
+            let query_unsuffixed =
+                format!(
+                    "update \"{t}\" set \"{c}\" = substr(\"{c}\", 1, 10) || ' ' || substr(\"{c}\", 12) where typeof(\"{c}\") = 'text' and \"{c}\" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]'",
+                    t = table.sql_name,
+                    c = field.sql_name
+                );
+            format_migrations.push(quote!{
+                if good_version < 1i64 {
+                    let query = #query_suffixed;
+                    match db.execute(query, ()).to_good_error_query(query) {
+                        Ok(_) => { },
+                        Err(e) => break 'body Err(e),
+                    };
+                    let query = #query_unsuffixed;
+                    match db.execute(query, ()).to_good_error_query(query) {
+                        Ok(_) => { },
+                        Err(e) => break 'body Err(e),
+                    };
+                }
+            });
+        }
+    }
+
     // Compile, output
     let last_version_i = prev_version_i.unwrap() as i64;
     let pascal_db_name: String = db_name.to_case(Case::Pascal);
@@ -380,6 +428,51 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                         );
                     }
                     #(#migrations) * {
+                        let query =
+                            "select count(*) from pragma_table_info('__good_version') where name = 'good_version'";
+                        let has_column = match db.query(query, (), |r| {
+                            let x: i64 = r.get(0usize)?;
+                            Ok(x)
+                        }).to_good_error_query(query) {
+                            Ok(mut v) => v.pop().unwrap_or(0i64) > 0,
+                            Err(e) => break 'body Err(e),
+                        };
+                        if !has_column {
+                            let query =
+                                "alter table __good_version add column good_version bigint not null default 0";
+                            match db.execute(query, ()).to_good_error_query(query) {
+                                Ok(_) => { },
+                                Err(e) => break 'body Err(e),
+                            };
+                        }
+                    }
+                    let query = "select good_version from __good_version where rid = 0";
+                    let good_version = match db.query(query, (), |r| {
+                        let x: i64 = r.get(0usize)?;
+                        Ok(x)
+                    }).to_good_error_query(query) {
+                        Ok(mut v) => v.pop().unwrap_or(0i64),
+                        Err(e) => break 'body Err(e),
+                    };
+                    if good_version > #GOOD_VERSION {
+                        break 'body Err(
+                            GoodError(
+                                format!(
+                                    "The latest known good-ormning data format version is {}, but the database is at unknown version {}",
+                                    #GOOD_VERSION,
+                                    good_version
+                                ),
+                            ),
+                        );
+                    }
+                    #(#format_migrations) * {
+                        let query = "update __good_version set good_version = ?";
+                        match db.execute(query, (#GOOD_VERSION,)).to_good_error_query(query) {
+                            Ok(_) => { },
+                            Err(e) => break 'body Err(e),
+                        };
+                    }
+                    {
                         let query = "update __good_version set lock = 0";
                         match db.execute(query, ()).to_good_error_query(query) {
                             Ok(_) => { },

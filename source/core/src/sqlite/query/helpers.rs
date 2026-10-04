@@ -23,7 +23,7 @@ use {
 pub fn as_utc_chrono(expr: Expr) -> Expr {
     return Expr::Call {
         func: "strftime".to_string(),
-        args: vec![Expr::LitString("%Y-%m-%dT%H:%M:%f".to_string()), expr],
+        args: vec![Expr::LitString("%Y-%m-%d %H:%M:%f".to_string()), expr],
         compute_type: ComputeType(Rc::new(|ctx, path, args| {
             shed!{
                 let arg = args.get(1).unwrap();

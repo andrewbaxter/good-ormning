@@ -79,15 +79,20 @@ pub fn generate_query_functions(
                     SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono => {
                         let parse_i64 = quote!(chrono::DateTime::from_timestamp(i, 0).unwrap());
                         let parse_string = quote!{
-                            chrono:: DateTime:: parse_from_rfc3339(
-                                &s
+                            chrono:: NaiveDateTime:: parse_from_str(
+                                &s,
+                                "%Y-%m-%d %H:%M:%S%.f"
                             ).map(
-                                |d| d.with_timezone(&chrono::Utc)
+                                |d| d.and_utc()
+                            ).or_else(
+                                |_| chrono::DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&chrono::Utc))
+                            ).or_else(
+                                |_| chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%.f").map(|d| d.and_utc())
                             ).map_err(
                                 | e | rusqlite:: Error:: FromSqlConversionFailure(
                                     #i,
                                     rusqlite::types::Type::Text,
-                                    Box::new(GoodError(format!("Error parsing rfc3339 datetime {}: {:?}", s, e)))
+                                    Box::new(GoodError(format!("Error parsing datetime {}: {:?}", s, e)))
                                 )
                             ) ?
                         };
@@ -123,6 +128,11 @@ pub fn generate_query_functions(
                         let parse_i64 = quote!(jiff::Timestamp::from_second(i).unwrap());
                         let parse_string = quote!{
                             s.parse::< jiff:: Timestamp >(
+                            ).or_else(
+                                |_| s
+                                    .parse::<jiff::civil::DateTime>()
+                                    .and_then(|d| d.to_zoned(jiff::tz::TimeZone::UTC))
+                                    .map(|d| d.timestamp())
                             ).map_err(
                                 | e | rusqlite:: Error:: FromSqlConversionFailure(
                                     #i,

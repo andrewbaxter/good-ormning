@@ -1495,6 +1495,10 @@ fn test_param_utctime_ms_chrono() -> Result<(), loga::Error> {
         &mut db,
         p1: utctime_ms_chrono = ref_date
     )?;
+    assert_eq!(
+        db.0.query_row(r#"select "hizat" from "bananna""#, [], |r| r.get::<_, String>(0))?,
+        "1937-12-01 00:00:00.000"
+    );
     assert_eq!(good_ormning::sqlite::good_query_one!(
         dbm,
         "sqlite_gen_param_utctime_ms_chrono",
@@ -1532,6 +1536,10 @@ fn test_param_utctime_ms_jiff() -> Result<(), loga::Error> {
         &mut db,
         p1: utctime_ms_jiff = ref_date
     )?;
+    assert_eq!(
+        db.0.query_row(r#"select "hizat" from "bananna""#, [], |r| r.get::<_, String>(0))?,
+        "1937-12-01 00:00:00.000"
+    );
     assert_eq!(good_ormning::sqlite::good_query_one!(
         dbm,
         "sqlite_gen_param_utctime_ms_jiff",
@@ -3244,5 +3252,51 @@ fn test_update_where() -> Result<(), loga::Error> {
            "#;
         &mut db
     )?, "tep");
+    Ok(())
+}
+
+#[test]
+fn test_migrate_good_version_utctime_ms() -> Result<(), loga::Error> {
+    let new_values = [
+        "1937-12-01 00:00:00.000",
+        "1937-12-01 00:00:00.500",
+        "1937-12-01 00:00:00.123",
+        "1937-12-01 00:00:00.250",
+    ];
+    for (db_name, old_values) in [
+        ("sqlite_gen_param_utctime_ms_chrono", [
+            "1937-12-01T00:00:00+00:00",
+            "1937-12-01T00:00:00.500+00:00",
+            "1937-12-01T00:00:00.123456789+00:00",
+            "1937-12-01T00:00:00.250",
+        ]),
+        ("sqlite_gen_param_utctime_ms_jiff", [
+            "1937-12-01T00:00:00Z",
+            "1937-12-01T00:00:00.5Z",
+            "1937-12-01T00:00:00.123456789Z",
+            "1937-12-01T00:00:00.250",
+        ]),
+    ] {
+        let migrate = |db: rusqlite::Connection| -> Result<rusqlite::Connection, loga::Error> {
+            if db_name == "sqlite_gen_param_utctime_ms_chrono" {
+                good_module!(dbm, "sqlite_gen_param_utctime_ms_chrono");
+                return Ok(dbm::migrate(db, None)?.0);
+            } else {
+                good_module!(dbm, "sqlite_gen_param_utctime_ms_jiff");
+                return Ok(dbm::migrate(db, None)?.0);
+            }
+        };
+
+        let db = migrate(rusqlite::Connection::open_in_memory()?)?;
+        db.execute("alter table __good_version drop column good_version", ())?;
+        for v in old_values {
+            db.execute(r#"insert into "bananna" ("hizat") values (?1)"#, (v,))?;
+        }
+        let db = migrate(db)?;
+        let mut stmt = db.prepare(r#"select "hizat" from "bananna" order by rowid"#)?;
+        let got = stmt.query_map((), |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(got, new_values, "{}", db_name);
+        assert_eq!(db.query_row("select good_version from __good_version", (), |r| r.get::<_, i64>(0))?, 1);
+    }
     Ok(())
 }

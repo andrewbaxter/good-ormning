@@ -754,7 +754,7 @@ impl Expr {
             #[cfg(feature = "chrono")]
             Expr::LitUtcTimeMsChrono(d) => {
                 let mut out = Tokens::new();
-                let d = d.to_rfc3339();
+                let d = d.format("%Y-%m-%d %H:%M:%S%.3f");
                 out.s(&format!("'{}'", d));
                 return empty_type!(out, SimpleSimpleType::UtcTimeMsChrono);
             },
@@ -774,7 +774,7 @@ impl Expr {
             #[cfg(feature = "jiff")]
             Expr::LitUtcTimeMsJiff(d) => {
                 let mut out = Tokens::new();
-                let d = d.to_string();
+                let d = d.strftime("%Y-%m-%d %H:%M:%S%.3f");
                 out.s(&format!("'{}'", d));
                 return empty_type!(out, SimpleSimpleType::UtcTimeMsJiff);
             },
@@ -844,14 +844,14 @@ impl Expr {
                                     quote!(
                                         #rust_forward.map(
                                             |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(
-                                                x.to_rfc3339()
+                                                x.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
                                         good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
-                                            #rust_forward.to_rfc3339()
+                                            #rust_forward.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
                                         )
                                     )
                                 }
@@ -880,14 +880,14 @@ impl Expr {
                                     quote!(
                                         #rust_forward.map(
                                             |x| good_ormning::runtime::sqlite::GoodOrmningSqliteTimestamp::String(
-                                                x.to_string()
+                                                x.strftime("%Y-%m-%d %H:%M:%S%.3f").to_string()
                                             )
                                         )
                                     )
                                 } else {
                                     quote!(
                                         good_ormning:: runtime:: sqlite:: GoodOrmningSqliteTimestamp:: String(
-                                            #rust_forward.to_string()
+                                            #rust_forward.strftime("%Y-%m-%d %H:%M:%S%.3f").to_string()
                                         )
                                     )
                                 }
