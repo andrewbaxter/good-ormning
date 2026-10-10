@@ -159,15 +159,36 @@ pub fn build_with(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, with: &
                         cte.columns.len()
                     ),
                 );
-        } else {
-            for (
-                i,
-                ((_, got), (_, _, want)),
-            ) in Iterator::zip(body_type.0.iter(), cte.columns.iter()).enumerate() {
-                let path = path.push_back(format!("Select return {}", i));
-                check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
-            }
         }
+        let mut fields = HashMap::new();
+        let mut column_types = vec![];
+        for (i, (field_id, sql_name, want)) in cte.columns.iter().enumerate() {
+            let got = body_type.0.get(i).map(|t| &t.1);
+            let type_ = match (want, got) {
+                (Some(want), Some(got)) => {
+                    let path = path.push_back(format!("Select return {}", i));
+                    check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
+                    want.clone()
+                },
+                (Some(want), None) => want.clone(),
+                (None, Some(got)) => got.clone(),
+                (None, None) => {
+                    continue;
+                },
+            };
+            column_types.push(type_.clone());
+            fields.insert(FieldRef {
+                table_id: cte.table_id.clone(),
+                field_id: field_id.clone(),
+            }, SqliteFieldInfo {
+                sql_name: sql_name.clone(),
+                type_: type_,
+            });
+        }
+        ctx.tables.insert(TableRef(cte.table_id.clone()), SqliteTableInfo {
+            sql_name: cte.table_id.clone(),
+            fields: fields,
+        });
         out.s(&body_tokens.to_string());
         for (i, j) in cte.body_junctions.iter().enumerate() {
             let path = path.push_back(format!("Junction clause {} - {:?}", i, j.op));
@@ -198,10 +219,7 @@ pub fn build_with(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, with: &
                         ),
                     );
             } else {
-                for (
-                    i,
-                    ((_, got), (_, _, want)),
-                ) in Iterator::zip(j_body_type.0.iter(), cte.columns.iter()).enumerate() {
+                for (i, ((_, got), want)) in Iterator::zip(j_body_type.0.iter(), column_types.iter()).enumerate() {
                     let path = path.push_back(format!("Select return {}", i));
                     check_assignable(&mut ctx.errs, &path, want, &ExprType(vec![(Binding::empty(), got.clone())]));
                 }
@@ -209,20 +227,6 @@ pub fn build_with(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, with: &
             out.s(&j_body_tokens.to_string());
         }
         out.s(")");
-        let mut fields = HashMap::new();
-        for (field_id, sql_name, type_) in &cte.columns {
-            fields.insert(FieldRef {
-                table_id: cte.table_id.clone(),
-                field_id: field_id.clone(),
-            }, SqliteFieldInfo {
-                sql_name: sql_name.clone(),
-                type_: type_.clone(),
-            });
-        }
-        ctx.tables.insert(TableRef(cte.table_id.clone()), SqliteTableInfo {
-            sql_name: cte.table_id.clone(),
-            fields,
-        });
     }
     return out;
 }
@@ -231,7 +235,7 @@ pub fn build_with(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, with: &
 pub struct Cte {
     pub body: Box<dyn QueryBody>,
     pub body_junctions: Vec<crate::sqlite::query::select_body::SelectJunction>,
-    pub columns: Vec<(String, String, Type)>,
+    pub columns: Vec<(String, String, Option<Type>)>,
     pub table_id: String,
 }
 
@@ -244,7 +248,7 @@ impl From<CteBuilder> for Cte {
 pub struct CteBuilder {
     body: Box<dyn QueryBody>,
     body_junctions: Vec<crate::sqlite::query::select_body::SelectJunction>,
-    columns: Vec<(String, String, Type)>,
+    columns: Vec<(String, String, Option<Type>)>,
     table_id: String,
 }
 
@@ -264,15 +268,20 @@ impl CteBuilder {
 
     pub fn column(mut self, id: impl AsRef<str>, type_: Type) -> Self {
         let field_id = id.as_ref().to_string();
-        self.columns.push((field_id.clone(), field_id, type_));
+        self.columns.push((field_id.clone(), field_id, Some(type_)));
+        return self;
+    }
+
+    pub fn column_inferred(mut self, id: impl AsRef<str>) -> Self {
+        let field_id = id.as_ref().to_string();
+        self.columns.push((field_id.clone(), field_id, None));
         return self;
     }
 
     pub fn field(&mut self, id: impl AsRef<str>, type_: Type) -> (String, String, Type) {
         let field_id = id.as_ref().to_string();
-        let f = (field_id.clone(), field_id, type_);
-        self.columns.push(f.clone());
-        return f;
+        self.columns.push((field_id.clone(), field_id.clone(), Some(type_.clone())));
+        return (field_id.clone(), field_id, type_);
     }
 
     pub fn new(id: impl AsRef<str>, body: Box<dyn QueryBody>) -> Self {

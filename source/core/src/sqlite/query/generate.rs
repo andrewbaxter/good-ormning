@@ -87,7 +87,10 @@ pub fn generate_query_functions(
                             ).or_else(
                                 |_| chrono::DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&chrono::Utc))
                             ).or_else(
-                                |_| chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%.f").map(|d| d.and_utc())
+                                |_| chrono::NaiveDateTime::parse_from_str(
+                                    &s,
+                                    "%Y-%m-%dT%H:%M:%S%.f"
+                                ).map(|d| d.and_utc())
                             ).map_err(
                                 | e | rusqlite:: Error:: FromSqlConversionFailure(
                                     #i,

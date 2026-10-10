@@ -196,7 +196,11 @@ pub fn fn_sum(expr: Expr) -> Expr {
             };
             let mut out_t = t;
             match out_t.type_.type_ {
-                SimpleSimpleType::I16 | SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto => {
+                SimpleSimpleType::AnyInt |
+                SimpleSimpleType::I16 |
+                SimpleSimpleType::I32 |
+                SimpleSimpleType::I64 |
+                SimpleSimpleType::Auto => {
                     out_t.type_.type_ = SimpleSimpleType::I64;
                 },
                 _ => { },

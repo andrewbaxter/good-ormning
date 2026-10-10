@@ -9,6 +9,7 @@ use crate::{
         types::{
             Type,
             to_rust_types,
+            unify_types,
             SimpleSimpleType,
             SimpleType,
         },
@@ -186,7 +187,12 @@ pub fn check_bool(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, t: &Exp
     })]));
 }
 
-pub fn check_general_same(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
+pub fn check_general_same(
+    ctx: &mut SqliteQueryCtx,
+    path: &rpds::Vector<String>,
+    left: &ExprType,
+    right: &ExprType,
+) -> ExprType {
     if left.0.len() != right.0.len() {
         ctx
             .errs
@@ -198,17 +204,32 @@ pub fn check_general_same(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>,
                     right.0.len()
                 ),
             );
+        return left.clone();
     } else if left.0.len() == 1 && right.0.len() == 1 {
-        check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1);
+        return ExprType(
+            vec![(left.0[0].0.clone(), check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1))],
+        );
     } else {
+        let mut out = vec![];
         for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
-            check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1);
+            out.push(
+                (
+                    left.0.clone(),
+                    check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1),
+                ),
+            );
         }
+        return ExprType(out);
     }
 }
 
-pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
-    if left.type_.type_ != right.type_.type_ {
+pub fn check_general_same_type(
+    ctx: &mut SqliteQueryCtx,
+    path: &rpds::Vector<String>,
+    left: &Type,
+    right: &Type,
+) -> Type {
+    let Some(unified) = unify_types(&left.type_.type_, &right.type_.type_) else {
         ctx
             .errs
             .err(
@@ -219,11 +240,19 @@ pub fn check_general_same_type(ctx: &mut SqliteQueryCtx, path: &rpds::Vector<Str
                     right.type_.type_
                 ),
             );
-    }
+        return left.clone();
+    };
+    let mut out = if unified == left.type_.type_ {
+        left.clone()
+    } else {
+        right.clone()
+    };
+    out.opt = left.opt || right.opt;
+    return out;
 }
 
 pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Type, right: &Type) {
-    if left.type_.type_ != right.type_.type_ {
+    if unify_types(&left.type_.type_, &right.type_.type_).is_none() {
         errs.err(
             path,
             format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
@@ -237,8 +266,9 @@ pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<S
 pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
     let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
     let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
-    check_general_same_type(&mut SqliteQueryCtx::new(errs.clone(), HashMap::new()), path, &left, &right);
-    return Some(left);
+    return Some(
+        check_general_same_type(&mut SqliteQueryCtx::new(errs.clone(), HashMap::new()), path, &left, &right),
+    );
 }
 
 #[allow(clippy::type_complexity)]
@@ -315,7 +345,7 @@ fn do_bin_op(
                     type_: SimpleSimpleType::Bool,
                     custom: None,
                 },
-                opt: false,
+                opt: left_t.0.iter().chain(right_t.0.iter()).any(|(_, t)| t.opt),
                 arr: false,
             })]), out);
         },
@@ -367,13 +397,31 @@ fn do_bin_op(
                         );
                 }
             }
+            let is_null_check =
+                matches!(op, BinOp::Is | BinOp::IsNot | BinOp::IsDistinctFrom | BinOp::IsNotDistinctFrom);
+            if is_null_check {
+                for (null_side, other_t) in [(&exprs[1], &left_t), (&exprs[0], &right_t)] {
+                    if matches!(null_side, Expr::LitNull(_)) && !other_t.0.is_empty() &&
+                        other_t.0.iter().all(|(_, t)| !t.opt) {
+                        ctx
+                            .errs
+                            .err(
+                                path,
+                                format!(
+                                    "Comparing a non-optional value with null using {:?}, this is always the same result",
+                                    op
+                                ),
+                            );
+                    }
+                }
+            }
             out.s(&left_tokens.to_string()).s(token).s(&right_tokens.to_string());
             return (ExprType(vec![(Binding::empty(), Type {
                 type_: SimpleType {
                     type_: SimpleSimpleType::Bool,
                     custom: None,
                 },
-                opt: false,
+                opt: !is_null_check && left_t.0.iter().chain(right_t.0.iter()).any(|(_, t)| t.opt),
                 arr: false,
             })]), out);
         },
@@ -430,6 +478,7 @@ fn do_bin_op(
         },
     }
     let mut out_t = None;
+    let mut any_opt = false;
     for (i, res) in exprs.iter().enumerate() {
         if i > 0 {
             out.s(token);
@@ -441,6 +490,7 @@ fn do_bin_op(
                 continue;
             },
         };
+        any_opt = any_opt || got_t.opt;
         match op {
             BinOp::Plus |
             BinOp::Minus |
@@ -454,13 +504,18 @@ fn do_bin_op(
             BinOp::BitwiseShiftRight => {
                 if !matches!(
                     got_t.type_.type_,
-                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::Auto
+                    SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 |
+                        SimpleSimpleType::I64 |
+                        SimpleSimpleType::Auto
                 ) &&
                     !matches!(op, BinOp::Plus | BinOp::Minus | BinOp::Multiply | BinOp::Divide) {
                     // arithmetic allows floats, bitwise only ints
                 } else if !matches!(
                     got_t.type_.type_,
-                    SimpleSimpleType::I32 | SimpleSimpleType::I64 | SimpleSimpleType::F32 | SimpleSimpleType::F64 |
+                    SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 |
+                        SimpleSimpleType::I64 |
+                        SimpleSimpleType::F32 |
+                        SimpleSimpleType::F64 |
                         SimpleSimpleType::Auto
                 ) {
                     ctx
@@ -476,7 +531,7 @@ fn do_bin_op(
                 }
             },
             BinOp::And | BinOp::Or => {
-                if !matches!(got_t.type_.type_, SimpleSimpleType::Bool) {
+                if !matches!(got_t.type_.type_, SimpleSimpleType::AnyNull | SimpleSimpleType::Bool) {
                     ctx
                         .errs
                         .err(
@@ -504,8 +559,8 @@ fn do_bin_op(
             },
             BinOp::In | BinOp::NotIn => unreachable!(),
         }
-        if let Some(out_t) = &mut out_t {
-            check_general_same_type(ctx, path, out_t, &got_t);
+        if let Some(prev_t) = &out_t {
+            out_t = Some(check_general_same_type(ctx, path, prev_t, &got_t));
         } else {
             out_t = Some(got_t);
         }
@@ -517,7 +572,7 @@ fn do_bin_op(
                 type_: SimpleSimpleType::Bool,
                 custom: None,
             },
-            opt: false,
+            opt: any_opt,
             arr: false,
         },
         BinOp::StringConcat => Type {
@@ -525,7 +580,7 @@ fn do_bin_op(
                 type_: SimpleSimpleType::String,
                 custom: None,
             },
-            opt: false,
+            opt: any_opt,
             arr: false,
         },
         BinOp::In | BinOp::NotIn => unreachable!(),
@@ -586,6 +641,7 @@ pub enum Expr {
         escape: Option<Box<Expr>>,
         glob: bool,
     },
+    LitAnyInt(i64),
     LitArray(Vec<Expr>),
     LitAuto(i64),
     LitBool(bool),
@@ -698,6 +754,11 @@ impl Expr {
                     "0"
                 });
                 return empty_type!(out, SimpleSimpleType::Bool);
+            },
+            Expr::LitAnyInt(x) => {
+                let mut out = Tokens::new();
+                out.s(&x.to_string());
+                return empty_type!(out, SimpleSimpleType::AnyInt);
             },
             Expr::LitAuto(x) => {
                 let mut out = Tokens::new();
@@ -1165,6 +1226,7 @@ impl Expr {
                 if let Some(got_t) = t_pattern.assert_scalar(&mut ctx.errs, &path.push_back("Like pattern".into())) {
                     check_general_same_type(ctx, &path.push_back("Like pattern".into()), &got_t, &want_t);
                 }
+                let mut any_opt = t_expr.0.iter().chain(t_pattern.0.iter()).any(|(_, t)| t.opt);
                 out.s(&tokens_expr.to_string());
                 if *glob {
                     out.s("glob");
@@ -1179,6 +1241,7 @@ impl Expr {
                         t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
                         check_general_same_type(ctx, &path.push_back("Like escape".into()), &got_t, &want_t);
                     }
+                    any_opt = any_opt || t_escape.0.iter().any(|(_, t)| t.opt);
                     out.s("escape").s(&tokens_escape.to_string());
                 }
                 return (ExprType(vec![(Binding::empty(), Type {
@@ -1186,7 +1249,7 @@ impl Expr {
                         type_: SimpleSimpleType::Bool,
                         custom: None,
                     },
-                    opt: false,
+                    opt: any_opt,
                     arr: false,
                 })]), out);
             },
@@ -1207,7 +1270,7 @@ impl Expr {
                         type_: SimpleSimpleType::Bool,
                         custom: None,
                     },
-                    opt: false,
+                    opt: t.0.iter().chain(t_low.0.iter()).chain(t_high.0.iter()).any(|(_, t)| t.opt),
                     arr: false,
                 })]), out);
             },
@@ -1234,7 +1297,10 @@ impl Expr {
                     out.s(&cond_tokens.to_string()).s("then");
                     let (r_t, res_tokens) = res.build(ctx, &path.push_back(format!("Case result {}", i)), scope);
                     if let Some(res_t) = &res_type {
-                        check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t);
+                        res_type =
+                            Some(
+                                check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t),
+                            );
                     } else {
                         res_type = Some(r_t);
                     }
@@ -1244,7 +1310,8 @@ impl Expr {
                     out.s("else");
                     let (else_t, else_tokens) = else_.build(ctx, &path.push_back("Case else".into()), scope);
                     if let Some(res_t) = &res_type {
-                        check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t);
+                        res_type =
+                            Some(check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t));
                     } else {
                         res_type = Some(else_t);
                     }

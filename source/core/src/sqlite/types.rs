@@ -9,6 +9,8 @@ use {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SimpleSimpleType {
+    AnyInt,
+    AnyNull,
     Auto,
     Bool,
     Bytes,
@@ -49,7 +51,7 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             arg_type: quote!(i16),
             custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomI16),
         },
-        SimpleSimpleType::I32 => RustTypes {
+        SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 => RustTypes {
             ret_type: quote!(i32),
             arg_type: quote!(i32),
             custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomI32),
@@ -126,7 +128,7 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
     match t {
         SimpleSimpleType::Auto => "integer",
         SimpleSimpleType::I16 => "integer",
-        SimpleSimpleType::I32 => "integer",
+        SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 => "integer",
         SimpleSimpleType::I64 => "integer",
         SimpleSimpleType::U32 => "integer",
         SimpleSimpleType::F32 => "real",
@@ -253,4 +255,36 @@ impl TypeBuilder {
         self.0.opt = true;
         return self;
     }
+}
+
+pub fn unify_types(left: &SimpleSimpleType, right: &SimpleSimpleType) -> Option<SimpleSimpleType> {
+    let is_int =
+        |t: &SimpleSimpleType| matches!(
+            t,
+            SimpleSimpleType::AnyInt | SimpleSimpleType::Auto | SimpleSimpleType::I16 | SimpleSimpleType::I32 |
+                SimpleSimpleType::I64 |
+                SimpleSimpleType::U32
+        );
+    if left == right {
+        return Some(left.clone());
+    }
+    if matches!(
+        (left, right),
+        (SimpleSimpleType::Auto, SimpleSimpleType::I64) | (SimpleSimpleType::I64, SimpleSimpleType::Auto)
+    ) {
+        return Some(left.clone());
+    }
+    if *left == SimpleSimpleType::AnyNull {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyNull {
+        return Some(left.clone());
+    }
+    if *left == SimpleSimpleType::AnyInt && is_int(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyInt && is_int(left) {
+        return Some(left.clone());
+    }
+    return None;
 }

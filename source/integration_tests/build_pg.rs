@@ -90,7 +90,7 @@ pub fn build() {
     {
         let v = PgVersion::new();
         let bananna = v.table("bananna");
-        bananna.field("hizat", field_str().build());
+        bananna.field("hizat", field_str().opt().build());
         generate(GenerateArgs {
             db_name: Some("pg_gen_query_is_null".to_string()),
             versions: vec![(1usize, v.build())],

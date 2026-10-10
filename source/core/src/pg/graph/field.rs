@@ -7,9 +7,7 @@ use {
             PgTableInfo,
             query::expr::{
                 Expr,
-                ExprType,
-                ExprValName,
-                check_same,
+                check_assignable,
             },
             schema::{
                 field::{
@@ -152,11 +150,11 @@ impl NodeDataDispatch for NodeField_ {
                 let mut qctx = PgQueryCtx::new(ctx.errs.clone(), qctx_tables);
                 let expr: Expr = Expr::from(d.clone());
                 let e_res = expr.build(&mut qctx, &path, &HashMap::new());
-                check_same(&mut qctx.errs, &path, &ExprType(vec![(ExprValName::empty(), Type {
+                check_assignable(&mut qctx.errs, &path, &Type {
                     type_: self.def.type_.type_.type_.clone(),
                     opt: false,
                     arr: false,
-                })]), &e_res.0);
+                }, &e_res.0);
                 if !qctx.rust_args.is_empty() {
                     qctx
                         .errs

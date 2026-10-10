@@ -9,6 +9,7 @@ use crate::{
         types::{
             Type,
             to_rust_types,
+            unify_types,
             SimpleSimpleType,
             SimpleType,
         },
@@ -88,7 +89,7 @@ pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Typ
     let Some(right) = right.assert_scalar(errs, path) else {
         return;
     };
-    if left.type_.type_ != right.type_.type_ {
+    if unify_types(&left.type_.type_, &right.type_.type_).is_none() {
         errs.err(
             path,
             format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
@@ -103,15 +104,17 @@ pub fn check_bool(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, t: &ExprTyp
     let Some(t) = t.assert_scalar(&mut ctx.errs, path) else {
         return;
     };
-    if t.opt {
-        ctx.errs.err(path, "Expected non-optional bool but got optional bool".to_string());
-    }
     if !matches!(t.type_.type_, SimpleSimpleType::Bool) {
         ctx.errs.err(path, format!("Expected bool but type is non-bool: got {:?}", t.type_.type_));
     }
 }
 
-pub fn check_general_same(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) {
+pub fn check_general_same(
+    ctx: &mut PgQueryCtx,
+    path: &rpds::Vector<String>,
+    left: &ExprType,
+    right: &ExprType,
+) -> ExprType {
     if left.0.len() != right.0.len() {
         ctx
             .errs
@@ -123,17 +126,27 @@ pub fn check_general_same(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, lef
                     right.0.len()
                 ),
             );
+        return left.clone();
     } else if left.0.len() == 1 && right.0.len() == 1 {
-        check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1);
+        return ExprType(
+            vec![(left.0[0].0.clone(), check_general_same_type(ctx, path, &left.0[0].1, &right.0[0].1))],
+        );
     } else {
+        let mut out = vec![];
         for (i, (left, right)) in left.0.iter().zip(right.0.iter()).enumerate() {
-            check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1);
+            out.push(
+                (
+                    left.0.clone(),
+                    check_general_same_type(ctx, &path.push_back(format!("Record pair {}", i)), &left.1, &right.1),
+                ),
+            );
         }
+        return ExprType(out);
     }
 }
 
-pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) {
-    if left.type_.type_ != right.type_.type_ {
+pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, left: &Type, right: &Type) -> Type {
+    let Some(unified) = unify_types(&left.type_.type_, &right.type_.type_) else {
         ctx
             .errs
             .err(
@@ -144,19 +157,17 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>
                     right.type_.type_
                 ),
             );
-    }
+        return left.clone();
+    };
+    let mut out = unified_type(left, right, unified);
+    out.opt = left.opt || right.opt;
+    return out;
 }
 
 pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
     let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
     let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
-    if left.opt != right.opt {
-        errs.err(
-            path,
-            format!("Operator arms optionality don't match: left has {} and right has {}", left.opt, right.opt),
-        );
-    }
-    if left.type_.custom != right.type_.custom {
+    if left.type_.type_ == right.type_.type_ && left.type_.custom != right.type_.custom {
         errs.err(
             path,
             format!(
@@ -166,7 +177,7 @@ pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType,
             ),
         );
     }
-    if left.type_.type_ != right.type_.type_ {
+    let Some(unified) = unify_types(&left.type_.type_, &right.type_.type_) else {
         errs.err(
             path,
             format!(
@@ -175,8 +186,11 @@ pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType,
                 right.type_.type_
             ),
         );
-    }
-    Some(left.clone())
+        return Some(left.clone());
+    };
+    let mut out = unified_type(&left, &right, unified);
+    out.opt = left.opt || right.opt;
+    return Some(out);
 }
 
 pub struct ComputeType(pub Rc<dyn Fn(&mut PgQueryCtx, &rpds::Vector<String>, &[ExprType]) -> ExprType>);
@@ -238,6 +252,7 @@ pub enum Expr {
         escape: Option<Box<Expr>>,
         ilike: bool,
     },
+    LitAnyInt(i64),
     LitArray(Vec<Expr>),
     LitAuto(i64),
     LitBool(bool),
@@ -319,13 +334,17 @@ impl Expr {
                 }
                 if is_paren {
                     out.s(")");
+                    return (ExprType(res_types.into_iter().flat_map(|t| t.0).collect()), out);
                 } else {
                     out.s("]");
                 }
                 let mut out_type = None;
                 for (i, t) in res_types.iter().enumerate() {
                     if let Some(prev) = &out_type {
-                        check_general_same(ctx, &path.push_back(format!("Array element {}", i)), prev, t);
+                        out_type =
+                            Some(
+                                check_general_same(ctx, &path.push_back(format!("Array element {}", i)), prev, t),
+                            );
                     } else {
                         out_type = Some(t.clone());
                     }
@@ -351,6 +370,18 @@ impl Expr {
                 return (ExprType(vec![(ExprValName::empty(), Type {
                     type_: SimpleType {
                         type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
+            },
+            Expr::LitAnyInt(v) => {
+                let mut out = Tokens::new();
+                out.s(&v.to_string());
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::AnyInt,
                         custom: None,
                     },
                     opt: false,
@@ -690,7 +721,7 @@ impl Expr {
                                 type_: SimpleSimpleType::Bool,
                                 custom: None,
                             },
-                            opt: false,
+                            opt: left_t.0.iter().chain(right_t.0.iter()).any(|(_, t)| t.opt),
                             arr: false,
                         })]), out);
                     },
@@ -821,6 +852,23 @@ impl Expr {
                     check_same(&mut ctx.errs, path, &l_res.0, &r_res.0)
                 };
                 out.s(&l_res.1.to_string()).s(token).s(&r_res.1.to_string());
+                let any_opt = l_res.0.0.iter().chain(r_res.0.0.iter()).any(|(_, t)| t.opt);
+                if matches!(op, BinOp::Is | BinOp::IsNot | BinOp::IsDistinctFrom | BinOp::IsNotDistinctFrom) {
+                    for (null_side, other_t) in [(&**right, &l_res.0), (&**left, &r_res.0)] {
+                        if matches!(null_side, Expr::LitNull(_)) && !other_t.0.is_empty() &&
+                            other_t.0.iter().all(|(_, t)| !t.opt) {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!(
+                                        "Comparing a non-optional value with null using {:?}, this is always the same result",
+                                        op
+                                    ),
+                                );
+                        }
+                    }
+                }
                 let mut res_t = t.unwrap_or(Type {
                     type_: SimpleType {
                         type_: SimpleSimpleType::I32,
@@ -830,21 +878,7 @@ impl Expr {
                     arr: false,
                 });
                 match op {
-                    BinOp::Equals |
-                    BinOp::NotEquals |
-                    BinOp::Is |
-                    BinOp::IsNot |
-                    BinOp::LessThan |
-                    BinOp::LessThanEqualTo |
-                    BinOp::GreaterThan |
-                    BinOp::GreaterThanEqualTo |
-                    BinOp::Like |
-                    BinOp::ILike |
-                    BinOp::IsDistinctFrom |
-                    BinOp::IsNotDistinctFrom |
-                    BinOp::Glob |
-                    BinOp::Regexp |
-                    BinOp::Match => {
+                    BinOp::Is | BinOp::IsNot | BinOp::IsDistinctFrom | BinOp::IsNotDistinctFrom => {
                         res_t = Type {
                             type_: SimpleType {
                                 type_: SimpleSimpleType::Bool,
@@ -854,13 +888,33 @@ impl Expr {
                             arr: false,
                         };
                     },
+                    BinOp::Equals |
+                    BinOp::NotEquals |
+                    BinOp::LessThan |
+                    BinOp::LessThanEqualTo |
+                    BinOp::GreaterThan |
+                    BinOp::GreaterThanEqualTo |
+                    BinOp::Like |
+                    BinOp::ILike |
+                    BinOp::Glob |
+                    BinOp::Regexp |
+                    BinOp::Match => {
+                        res_t = Type {
+                            type_: SimpleType {
+                                type_: SimpleSimpleType::Bool,
+                                custom: None,
+                            },
+                            opt: any_opt,
+                            arr: false,
+                        };
+                    },
                     BinOp::StringConcat => {
                         res_t = Type {
                             type_: SimpleType {
                                 type_: SimpleSimpleType::String,
                                 custom: None,
                             },
-                            opt: false,
+                            opt: any_opt,
                             arr: false,
                         };
                     },
@@ -876,7 +930,7 @@ impl Expr {
                     BinOp::Or => "or",
                     _ => panic!("Chain only supported for and/or"),
                 };
-                let mut out_t = None;
+                let mut any_opt = false;
                 for (i, e) in exprs.iter().enumerate() {
                     if i > 0 {
                         out.s(token);
@@ -884,9 +938,16 @@ impl Expr {
                     let res = e.build(ctx, &path.push_back(format!("Chain element {}", i)), scope);
                     check_bool(ctx, &path.push_back(format!("Chain element {}", i)), &res.0);
                     out.s(&res.1.to_string());
-                    out_t = Some(res.0);
+                    any_opt = any_opt || res.0.0.iter().any(|(_, t)| t.opt);
                 }
-                return (out_t.unwrap_or(ExprType(vec![])), out);
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::Bool,
+                        custom: None,
+                    },
+                    opt: any_opt,
+                    arr: false,
+                })]), out);
             },
             Expr::PrefixOp { op, right } => {
                 let mut out = Tokens::new();
@@ -1032,6 +1093,7 @@ impl Expr {
                 if let Some(got_t) = t_pattern.assert_scalar(&mut ctx.errs, &path.push_back("Like pattern".into())) {
                     check_general_same_type(ctx, &path.push_back("Like pattern".into()), &got_t, &want_t);
                 }
+                let mut any_opt = t_expr.0.iter().chain(t_pattern.0.iter()).any(|(_, t)| t.opt);
                 out.s(&tokens_expr.to_string());
                 if *ilike {
                     out.s("ilike");
@@ -1046,6 +1108,7 @@ impl Expr {
                         t_escape.assert_scalar(&mut ctx.errs, &path.push_back("Like escape".into())) {
                         check_general_same_type(ctx, &path.push_back("Like escape".into()), &got_t, &want_t);
                     }
+                    any_opt = any_opt || t_escape.0.iter().any(|(_, t)| t.opt);
                     out.s("escape").s(&tokens_escape.to_string());
                 }
                 return (ExprType(vec![(ExprValName::empty(), Type {
@@ -1053,7 +1116,7 @@ impl Expr {
                         type_: SimpleSimpleType::Bool,
                         custom: None,
                     },
-                    opt: false,
+                    opt: any_opt,
                     arr: false,
                 })]), out);
             },
@@ -1069,7 +1132,9 @@ impl Expr {
                     out.s("not");
                 }
                 out.s("between").s(&low_tokens.to_string()).s("and").s(&high_tokens.to_string());
-                (ExprType(vec![(ExprValName::empty(), crate::pg::types::type_bool().build())]), out)
+                let mut res_t = crate::pg::types::type_bool().build();
+                res_t.opt = t.0.iter().chain(t_low.0.iter()).chain(t_high.0.iter()).any(|(_, t)| t.opt);
+                (ExprType(vec![(ExprValName::empty(), res_t)]), out)
             },
             Expr::Case { operand, conditions, else_ } => {
                 let mut out = Tokens::new();
@@ -1094,7 +1159,10 @@ impl Expr {
                     out.s(&cond_tokens.to_string()).s("then");
                     let (r_t, res_tokens) = res.build(ctx, &path.push_back(format!("Case result {}", i)), scope);
                     if let Some(res_t) = &res_type {
-                        check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t);
+                        res_type =
+                            Some(
+                                check_general_same(ctx, &path.push_back(format!("Case result {}", i)), res_t, &r_t),
+                            );
                     } else {
                         res_type = Some(r_t);
                     }
@@ -1104,7 +1172,8 @@ impl Expr {
                     out.s("else");
                     let (else_t, else_tokens) = else_.build(ctx, &path.push_back("Case else".into()), scope);
                     if let Some(res_t) = &res_type {
-                        check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t);
+                        res_type =
+                            Some(check_general_same(ctx, &path.push_back("Case else".into()), res_t, &else_t));
                     } else {
                         res_type = Some(else_t);
                     }
@@ -1323,6 +1392,21 @@ pub enum SerialWindowFrameType {
     Groups,
     Range,
     Rows,
+}
+
+fn unified_type(left: &Type, right: &Type, unified: SimpleSimpleType) -> Type {
+    if unified == left.type_.type_ {
+        return left.clone();
+    } else if unified == right.type_.type_ {
+        return right.clone();
+    } else {
+        let mut out = left.clone();
+        out.type_ = SimpleType {
+            custom: None,
+            type_: unified,
+        };
+        return out;
+    }
 }
 
 #[derive(Clone, Debug)]

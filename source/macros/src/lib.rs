@@ -347,6 +347,10 @@ fn parse_and_generate_pg(
             "inline",
             db_type,
         );
+    if let Err(e) = errs.raise() {
+        let e = e.join("\n");
+        return quote!(compile_error!(#e));
+    }
     let conn = &input.conn;
     let args = &input.params;
     let db_name_lit = LitStr::new(&db_name, input.db_mod.span());
@@ -453,6 +457,10 @@ fn parse_and_generate_sqlite(
             "inline",
             db_type,
         );
+    if let Err(e) = errs.raise() {
+        let e = e.join("\n");
+        return quote!(compile_error!(#e));
+    }
     let conn = &input.conn;
     let args = &input.params;
     let db_name_lit = LitStr::new(&db_name, input.db_mod.span());

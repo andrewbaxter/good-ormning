@@ -116,7 +116,7 @@ fn convert_expr(
             match &v.value {
                 sql::Value::Number(n, _) => {
                     if let Ok(i) = n.parse::<i32>() {
-                        return Expr::LitI32(i);
+                        return Expr::LitAnyInt(i as i64);
                     } else if let Ok(i) = n.parse::<i64>() {
                         return Expr::LitI64(i);
                     } else if let Ok(f) = n.parse::<f32>() {
@@ -158,7 +158,7 @@ fn convert_expr(
                     };
                 },
                 sql::Value::Null => return Expr::LitNull(SimpleType {
-                    type_: SimpleSimpleType::I32,
+                    type_: SimpleSimpleType::AnyNull,
                     custom: None,
                 }),
                 _ => unimplemented!("Value type not implemented in good-ormning: {:?}", v),
@@ -241,7 +241,7 @@ fn convert_expr(
                 left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::Is,
                 right: Box::new(Expr::LitNull(SimpleType {
-                    type_: SimpleSimpleType::I32,
+                    type_: SimpleSimpleType::AnyNull,
                     custom: None,
                 })),
             };
@@ -251,7 +251,7 @@ fn convert_expr(
                 left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::IsNot,
                 right: Box::new(Expr::LitNull(SimpleType {
-                    type_: SimpleSimpleType::I32,
+                    type_: SimpleSimpleType::AnyNull,
                     custom: None,
                 })),
             };
@@ -310,7 +310,7 @@ fn convert_expr(
                 left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::Is,
                 right: Box::new(Expr::LitNull(SimpleType {
-                    type_: SimpleSimpleType::I32,
+                    type_: SimpleSimpleType::AnyNull,
                     custom: None,
                 })),
             };
@@ -320,7 +320,7 @@ fn convert_expr(
                 left: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
                 op: BinOp::IsNot,
                 right: Box::new(Expr::LitNull(SimpleType {
-                    type_: SimpleSimpleType::I32,
+                    type_: SimpleSimpleType::AnyNull,
                     custom: None,
                 })),
             };
@@ -1172,13 +1172,12 @@ fn convert_with(
         let mut builder = CteBuilder::new(name, Box::new(query.clone()));
         if !cte.alias.columns.is_empty() {
             for col in &cte.alias.columns {
-                builder =
-                    builder.column(col.name.value.clone(), good_ormning_core::sqlite::types::type_i32().build());
+                builder = builder.column_inferred(col.name.value.clone());
             }
         } else {
             for r in &query.returning {
                 let r_name = r.rename.clone().unwrap_or_else(|| "column".to_string());
-                builder = builder.column(r_name, good_ormning_core::sqlite::types::type_i32().build());
+                builder = builder.column_inferred(r_name);
             }
         }
         ctes.push(good_ormning_core::sqlite::query::utils::Cte::from(builder));

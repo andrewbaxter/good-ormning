@@ -282,6 +282,7 @@ fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static
     use good_ormning_core::pg::types::SimpleSimpleType as S;
 
     match sst {
+        S::AnyNull | S::AnyInt => unreachable!("Literal-only types are never read from a schema"),
         S::Auto => "field_auto",
         S::I16 => "field_i16",
         S::I32 => "field_i32",
@@ -321,6 +322,7 @@ fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> 
     use good_ormning_core::sqlite::types::SimpleSimpleType as S;
 
     match sst {
+        S::AnyNull | S::AnyInt => unreachable!("Literal-only types are never read from a schema"),
         S::Auto => "field_auto",
         S::I16 => "field_i16",
         S::I32 => "field_i32",

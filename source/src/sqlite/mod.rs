@@ -295,7 +295,6 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         prev_version = Some(version.clone());
         prev_version_i = Some(version_i);
     }
-
     let mut format_migrations = vec![];
     for table in field_lookup.values() {
         for field in table.fields.values() {
@@ -309,7 +308,6 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             let Some(suffix) = suffix else {
                 continue;
             };
-
             let query_suffixed =
                 format!(
                     "update \"{t}\" set \"{c}\" = substr(\"{c}\", 1, 10) || ' ' || substr(\"{c}\", 12, 8) || '.' || substr(case when substr(\"{c}\", 20, 1) = '.' then substr(\"{c}\", 21, length(\"{c}\") - 20 - {n}) else '' end || '000', 1, 3) where typeof(\"{c}\") = 'text' and \"{c}\" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*' and substr(\"{c}\", -{n}) = '{suffix}'",
@@ -318,7 +316,6 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     n = suffix.len(),
                     suffix = suffix
                 );
-
             let query_unsuffixed =
                 format!(
                     "update \"{t}\" set \"{c}\" = substr(\"{c}\", 1, 10) || ' ' || substr(\"{c}\", 12) where typeof(\"{c}\") = 'text' and \"{c}\" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]'",
@@ -468,7 +465,8 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     #(#format_migrations) * {
                         let query = "update __good_version set good_version = ?";
                         match db.execute(query, (#GOOD_VERSION,)).to_good_error_query(query) {
-                            Ok(_) => { },
+                            Ok(_) => {
+                            },
                             Err(e) => break 'body Err(e),
                         };
                     }
