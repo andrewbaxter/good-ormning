@@ -243,11 +243,23 @@ pub fn generate_query_functions(
             } else {
                 let mut fields = vec![];
                 let mut unforward_fields = vec![];
+                let mut seen_names = std::collections::HashSet::new();
                 for (i, (k, v)) in res.0.0.into_iter().enumerate() {
                     let (k_ident, type_ident, unforward) = match convert_one_res(errs, &path, i, &k, &v) {
                         Some(x) => x,
                         None => continue,
                     };
+                    if !seen_names.insert(k_ident.to_string()) {
+                        errs.err(
+                            &path,
+                            format!(
+                                "Result element {} has name {} which is already used by another result element; rename it using `as`",
+                                i,
+                                k_ident
+                            ),
+                        );
+                        continue;
+                    }
                     fields.push(quote!{
                         pub #k_ident: #type_ident
                     });
@@ -326,9 +338,15 @@ pub fn generate_query_functions(
                                 Ok(#unforward_res)
                             }
                         ).to_good_error_query(query) ?;
-                        if res.is_empty() {
+                        if res.len() != 1 {
                             return Err(
-                                GoodError(format!("Query {} returned no results but one was expected", #q_text))
+                                GoodError(
+                                    format!(
+                                        "Query {} returned {} results but exactly one was expected",
+                                        #q_text,
+                                        res.len()
+                                    ),
+                                ),
                             );
                         }
                         Ok(res.pop().unwrap())

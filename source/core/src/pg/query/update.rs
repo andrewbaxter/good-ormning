@@ -3,6 +3,7 @@ use {
         pg::{
             QueryResCount,
             query::{
+                select::NamedSelectSource,
                 expr::{
                     Expr,
                     ExprType,
@@ -29,6 +30,11 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Update {
+    /// Alias for the updated table, for use in `from` joins and `where`
+    pub alias: Option<String>,
+    /// Additional tables (`update ... from ...`) whose fields can be used in `set` and
+    /// `where`
+    pub from: Vec<NamedSelectSource>,
     pub returning: Vec<Returning>,
     pub table: TableRef,
     pub values: Vec<(FieldRef, Expr)>,
@@ -52,13 +58,40 @@ impl QueryBody for Update {
         };
         let mut scope = HashMap::new();
         for (k, info) in &table_info.fields {
-            scope.insert(ExprValName::field(k), info.type_.clone());
+            let mut name = ExprValName::field(k);
+            if let Some(alias) = &self.alias {
+                name = name.with_alias(alias);
+            }
+            scope.insert(name, info.type_.clone());
+        }
+        if let Some(alias) = &self.alias {
+            ctx.table_aliases.insert(alias.clone(), self.table.clone());
+        }
+        let mut from_tokens = vec![];
+        for (i, f) in self.from.iter().enumerate() {
+            let (fields, tokens) = f.build(ctx, &path.push_back(format!("From {}", i)));
+            for (k, v) in fields.0 {
+                scope.insert(k, v);
+            }
+            from_tokens.push(tokens);
         }
 
         // Build query
         let mut out = Tokens::new();
         out.s("update").id(&table_info.sql_name);
+        if let Some(alias) = &self.alias {
+            out.s("as").id(alias);
+        }
         build_set(ctx, path, &scope, &mut out, &self.values);
+        if !from_tokens.is_empty() {
+            out.s("from");
+            for (i, t) in from_tokens.iter().enumerate() {
+                if i > 0 {
+                    out.s(",");
+                }
+                out.s(&t.to_string());
+            }
+        }
         if let Some(where_) = &self.where_ {
             out.s("where");
             let path = path.push_back("Where".into());

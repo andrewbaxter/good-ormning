@@ -20,10 +20,7 @@ use {
                 },
             },
             schema::table::TableRef,
-            types::{
-                Type,
-                type_i64,
-            },
+            types::Type,
         },
         utils::Tokens,
     },
@@ -104,6 +101,9 @@ impl NamedSelectSource {
         };
         if let Some(s) = &self.alias {
             out.s("as").id(s);
+            if let JoinSource::Table(tr) = &self.source {
+                ctx.table_aliases.insert(s.clone(), tr.clone());
+            }
             let mut new_fields2 = vec![];
             for (k, v) in new_fields {
                 new_fields2.push((k.with_alias(s), v));
@@ -123,6 +123,8 @@ pub enum Order {
 #[derive(Clone, Debug)]
 pub struct Select {
     pub distinct: bool,
+    /// `distinct on (exprs)`
+    pub distinct_on: Vec<Expr>,
     pub group: Vec<Expr>,
     pub having: Option<Expr>,
     pub join: Vec<Join>,
@@ -224,7 +226,9 @@ impl QueryBody for Select {
             }
             if let Some(on) = &je.on {
                 out.s("on");
-                let (_, on_tokens): (ExprType, Tokens) = on.build(ctx, &path, &scope);
+                let (on_t, on_tokens): (ExprType, Tokens) =
+                    on.build(ctx, &path.push_back("On".to_string()), &scope);
+                check_bool(ctx, &path, &on_t);
                 out.s(&on_tokens.to_string());
             }
             joins.push(out.to_string());
@@ -234,6 +238,18 @@ impl QueryBody for Select {
         out.s("select");
         if self.distinct {
             out.s("distinct");
+        }
+        if !self.distinct_on.is_empty() {
+            out.s("distinct on (");
+            for (i, e) in self.distinct_on.iter().enumerate() {
+                if i > 0 {
+                    out.s(",");
+                }
+                let (_, tokens): (ExprType, Tokens) =
+                    e.build(ctx, &path.push_back(format!("Distinct on {}", i)), &scope);
+                out.s(&tokens.to_string());
+            }
+            out.s(")");
         }
         if self.returning.is_empty() {
             ctx.errs.err(path, "Select must have at least one output, but outputs are empty".to_string());
@@ -271,39 +287,6 @@ impl QueryBody for Select {
             check_bool(ctx, &path, &having_t);
             out.s(&having_tokens.to_string());
         }
-        if !self.order.is_empty() {
-            out.s("order by");
-            for (i, o) in self.order.iter().enumerate() {
-                let path = path.push_back(format!("Order by clause {}", i));
-                if i > 0 {
-                    out.s(",");
-                }
-                let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
-                out.s(&o_tokens.to_string());
-                match o.1 {
-                    Order::Asc => {
-                        out.s("asc");
-                    },
-                    Order::Desc => {
-                        out.s("desc");
-                    },
-                }
-            }
-        }
-        if let Some(l) = &self.limit {
-            out.s("limit");
-            let path = path.push_back("Limit".into());
-            let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
-            check_general_same(ctx, &path, &limit_t, &ExprType(vec![(ExprValName::empty(), type_i64().build())]));
-            out.s(&limit_tokens.to_string());
-        }
-        if let Some(o) = &self.offset {
-            out.s("offset");
-            let path = path.push_back("Offset".into());
-            let (offset_t, offset_tokens): (ExprType, Tokens) = o.build(ctx, &path, &scope);
-            check_general_same(ctx, &path, &offset_t, &ExprType(vec![(ExprValName::empty(), type_i64().build())]));
-            out.s(&offset_tokens.to_string());
-        }
         for (i, j) in self.junctions.iter().enumerate() {
             let path = path.push_back(format!("Junction {}", i));
             match j.op {
@@ -317,6 +300,59 @@ impl QueryBody for Select {
             let (j_body_type, j_body_tokens) = j.body.build(ctx, &path, QueryResCount::Many);
             check_general_same(ctx, &path, &out_type, &j_body_type);
             out.s(&j_body_tokens.to_string());
+        }
+
+        // Output names can also be used in order by
+        let mut order_scope = scope.clone();
+        for (k, v) in &out_type.0 {
+            if !k.id.is_empty() {
+                order_scope.insert(ExprValName::local(k.id.clone()), v.clone());
+            }
+        }
+        if !self.order.is_empty() {
+            out.s("order by");
+            for (i, o) in self.order.iter().enumerate() {
+                let path = path.push_back(format!("Order by clause {}", i));
+                if i > 0 {
+                    out.s(",");
+                }
+                let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &order_scope);
+                out.s(&o_tokens.to_string());
+                match o.1 {
+                    Order::Asc => {
+                        out.s("asc");
+                    },
+                    Order::Desc => {
+                        out.s("desc");
+                    },
+                }
+            }
+        }
+        for (clause, e) in [("limit", &self.limit), ("offset", &self.offset)] {
+            let Some(e) = e else {
+                continue;
+            };
+            out.s(clause);
+            let path = path.push_back(clause.to_string());
+            let (t, tokens): (ExprType, Tokens) = e.build(ctx, &path, &scope);
+            if let Some(t) = t.assert_scalar(&mut ctx.errs, &path) {
+                if !matches!(
+                    t.type_.type_,
+                    crate::pg::types::SimpleSimpleType::AnyInt | crate::pg::types::SimpleSimpleType::I16 |
+                        crate::pg::types::SimpleSimpleType::I32 |
+                        crate::pg::types::SimpleSimpleType::I64 |
+                        crate::pg::types::SimpleSimpleType::U32
+                ) ||
+                    t.opt {
+                    ctx
+                        .errs
+                        .err(
+                            &path,
+                            format!("{} must be a non-optional integer, but the expression has type {:?}", clause, t),
+                        );
+                }
+            }
+            out.s(&tokens.to_string());
         }
         return (out_type, out);
     }

@@ -140,7 +140,16 @@ impl NodeDataDispatch for NodeField_ {
         Some(other)
     }
 
-    fn delete(&self, _ctx: &mut SqliteMigrateCtx) { }
+    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
+        if self.def.id == "rowid" {
+            return;
+        }
+        ctx
+            .statements
+            .push(
+                Tokens::new().s("alter table").id(&self.table_id).s("drop column").id(&self.def.id).to_string(),
+            );
+    }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         Some(other)

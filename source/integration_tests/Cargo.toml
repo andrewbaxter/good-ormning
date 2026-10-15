@@ -30,6 +30,9 @@ pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide" }
 deadpool-postgres = { version = "0.12", features = ["rt_tokio_1"] }
 deadpool-sqlite = { version = "0.12", features = ["rt_tokio_1"] }
 
+[dev-dependencies]
+syn = { version = "2", features = ["full"] }
+
 [build-dependencies]
 "good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }
 flowcontrol = ">=0"

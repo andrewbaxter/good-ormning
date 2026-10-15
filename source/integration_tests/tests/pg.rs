@@ -1318,7 +1318,7 @@ async fn test_query_cte_subquery() -> Result<(), loga::Error> {
            "#;
         &mut db
     ).await?;
-    assert_eq!(res, 1i32);
+    assert_eq!(res, Some(1i32));
     Ok(())
 }
 
@@ -2797,5 +2797,226 @@ async fn test_update_where() -> Result<(), loga::Error> {
            "#;
         &mut db
     ).await?, "tep");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_fixes_pg() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_fixes");
+    let (mut client, _cont) = db().await?;
+
+    // Migrate with a borrowed client
+    let mut db = dbm::migrate(&mut client, None).await?;
+
+    // Multi-row insert, serial column not required, float literal, u32
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"insert into "t" ("name", "n", "f", "u") values ('a', 1, 1.5, 4000000000), ('b', 2, 2.5, 1), ('c', 2, 3.5, 2)"#;
+        &mut db
+    ).await?;
+
+    // On conflict with target does nothing
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"insert into "t" ("name", "n", "f", "u") values ('a', 9, 9.5, $1) on conflict ("name") do nothing"#;
+        &mut db,
+        p1: u32 = 7
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select count("t"."id") as "c" from "t""#;
+        &mut db
+    ).await?, 3);
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."u" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?, 4000000000u32);
+
+    // Inline param with braces in the value
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"insert into "u" ("uname", "t_id") values (${string = &format!("{}", "x")}, ${opt i64 = Some(1)})"#;
+        &mut db
+    ).await?;
+
+    // count distinct
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select count(distinct "t"."n") as "c" from "t""#;
+        &mut db
+    ).await?, 2);
+
+    // Scalar subquery is optional
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select (select "t"."name" from "t" where "t"."n" = 99) as "x""#;
+        &mut db
+    ).await?, None);
+
+    // Union with order by output name and limit applying to the whole
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" as "h" from "t" union select "u"."uname" as "h" from "u" order by "h" desc limit 2"#;
+        &mut db
+    ).await?, vec!["x".to_string(), "c".to_string()]);
+
+    // Select * with join expands all tables
+    let rows = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select * from "t" inner join "u" on "u"."t_id" = "t"."id""#;
+        &mut db
+    ).await?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].name, "a");
+    assert_eq!(rows[0].uname, "x");
+    assert_eq!(rows[0].t_id, Some(1));
+
+    // In with an array param
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."n" in ($1) order by "t"."name""#;
+        &mut db,
+        p1: arr i32 = vec ![2, 3]
+    ).await?, vec!["b".to_string(), "c".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" = any($1) order by "t"."name""#;
+        &mut db,
+        p1: arr string = vec !["a", "c"]
+    ).await?, vec!["a".to_string(), "c".to_string()]);
+
+    // Self join with aliases, derived table alias
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "a"."name" as "an" from "t" as "a" inner join "t" as "b" on "a"."n" = "b"."n" and "a"."id" <> "b"."id""#;
+        &mut db
+    ).await?.len(), 2);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "s"."name" as "nm" from (select "t"."name" from "t") as "s" order by "nm""#;
+        &mut db
+    ).await?.len(), 3);
+
+    // Recursive CTE, CTE column names from fields
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"with recursive "c" ("n") as (select 1 union all select "c"."n" + 1 from "c" where "c"."n" < 3) select "c"."n" from "c""#;
+        &mut db
+    ).await?, vec![1, 2, 3]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"with "c" as (select "t"."name" from "t") select "c"."name" from "c" order by "c"."name""#;
+        &mut db
+    ).await?.len(), 3);
+
+    // Functions, cast, float comparisons, int literal with float field
+    assert_eq!(
+        good_ormning::pg::good_query_many!(
+            dbm,
+            "pg_gen_fixes",
+            r#"select coalesce("t"."x", 0) as "v", cast("t"."n" as text) as "s", upper("t"."name") as "up", length("t"."name") as "l", abs("t"."f" * 2) as "a" from "t" where "t"."f" > 1.5 and "t"."f" < 10 order by "t"."name""#;
+            &mut db
+        ).await?.into_iter().map(|r| (r.v, r.s, r.up, r.l, r.a)).collect::<Vec<_>>(),
+        vec![
+            (0i64, "2".to_string(), "B".to_string(), 1i32, 5.0f64),
+            (0i64, "2".to_string(), "C".to_string(), 1i32, 7.0f64),
+        ]
+    );
+
+    // Excluded in on conflict do update
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"insert into "t" ("name", "n", "f", "u") values ('a', 5, 5.5, 5) on conflict ("name") do update set "n" = "excluded"."n""#;
+        &mut db
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."n" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?, 5);
+
+    // Distinct on
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select distinct on ("t"."n") "t"."name" from "t" order by "t"."n", "t"."name""#;
+        &mut db
+    ).await?, vec!["b".to_string(), "a".to_string()]);
+
+    // Implicit cross join, join using
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t", "u" where "u"."t_id" = "t"."id""#;
+        &mut db
+    ).await?.len(), 1);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "a"."name" as "an" from "t" as "a" inner join "t" as "b" using ("n") where "a"."id" <> "b"."id""#;
+        &mut db
+    ).await?.len(), 2);
+
+    // Update from with alias, delete using with alias
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"update "t" as "a" set "n" = 7 from "u" where "u"."t_id" = "a"."id""#;
+        &mut db
+    ).await?;
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."n" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?, 7);
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_fixes",
+        r#"delete from "u" as "x" using "t" where "t"."id" = "x"."t_id" and "t"."n" = 7"#;
+        &mut db
+    ).await?;
+
+    // More functions, now() as a timestamp
+    let r = good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select substr("t"."name", 1, 1) as "s", floor("t"."f") as "r", concat("t"."name", '!') as "c", now() as "t" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?;
+    assert_eq!((r.s, r.r, r.c), ("a".to_string(), 1.0, "a!".to_string()));
+    assert!(r.t > Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap());
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select string_agg("t"."name", ',') as "g" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?, Some("a".to_string()));
+
+    // One with multiple results is an error
+    assert!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t""#;
+        &mut db
+    ).await.is_err());
     Ok(())
 }

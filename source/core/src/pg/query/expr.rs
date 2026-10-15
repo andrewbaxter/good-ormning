@@ -95,6 +95,16 @@ pub fn check_assignable(errs: &mut Errs, path: &rpds::Vector<String>, left: &Typ
             format!("Expression has type {:?} which is not assignable to {:?}", right.type_.type_, left.type_.type_),
         );
     }
+    if left.type_.custom != right.type_.custom && right.type_.type_ != SimpleSimpleType::AnyNull {
+        errs.err(
+            path,
+            format!(
+                "Expression has custom type {:?} which is not assignable to custom type {:?}",
+                right.type_.custom,
+                left.type_.custom
+            ),
+        );
+    }
     if !left.opt && right.opt {
         errs.err(path, "Expression is optional but destination is not".to_string());
     }
@@ -159,6 +169,16 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>
             );
         return left.clone();
     };
+    if let (Some(l), Some(r)) = (&left.type_.custom, &right.type_.custom) {
+        if l != r {
+            ctx
+                .errs
+                .err(
+                    path,
+                    format!("Operator arms custom types don't match: left has type {} and right has {}", l, r),
+                );
+        }
+    }
     let mut out = unified_type(left, right, unified);
     out.opt = left.opt || right.opt;
     return out;
@@ -167,7 +187,7 @@ pub fn check_general_same_type(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>
 pub fn check_same(errs: &mut Errs, path: &rpds::Vector<String>, left: &ExprType, right: &ExprType) -> Option<Type> {
     let left = left.assert_scalar(errs, &path.push_back("Left".into()))?;
     let right = right.assert_scalar(errs, &path.push_back("Right".into()))?;
-    if left.type_.type_ == right.type_.type_ && left.type_.custom != right.type_.custom {
+    if left.type_.custom.is_some() && right.type_.custom.is_some() && left.type_.custom != right.type_.custom {
         errs.err(
             path,
             format!(
@@ -229,6 +249,8 @@ pub enum Expr {
         args: Vec<Expr>,
         compute_type: ComputeType,
         filter: Option<Box<Expr>>,
+        /// `func(distinct args...)` - for aggregates
+        distinct: bool,
     },
     Case {
         operand: Option<Box<Expr>>,
@@ -252,6 +274,7 @@ pub enum Expr {
         escape: Option<Box<Expr>>,
         ilike: bool,
     },
+    LitAnyFloat(f64),
     LitAnyInt(i64),
     LitArray(Vec<Expr>),
     LitAuto(i64),
@@ -382,6 +405,18 @@ impl Expr {
                 return (ExprType(vec![(ExprValName::empty(), Type {
                     type_: SimpleType {
                         type_: SimpleSimpleType::AnyInt,
+                        custom: None,
+                    },
+                    opt: false,
+                    arr: false,
+                })]), out);
+            },
+            Expr::LitAnyFloat(v) => {
+                let mut out = Tokens::new();
+                out.s(&format!("{:?}", v));
+                return (ExprType(vec![(ExprValName::empty(), Type {
+                    type_: SimpleType {
+                        type_: SimpleSimpleType::AnyFloat,
                         custom: None,
                     },
                     opt: false,
@@ -577,12 +612,18 @@ impl Expr {
                         } else {
                             (rust_type, quote!(#ident))
                         };
+                        if matches!(type_.type_.type_, SimpleSimpleType::U32) {
+                            // Stored as bigint
+                            rust_forward = quote!((#rust_forward as i64));
+                        }
                         if type_.opt {
                             rust_type = quote!(Option < #rust_type >);
                             rust_forward = quote!(#ident.map(| #ident | #rust_forward));
                         }
                         if type_.arr {
                             rust_type = quote!(Vec < #rust_type >);
+                            rust_forward =
+                                quote!(#ident.into_iter().map(| #ident | #rust_forward).collect::< Vec < _ >>());
                         }
                         ctx.rust_args.push(quote!(#ident: #rust_type));
                         ctx.query_args.push(quote!(#rust_forward));
@@ -658,17 +699,29 @@ impl Expr {
                 if x.table_id.is_empty() {
                     out.id(&x.field_id);
                 } else {
-                    let table_info =
-                        ctx
-                            .tables
-                            .get(&TableRef(x.table_id.clone()))
-                            .unwrap_or_else(|| panic!("Table {:?} not found in context", x.table_id));
-                    let field_info =
-                        table_info
-                            .fields
-                            .get(x)
-                            .unwrap_or_else(|| panic!("Field {:?} not found in table {:?}", x.field_id, x.table_id));
-                    out.id(&table_info.sql_name).s(".").id(&field_info.sql_name);
+                    // Resolve the table through aliases to find the field's sql name. Derived tables
+                    // (subselects, functions) aren't registered; their field ids are already sql
+                    // names.
+                    let table_id = ctx.table_aliases.get(&x.table_id).map(|tr| tr.0.clone());
+                    let table_info = match &table_id {
+                        Some(table_id) => ctx.tables.get(&TableRef(table_id.clone())),
+                        None => ctx.tables.get(&TableRef(x.table_id.clone())),
+                    };
+                    let (sql_table, sql_field) = match table_info {
+                        Some(table_info) => {
+                            let field_info = table_info.fields.get(&FieldRef {
+                                table_id: table_id.clone().unwrap_or_else(|| x.table_id.clone()),
+                                field_id: x.field_id.clone(),
+                            });
+                            (if table_id.is_some() {
+                                x.table_id.clone()
+                            } else {
+                                table_info.sql_name.clone()
+                            }, field_info.map(|f| f.sql_name.clone()).unwrap_or_else(|| x.field_id.clone()))
+                        },
+                        None => (x.table_id.clone(), x.field_id.clone()),
+                    };
+                    out.id(&sql_table).s(".").id(&sql_field);
                 }
                 return (ExprType(vec![(name, t.clone())]), out);
             },
@@ -684,6 +737,45 @@ impl Expr {
                         };
                         ctx.op_stack.push(op.clone());
                         let (left_t, left_tokens) = left.build(ctx, &path.push_back("Operand 0".into()), scope);
+
+                        // `x in ($arr)` - an array parameter is compared with `= any`
+                        let arr_param = match &**right {
+                            Expr::Param { type_, .. } if type_.arr => Some(&**right),
+                            Expr::LitArray(elems) if elems.len() == 1 => match &elems[0] {
+                                Expr::Param { type_, .. } if type_.arr => Some(&elems[0]),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(arr_param) = arr_param {
+                            let (mut right_t, right_tokens) =
+                                arr_param.build(ctx, &path.push_back("Operand 1".into()), scope);
+                            ctx.op_stack.pop();
+                            for (_, t) in right_t.0.iter_mut() {
+                                t.arr = false;
+                            }
+                            if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                                check_general_same(ctx, path, &left_t, &right_t);
+                            }
+                            out.s(&left_tokens.to_string());
+                            match op {
+                                BinOp::In => {
+                                    out.s("= any (");
+                                },
+                                _ => {
+                                    out.s("<> all (");
+                                },
+                            }
+                            out.s(&right_tokens.to_string()).s(")");
+                            return (ExprType(vec![(ExprValName::empty(), Type {
+                                type_: SimpleType {
+                                    type_: SimpleSimpleType::Bool,
+                                    custom: None,
+                                },
+                                opt: left_t.0.iter().any(|(_, t)| t.opt),
+                                arr: false,
+                            })]), out);
+                        }
                         let (right_t, right_tokens) = right.build(ctx, &path.push_back("Operand 1".into()), scope);
                         ctx.op_stack.pop();
                         if !left_t.0.is_empty() && !right_t.0.is_empty() {
@@ -824,10 +916,19 @@ impl Expr {
                 if is_tuple_cmp {
                     ctx.op_stack.push(op.clone());
                 }
-                let l_res = left.build(ctx, &path.push_back("Bin op left".into()), scope);
-                let r_res = right.build(ctx, &path.push_back("Bin op right".into()), scope);
+                let mut l_res = left.build(ctx, &path.push_back("Bin op left".into()), scope);
+                let mut r_res = right.build(ctx, &path.push_back("Bin op right".into()), scope);
                 if is_tuple_cmp {
                     ctx.op_stack.pop();
+                }
+
+                // Nested operators need parens to preserve the tree structure
+                for (e, res) in [(&**left, &mut l_res), (&**right, &mut r_res)] {
+                    if matches!(e, Expr::BinOp { .. } | Expr::BinOpChain { .. }) {
+                        let mut wrapped = Tokens::new();
+                        wrapped.s("(").s(&res.1.to_string()).s(")");
+                        res.1 = wrapped;
+                    }
                 }
                 let t = if is_tuple_cmp && (l_res.0.0.len() > 1 || r_res.0.0.len() > 1) {
                     if !l_res.0.0.is_empty() && !r_res.0.0.is_empty() {
@@ -928,7 +1029,10 @@ impl Expr {
                 let token = match op {
                     BinOp::And => "and",
                     BinOp::Or => "or",
-                    _ => panic!("Chain only supported for and/or"),
+                    _ => {
+                        ctx.errs.err(path, format!("Operator chains are only supported for and/or, not {:?}", op));
+                        return (ExprType(vec![]), Tokens::new());
+                    },
                 };
                 let mut any_opt = false;
                 for (i, e) in exprs.iter().enumerate() {
@@ -937,7 +1041,11 @@ impl Expr {
                     }
                     let res = e.build(ctx, &path.push_back(format!("Chain element {}", i)), scope);
                     check_bool(ctx, &path.push_back(format!("Chain element {}", i)), &res.0);
-                    out.s(&res.1.to_string());
+                    if matches!(e, Expr::BinOp { .. } | Expr::BinOpChain { .. }) {
+                        out.s("(").s(&res.1.to_string()).s(")");
+                    } else {
+                        out.s(&res.1.to_string());
+                    }
                     any_opt = any_opt || res.0.0.iter().any(|(_, t)| t.opt);
                 }
                 return (ExprType(vec![(ExprValName::empty(), Type {
@@ -963,9 +1071,12 @@ impl Expr {
                 out.s(token).s(&res.1.to_string());
                 return (res.0, out);
             },
-            Expr::Call { func, args, compute_type, filter } => {
+            Expr::Call { func, args, compute_type, filter, distinct } => {
                 let mut out = Tokens::new();
                 out.s(func).s("(");
+                if *distinct {
+                    out.s("distinct");
+                }
                 let mut arg_types = vec![];
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
@@ -1035,23 +1146,31 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
+                let in_set_op = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
                 ctx.outer_scopes.push(scope.clone());
-                let (t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
+                let (mut t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
                 ctx.outer_scopes.pop();
                 out.s(&tokens.to_string()).s(")");
+                if !in_set_op {
+                    // A scalar subquery returning no rows evaluates to null
+                    for (_, t) in t.0.iter_mut() {
+                        t.opt = true;
+                    }
+                }
                 return (t, out);
             },
             Expr::Cast(e, t) => {
                 let mut out = Tokens::new();
                 let (got_t, tokens) = e.build(ctx, &path.push_back("Cast".into()), scope);
-                check_general_same(ctx, path, &got_t, &ExprType(vec![(ExprValName::empty(), t.clone())]));
-                out
-                    .s("(")
-                    .s(&tokens.to_string())
-                    .s("::")
-                    .s(crate::pg::types::to_sql_type(&t.type_.type_))
-                    .s(")");
-                return (ExprType(vec![(ExprValName::empty(), t.clone())]), out);
+                let got_t = got_t.assert_scalar(&mut ctx.errs, &path.push_back("Cast".into()));
+                let sql_type = match t.type_.type_ {
+                    SimpleSimpleType::Auto => "bigint",
+                    _ => crate::pg::types::to_sql_type(&t.type_.type_),
+                };
+                out.s("(").s(&tokens.to_string()).s("::").s(sql_type).s(")");
+                let mut out_t = t.clone();
+                out_t.opt = out_t.opt || got_t.map(|t| t.opt).unwrap_or(false);
+                return (ExprType(vec![(ExprValName::empty(), out_t)]), out);
             },
             Expr::Exists(s) => {
                 let mut out = Tokens::new();
@@ -1180,7 +1299,13 @@ impl Expr {
                     out.s(&else_tokens.to_string());
                 }
                 out.s("end");
-                (res_type.expect("Case must have at least one branch"), out)
+                match res_type {
+                    Some(t) => (t, out),
+                    None => {
+                        ctx.errs.err(path, "Case must have at least one branch".to_string());
+                        (ExprType(vec![]), out)
+                    },
+                }
             },
             Expr::Paren(e) => {
                 let mut out = Tokens::new();
@@ -1402,7 +1527,7 @@ fn unified_type(left: &Type, right: &Type, unified: SimpleSimpleType) -> Type {
     } else {
         let mut out = left.clone();
         out.type_ = SimpleType {
-            custom: None,
+            custom: left.type_.custom.clone().or_else(|| right.type_.custom.clone()),
             type_: unified,
         };
         return out;

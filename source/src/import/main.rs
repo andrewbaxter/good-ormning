@@ -75,7 +75,13 @@ async fn main_inner() -> Result<(), loga::Error> {
             println!("{}", code);
         },
         Engine::Sqlite => {
-            let conn = rusqlite::Connection::open(&args.connection).context("Opening SQLite database")?;
+            // Read-only so a mistyped path errors instead of silently creating an empty
+            // database.
+            let conn =
+                rusqlite::Connection::open_with_flags(
+                    &args.connection,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                ).context("Opening SQLite database")?;
             let version = sqlite::read_schema(&conn)?;
             let code = codegen::generate_sqlite(&version, &db_name).context("Generating sqlite build.rs")?;
             println!("{}", code);

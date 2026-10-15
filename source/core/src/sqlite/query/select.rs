@@ -8,7 +8,6 @@ use {
                     Expr,
                     ExprType,
                     check_bool,
-                    check_general_same,
                 },
                 select_body::{
                     SelectJunction,
@@ -24,10 +23,7 @@ use {
                 },
             },
             schema::table::TableRef,
-            types::{
-                Type,
-                type_i64,
-            },
+            types::Type,
         },
         utils::Tokens,
     },
@@ -129,16 +125,25 @@ impl NamedSelectSource {
                     out.s(")");
                 }
                 if name == "rarray" || name == "__good_ormning_rarray" {
-                    // Find the type of the argument For now, default to i32 for simplicity or try to
-                    // infer? Better to just return a dummy i32 if we can't infer.
-                    vec![(Binding::local("value".into()), Type {
-                        type_: crate::sqlite::types::SimpleType {
-                            type_: crate::sqlite::types::SimpleSimpleType::I32,
-                            custom: None,
-                        },
-                        opt: false,
-                        arr: false,
-                    })]
+                    // The `value` column has the element type of the array argument
+                    let mut value_t = None;
+                    if let Some(arg) = args.first() {
+                        if let Expr::Param { type_, .. } = arg {
+                            let mut t = type_.clone();
+                            t.arr = false;
+                            value_t = Some(t);
+                        }
+                    }
+                    let Some(value_t) = value_t else {
+                        ctx
+                            .errs
+                            .err(
+                                &path.push_back("From".to_string()),
+                                "rarray requires a single array parameter argument".to_string(),
+                            );
+                        return (ExprType(vec![]), Tokens::new());
+                    };
+                    vec![(Binding::local("value".into()), value_t)]
                 } else {
                     vec![]
                 }
@@ -290,9 +295,29 @@ impl QueryBody for Select {
         for (k, v) in fields.0 {
             scope.insert(k, v);
         }
+        let mut join_tokens = vec![];
         for (i, j) in self.join.iter().enumerate() {
             let path = path.push_back(format!("Join {}", i));
-            let (fields, _): (ExprType, Tokens) = j.source.build(ctx, &path);
+            let mut out = Tokens::new();
+            match j.type_ {
+                JoinType::Inner => {
+                    out.s("inner join");
+                },
+                JoinType::Left => {
+                    out.s("left join");
+                },
+                JoinType::Right => {
+                    out.s("right join");
+                },
+                JoinType::Full => {
+                    out.s("full outer join");
+                },
+                JoinType::Cross => {
+                    out.s("cross join");
+                },
+            }
+            let (fields, source_tokens): (ExprType, Tokens) = j.source.build(ctx, &path);
+            out.s(&source_tokens.to_string());
             match j.type_ {
                 JoinType::Inner => {
                     for (k, v) in fields.0 {
@@ -340,38 +365,20 @@ impl QueryBody for Select {
                     }
                 },
             }
+            if let Some(on) = &j.on {
+                out.s("on");
+                let (on_t, on_tokens): (ExprType, Tokens) =
+                    on.build(ctx, &path.push_back("On".to_string()), &scope);
+                check_bool(ctx, &path, &on_t);
+                out.s(&on_tokens.to_string());
+            }
+            join_tokens.push(out);
         }
         let out_type = build_returning_values(ctx, path, &scope, &mut out, &self.returning, res_count);
         if !matches!(self.table.source, JoinSource::Empty) {
             out.s("from").s(&table_tokens.to_string());
-            for (i, j) in self.join.iter().enumerate() {
-                let path = path.push_back(format!("Join {}", i));
-                match j.type_ {
-                    JoinType::Inner => {
-                        out.s("inner join");
-                    },
-                    JoinType::Left => {
-                        out.s("left join");
-                    },
-                    JoinType::Right => {
-                        out.s("right join");
-                    },
-                    JoinType::Full => {
-                        out.s("full outer join");
-                    },
-                    JoinType::Cross => {
-                        out.s("cross join");
-                    },
-                }
-                let (_, source_tokens): (ExprType, Tokens) = j.source.build(ctx, &path);
-                out.s(&source_tokens.to_string());
-                if let Some(on) = &j.on {
-                    out.s("on");
-                    let (on_t, on_tokens): (ExprType, Tokens) =
-                        on.build(ctx, &path.push_back("On".to_string()), &scope);
-                    check_bool(ctx, &path, &on_t);
-                    out.s(&on_tokens.to_string());
-                }
+            for j in join_tokens {
+                out.s(&j.to_string());
             }
         }
         if let Some(where_) = &self.where_ {
@@ -399,6 +406,18 @@ impl QueryBody for Select {
             check_bool(ctx, &path, &having_t);
             out.s(&having_tokens.to_string());
         }
+        if !self.junction.is_empty() {
+            let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junction);
+            out.s(&junction_tokens.to_string());
+        }
+
+        // Output names can also be used in order by
+        let mut order_scope = scope.clone();
+        for (k, v) in &out_type.0 {
+            if !k.id.is_empty() {
+                order_scope.insert(Binding::local(k.id.clone()), v.clone());
+            }
+        }
         if !self.order.is_empty() {
             out.s("order by");
             for (i, (e, o)) in self.order.iter().enumerate() {
@@ -406,7 +425,7 @@ impl QueryBody for Select {
                     out.s(",");
                 }
                 let path = path.push_back(format!("Order by {}", i));
-                let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path, &scope);
+                let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path, &order_scope);
                 out.s(&tokens.to_string());
                 match o {
                     Order::Asc => {
@@ -418,23 +437,31 @@ impl QueryBody for Select {
                 }
             }
         }
-        if let Some(l) = &self.limit {
-            out.s("limit");
-            let path = path.push_back("Limit".into());
-            let (limit_t, limit_tokens): (ExprType, Tokens) = l.build(ctx, &path, &scope);
-            check_general_same(ctx, &path, &limit_t, &ExprType(vec![(Binding::empty(), type_i64().build())]));
-            out.s(&limit_tokens.to_string());
-        }
-        if let Some(o) = &self.offset {
-            out.s("offset");
-            let path = path.push_back("Offset".into());
-            let (offset_t, offset_tokens): (ExprType, Tokens) = o.build(ctx, &path, &scope);
-            check_general_same(ctx, &path, &offset_t, &ExprType(vec![(Binding::empty(), type_i64().build())]));
-            out.s(&offset_tokens.to_string());
-        }
-        if !self.junction.is_empty() {
-            let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junction);
-            out.s(&junction_tokens.to_string());
+        for (clause, e) in [("limit", &self.limit), ("offset", &self.offset)] {
+            let Some(e) = e else {
+                continue;
+            };
+            out.s(clause);
+            let path = path.push_back(clause.to_string());
+            let (t, tokens): (ExprType, Tokens) = e.build(ctx, &path, &scope);
+            if let Some(t) = t.assert_scalar(&mut ctx.errs, &path) {
+                if !matches!(
+                    t.type_.type_,
+                    crate::sqlite::types::SimpleSimpleType::AnyInt | crate::sqlite::types::SimpleSimpleType::I16 |
+                        crate::sqlite::types::SimpleSimpleType::I32 |
+                        crate::sqlite::types::SimpleSimpleType::I64 |
+                        crate::sqlite::types::SimpleSimpleType::U32
+                ) ||
+                    t.opt {
+                    ctx
+                        .errs
+                        .err(
+                            &path,
+                            format!("{} must be a non-optional integer, but the expression has type {:?}", clause, t),
+                        );
+                }
+            }
+            out.s(&tokens.to_string());
         }
         return (out_type, out);
     }

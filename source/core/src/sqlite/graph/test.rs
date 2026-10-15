@@ -172,12 +172,15 @@ fn test_rename_index_parts_good() {
         banana.index("banana_hizat2", &[&hizat2]).renamed_from("bananna_hizat");
         v.build()
     }]).unwrap();
-    assert_eq!(&statements[2..], &[
-        "alter table \"bananna\" rename to \"banana\"".to_string(),
-        "alter table \"banana\" rename column \"hizat\" to \"hizat2\"".to_string(),
-        "drop index \"bananna_hizat\"".to_string(),
-        "create index \"banana_hizat2\" on \"banana\" ( \"hizat2\" )".to_string(),
-    ]);
+    assert_eq!(
+        &statements[2..],
+        &[
+            "alter table \"bananna\" rename to \"banana\"".to_string(),
+            "alter table \"banana\" rename column \"hizat\" to \"hizat2\"".to_string(),
+            "drop index \"bananna_hizat\"".to_string(),
+            "create index \"banana_hizat2\" on \"banana\" ( \"hizat2\" )".to_string(),
+        ]
+    );
 }
 
 #[test]
@@ -195,8 +198,55 @@ fn test_change_index_unique_good() {
         bananna.unique_index("bananna_hizat", &[&hizat]);
         v.build()
     }]).unwrap();
-    assert_eq!(&statements[2..], &[
-        "drop index \"bananna_hizat\"".to_string(),
-        "create unique index \"bananna_hizat\" on \"bananna\" ( \"hizat\" )".to_string(),
-    ]);
+    assert_eq!(
+        &statements[2..],
+        &[
+            "drop index \"bananna_hizat\"".to_string(),
+            "create unique index \"bananna_hizat\" on \"bananna\" ( \"hizat\" )".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn test_rowid_alias_good() {
+    let statements = migrate_versions(vec![{
+        let v = Version::new();
+        let t = v.table("t");
+        t.rowid_field(Some("id"));
+        t.field("a", field_str().build());
+        v.build()
+    }]).unwrap();
+    assert_eq!(&statements, &["create table \"t\" ( \"a\" text not null , \"id\" integer primary key )".to_string()]);
+}
+
+#[test]
+fn test_remove_and_change_field_good() {
+    use crate::sqlite::query::expr::SerialExpr;
+
+    let statements = migrate_versions(vec![{
+        let v = Version::new();
+        let t = v.table("t");
+        t.field("a", field_str().build());
+        t.field("b", field_i32().build());
+        v.build()
+    }, {
+        let v = Version::new();
+        let t = v.table("t");
+        t.field("a", field_str().build());
+        t.field("b", field_str().migrate_fill(SerialExpr::LitString("x".into())).build());
+        v.build()
+    }, {
+        let v = Version::new();
+        let t = v.table("t");
+        t.field("a", field_str().build());
+        v.build()
+    }]).unwrap();
+    assert_eq!(
+        &statements[1..],
+        &[
+            "alter table \"t\" drop column \"b\"".to_string(),
+            "alter table \"t\" add column \"b\" text not null default 'x'".to_string(),
+            "alter table \"t\" drop column \"b\"".to_string(),
+        ]
+    );
 }

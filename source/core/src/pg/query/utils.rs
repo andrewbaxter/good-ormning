@@ -147,6 +147,36 @@ pub fn build_with(ctx: &mut PgQueryCtx, path: &rpds::Vector<String>, with: &With
         out.s(")");
         out.s("as");
         out.s("(");
+        if with.recursive {
+            // The body may refer to the CTE itself, so it needs to be registered before the
+            // body is built. Do a first pass (ignoring errors) to find the column types from
+            // the base select.
+            let real_errs = ctx.errs.clone();
+            ctx.errs = Errs::new();
+            let (first_type, _) = cte.body.build(ctx, &path, QueryResCount::Many);
+            ctx.errs = real_errs;
+            let mut fields = HashMap::new();
+            for (i, (field_id, sql_name, want)) in cte.columns.iter().enumerate() {
+                let type_ = match (want, first_type.0.get(i).map(|t| &t.1)) {
+                    (Some(want), _) => want.clone(),
+                    (None, Some(got)) => got.clone(),
+                    (None, None) => {
+                        continue;
+                    },
+                };
+                fields.insert(FieldRef {
+                    table_id: cte.table_id.clone(),
+                    field_id: field_id.clone(),
+                }, PgFieldInfo {
+                    sql_name: sql_name.clone(),
+                    type_: type_,
+                });
+            }
+            ctx.tables.insert(TableRef(cte.table_id.clone()), PgTableInfo {
+                sql_name: cte.table_id.clone(),
+                fields: fields,
+            });
+        }
         let (body_type, body_tokens) = cte.body.build(ctx, &path, QueryResCount::Many);
         if body_type.0.len() != cte.columns.len() {
             ctx
@@ -269,6 +299,7 @@ pub struct PgQueryCtx {
     pub query_args: Vec<TokenStream>,
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
     pub rust_args: Vec<TokenStream>,
+    pub table_aliases: HashMap<String, TableRef>,
     pub tables: HashMap<TableRef, PgTableInfo>,
 }
 
@@ -276,6 +307,7 @@ impl PgQueryCtx {
     pub fn new(errs: Errs, tables: HashMap<TableRef, PgTableInfo>) -> Self {
         Self {
             tables: tables,
+            table_aliases: Default::default(),
             errs: errs,
             rust_arg_lookup: Default::default(),
             rust_args: Default::default(),

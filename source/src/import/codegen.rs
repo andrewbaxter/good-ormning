@@ -9,7 +9,10 @@ use {
         format_ident,
         quote,
     },
-    std::collections::HashMap,
+    std::collections::{
+        HashMap,
+        HashSet,
+    },
 };
 
 fn format_tokens(tokens: TokenStream) -> String {
@@ -17,6 +20,51 @@ fn format_tokens(tokens: TokenStream) -> String {
         Ok(res) => return res.rendered,
         Err(_) => return tokens.to_string(),
     }
+}
+
+/// Binding names generated for tables and fields in the emitted `build.rs`.
+struct VarNames {
+    table_vars: HashMap<String, String>,
+    field_vars: HashMap<(String, String), String>,
+}
+
+/// Produce a unique, valid identifier from `base`, appending a counter if the
+/// sanitized name was already handed out.
+fn unique_ident(used: &mut HashSet<String>, base: &str) -> String {
+    let sanitized: String = base.chars().map(|c| if c.is_alphanumeric() || c == '_' {
+        c
+    } else {
+        '_'
+    }).collect();
+    let mut name = sanitized.clone();
+    let mut counter = 2usize;
+    while used.contains(&name) {
+        name = format!("{}_{}", sanitized, counter);
+        counter += 1;
+    }
+    used.insert(name.clone());
+    return name;
+}
+
+/// Allocate collision-free binding names for every table and field. The `v`
+/// binding is reserved for the `Version`.
+fn allocate_var_names<'a>(tables: impl Iterator<Item = (&'a String, Vec<&'a String>)>) -> VarNames {
+    let mut used: HashSet<String> = HashSet::new();
+    used.insert("v".to_string());
+    let mut table_vars: HashMap<String, String> = HashMap::new();
+    let mut field_vars: HashMap<(String, String), String> = HashMap::new();
+    for (table_key, field_ids) in tables {
+        let tvar_name = unique_ident(&mut used, &format!("t_{}", table_key));
+        table_vars.insert(table_key.clone(), tvar_name);
+        for field_id in field_ids {
+            let fvar_name = unique_ident(&mut used, &format!("f_{}_{}", table_key, field_id));
+            field_vars.insert((table_key.clone(), field_id.clone()), fvar_name);
+        }
+    }
+    return VarNames {
+        table_vars: table_vars,
+        field_vars: field_vars,
+    };
 }
 
 /// Generate a `build.rs` `main()` body for the given PostgreSQL `Version`.
@@ -30,22 +78,22 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
     stmts.push(quote!{
         let v = good_ormning::pg::Version::new();
     });
-    let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
+    let var_names =
+        allocate_var_names(
+            version.tables.iter().map(|(table_key, table)| (table_key, table.fields.keys().collect())),
+        );
+
+    // Foreign keys reference fields of other tables which may be emitted later, so
+    // they are collected and emitted after all tables and fields.
+    let mut fk_stmts: Vec<TokenStream> = vec![];
     for (table_key, table) in &version.tables {
-        for (field_id, _) in &table.fields {
-            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
-        }
-    }
-    for (table_key, table) in &version.tables {
-        let tvar = format_ident!("t_{}", sanitize_ident(table_key));
+        let tvar = format_ident!("{}", var_names.table_vars.get(table_key).unwrap());
         let table_id = &table.id;
         stmts.push(quote!{
             let #tvar = v.table(#table_id);
         });
         for (field_id, field) in &table.fields {
-            let fvar_name = field_var_map.get(&(table_key.clone(), field_id.clone())).unwrap();
-            let fvar = format_ident!("{}", &fvar_name);
+            let fvar = format_ident!("{}", var_names.field_vars.get(&(table_key.clone(), field_id.clone())).unwrap());
             let fn_ident = format_ident!("{}", pg_field_fn(&field.type_.type_.type_.type_));
             let field_id_str = &field.id;
             if field.type_.type_.opt {
@@ -70,7 +118,7 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
                             .fields
                             .iter()
                             .map(|fid| -> Result<TokenStream, loga::Error> {
-                                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
                                 return Ok(quote!{
                                     &#fvar
                                 });
@@ -87,15 +135,15 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
                             .fields
                             .iter()
                             .map(|(lf, rf)| -> Result<TokenStream, loga::Error> {
-                                let lvar = lookup_field(&field_var_map, table_key, lf)?;
-                                let rvar = lookup_field(&field_var_map, &fk.remote_table, rf)?;
+                                let lvar = lookup_field(&var_names.field_vars, table_key, lf)?;
+                                let rvar = lookup_field(&var_names.field_vars, &fk.remote_table, rf)?;
                                 return Ok(quote!{
                                     (&#lvar, &#rvar)
                                 });
                             })
                             .collect::<Result<Vec<TokenStream>, _>>()
                             .context(format!("Generating foreign key constraint {:?}", constraint_id))?;
-                    stmts.push(quote!{
+                    fk_stmts.push(quote!{
                         #tvar.foreign_key(#constraint_id, &[#(#pairs), *]);
                     });
                 },
@@ -104,7 +152,7 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
         for index in table.indices.values() {
             let index_id = &index.id;
             let refs = index.fields.iter().map(|fid| -> Result<TokenStream, loga::Error> {
-                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
                 return Ok(quote!{
                     &#fvar
                 });
@@ -120,6 +168,7 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
             }
         }
     }
+    stmts.extend(fk_stmts);
     stmts.push(quote!{
         good_ormning:: pg:: generate(good_ormning:: pg:: GenerateArgs {
             db_name: Some(#db_name.to_string()),
@@ -145,22 +194,22 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
     stmts.push(quote!{
         let v = good_ormning::sqlite::Version::new();
     });
-    let mut field_var_map: HashMap<(String, String), String> = HashMap::new();
+    let var_names =
+        allocate_var_names(
+            version.tables.iter().map(|(table_key, table)| (table_key, table.fields.keys().collect())),
+        );
+
+    // Foreign keys reference fields of other tables which may be emitted later, so
+    // they are collected and emitted after all tables and fields.
+    let mut fk_stmts: Vec<TokenStream> = vec![];
     for (table_key, table) in &version.tables {
-        for (field_id, _) in &table.fields {
-            let fvar_name = format!("t_{}_{}", sanitize_ident(table_key), sanitize_ident(field_id));
-            field_var_map.insert((table_key.clone(), field_id.clone()), fvar_name);
-        }
-    }
-    for (table_key, table) in &version.tables {
-        let tvar = format_ident!("t_{}", sanitize_ident(table_key));
+        let tvar = format_ident!("{}", var_names.table_vars.get(table_key).unwrap());
         let table_id = &table.id;
         stmts.push(quote!{
             let #tvar = v.table(#table_id);
         });
         for (field_id, field) in &table.fields {
-            let fvar_name = field_var_map.get(&(table_key.clone(), field_id.clone())).unwrap();
-            let fvar = format_ident!("{}", &fvar_name);
+            let fvar = format_ident!("{}", var_names.field_vars.get(&(table_key.clone(), field_id.clone())).unwrap());
             if field_id == "rowid" {
                 if field.id == "rowid" {
                     stmts.push(quote!{
@@ -201,7 +250,7 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
                             .fields
                             .iter()
                             .map(|fid| -> Result<TokenStream, loga::Error> {
-                                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
                                 return Ok(quote!{
                                     &#fvar
                                 });
@@ -218,15 +267,15 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
                             .fields
                             .iter()
                             .map(|(lf, rf)| -> Result<TokenStream, loga::Error> {
-                                let lvar = lookup_field(&field_var_map, table_key, lf)?;
-                                let rvar = lookup_field(&field_var_map, &fk.remote_table, rf)?;
+                                let lvar = lookup_field(&var_names.field_vars, table_key, lf)?;
+                                let rvar = lookup_field(&var_names.field_vars, &fk.remote_table, rf)?;
                                 return Ok(quote!{
                                     (&#lvar, &#rvar)
                                 });
                             })
                             .collect::<Result<Vec<TokenStream>, _>>()
                             .context(format!("Generating foreign key constraint {:?}", constraint_id))?;
-                    stmts.push(quote!{
+                    fk_stmts.push(quote!{
                         #tvar.foreign_key(#constraint_id, &[#(#pairs), *]);
                     });
                 },
@@ -235,7 +284,7 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
         for index in table.indices.values() {
             let index_id = &index.id;
             let refs = index.fields.iter().map(|fid| -> Result<TokenStream, loga::Error> {
-                let fvar = lookup_field(&field_var_map, table_key, fid)?;
+                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
                 return Ok(quote!{
                     &#fvar
                 });
@@ -251,6 +300,7 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
             }
         }
     }
+    stmts.extend(fk_stmts);
     stmts.push(quote!{
         good_ormning:: sqlite:: generate(good_ormning:: sqlite:: GenerateArgs {
             db_name: Some(#db_name.to_string()),
@@ -282,7 +332,9 @@ fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static
     use good_ormning_core::pg::types::SimpleSimpleType as S;
 
     match sst {
-        S::AnyNull | S::AnyInt => unreachable!("Literal-only types are never read from a schema"),
+        S::AnyNull | S::AnyInt | S::AnyFloat | S::AnyTime => unreachable!(
+            "Literal-only types are never read from a schema"
+        ),
         S::Auto => "field_auto",
         S::I16 => "field_i16",
         S::I32 => "field_i32",
@@ -306,23 +358,11 @@ fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static
     }
 }
 
-fn sanitize_ident(s: &str) -> String {
-    let out: String = s.chars().map(|c| if c.is_alphanumeric() || c == '_' {
-        c
-    } else {
-        '_'
-    }).collect();
-    if out.starts_with(|c: char| c.is_ascii_digit()) {
-        return format!("_{}", out);
-    }
-    return out;
-}
-
 fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> &'static str {
     use good_ormning_core::sqlite::types::SimpleSimpleType as S;
 
     match sst {
-        S::AnyNull | S::AnyInt => unreachable!("Literal-only types are never read from a schema"),
+        S::AnyNull | S::AnyInt | S::AnyFloat => unreachable!("Literal-only types are never read from a schema"),
         S::Auto => "field_auto",
         S::I16 => "field_i16",
         S::I32 => "field_i32",

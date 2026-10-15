@@ -72,8 +72,35 @@ pub fn generate_query_functions(
                 if v.opt {
                     ident = quote!(Option < #ident >);
                 }
-                let mut unforward = quote!{
-                    let x: #ident = r.get(#i);
+                let mut unforward = match &v.type_.type_ {
+                    crate::pg::types::SimpleSimpleType::U32 => {
+                        // Stored as bigint
+                        if v.opt {
+                            quote!{
+                                let x: Option < i64 > = r.try_get(
+                                    #i
+                                ).to_good_error(|| format!("Reading result {}", #i)) ?;
+                                let x: #ident = match x {
+                                    Some(
+                                        x
+                                    ) => Some(
+                                        u32::try_from(x).to_good_error(|| format!("Reading result {} as u32", #i))?
+                                    ),
+                                    None => None,
+                                };
+                            }
+                        } else {
+                            quote!{
+                                let x: i64 = r.try_get(#i).to_good_error(|| format!("Reading result {}", #i)) ?;
+                                let x: #ident = u32:: try_from(
+                                    x
+                                ).to_good_error(|| format!("Reading result {} as u32", #i)) ?;
+                            }
+                        }
+                    },
+                    _ => quote!{
+                        let x: #ident = r.try_get(#i).to_good_error(|| format!("Reading result {}", #i)) ?;
+                    },
                 };
                 if let Some(custom) = &v.type_.custom {
                     ident = match syn::parse_str::<syn::Path>(custom) {
@@ -129,11 +156,23 @@ pub fn generate_query_functions(
             } else {
                 let mut fields = vec![];
                 let mut unforward_fields = vec![];
+                let mut seen_names = std::collections::HashSet::new();
                 for (i, (k, v)) in res.0.0.into_iter().enumerate() {
                     let (k_ident, type_ident, unforward) = match convert_one_res(errs, &path, i, &k, &v) {
                         Some(x) => x,
                         None => continue,
                     };
+                    if !seen_names.insert(k_ident.to_string()) {
+                        errs.err(
+                            &path,
+                            format!(
+                                "Result element {} has name {} which is already used by another result element; rename it using `as`",
+                                i,
+                                k_ident
+                            ),
+                        );
+                        continue;
+                    }
                     fields.push(quote!{
                         pub #k_ident: #type_ident
                     });
@@ -203,10 +242,19 @@ pub fn generate_query_functions(
                     GoodError > {
                         let query = #q_text;
                         let res = db.0.query(query, &[#(& #args_forward,) *]).await.to_good_error_query(query) ?;
-                        if let Some(r) = res.first() {
-                            return Ok(#unforward_res);
+                        if res.len() != 1 {
+                            return Err(
+                                GoodError(
+                                    format!(
+                                        "Query {} returned {} results but exactly one was expected",
+                                        #q_text,
+                                        res.len()
+                                    ),
+                                ),
+                            );
                         }
-                        Err(GoodError(format!("Query {} returned no results but one was expected", #q_text)))
+                        let r = &res[0];
+                        Ok(#unforward_res)
                     }
                 });
             },

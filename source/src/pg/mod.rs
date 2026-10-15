@@ -192,25 +192,22 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     if let Err(e) = fs::create_dir_all(&json_dir) {
         return Err(vec![format!("Error creating directory {:?}: {:?}", json_dir, e)]);
     }
-    let json_path = json_dir.join(good_ormning_core::utils::json_file_name(db_name));
+    let json_path = json_dir.join(good_ormning_core::utils::json_file_name("pg", db_name));
+    if args.versions.is_empty() {
+        return Err(vec!["No versions provided".to_string()]);
+    }
 
     // Serialize versions for proc macro
     {
-        let mut versions_map: HashMap<usize, Version> = if json_path.exists() {
-            serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut versions_map: HashMap<usize, Version> = HashMap::new();
         for (version_i, version) in args.versions.iter() {
-            let entry = versions_map.entry(*version_i).or_insert_with(|| Version::default());
-            for (k, v) in &version.tables {
-                entry.tables.insert(k.clone(), v.clone());
-            }
-            for (k, v) in &version.custom_types {
-                entry.custom_types.insert(k.clone(), v.clone());
+            if versions_map.insert(*version_i, version.clone()).is_some() {
+                return Err(vec![format!("Version {} was provided multiple times", version_i)]);
             }
         }
-        let _ = fs::write(json_path, serde_json::to_string(&versions_map).unwrap());
+        if let Err(e) = fs::write(&json_path, serde_json::to_string(&versions_map).unwrap()) {
+            return Err(vec![format!("Error writing schema file {:?}: {:?}", json_path, e)]);
+        }
     }
     let mut errs = Errs::new();
     let mut migrations = vec![];
@@ -334,6 +331,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         pub const DB_NAME: & str = #db_name;
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
+        use good_ormning::runtime::pg::tokio_postgres;
         #(#db_types) * pub enum #enum_name < C: good_ormning:: runtime:: pg:: PgConnection > {
             #(#enum_variants,) *
         }
@@ -355,8 +353,9 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         #[
             doc =
                 "(Initialize and) migrate the database to the latest schema version. Optionally takes a callback which is run after each version, so custom post-schema change code can be run. Use `good_query!` macros with the version parameter to do migrations."
-        ] pub async fn migrate(
-            mut db: tokio_postgres:: Client,
+        ] pub async fn migrate < C: good_ormning:: runtime:: pg:: PgConnection + std:: borrow:: BorrowMut < tokio_postgres:: Client > + Send,
+        >(
+            mut db: C,
             callback: Option <&(
                 dyn for <'a,
                 'c > Fn(
@@ -364,11 +363,15 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                 ) -> std:: pin:: Pin < Box < dyn std:: future:: Future < Output = Result <(),
                 GoodError >> + Send + 'a >> + Send + Sync
             ) >
-        ) -> Result <#latest_newtype_name < tokio_postgres:: Client >,
+        ) -> Result <#latest_newtype_name < C >,
         GoodError > {
-            init_db(&mut db).await?;
+            init_db(std::borrow::BorrowMut::<tokio_postgres::Client>::borrow_mut(&mut db)).await?;
             loop {
-                let mut txn = db.transaction().await.to_good_error(|| "Failed to start transaction".to_string())?;
+                let mut txn =
+                    std::borrow::BorrowMut::<tokio_postgres::Client>::borrow_mut(&mut db)
+                        .transaction()
+                        .await
+                        .to_good_error(|| "Failed to start transaction".to_string())?;
                 let migrated = {
                     let query = "update __good_version set lock = 1 where rid = 0 and lock = 0 returning version";
                     let res =

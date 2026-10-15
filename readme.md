@@ -120,9 +120,9 @@ They have the format `good_query_SUFFIX!(DBMOD: ident, [DBNAME: string,] [VERSIO
 - `SUFFIX` - This determines the return type.
   - No suffix, no return
 
-  - `_one` - Query will always return one row, or an error
+  - `_one` - Query will always return exactly one row, or an error
 
-  - `_maybe` - Query will return one or zero rows, or an error. Returns `Option<>`
+  - `_opt` - Query will return one or zero rows, or an error. Returns `Option<>`
 
   - `_many` - Query will return any number of results. Returns `Vec<>`
 
@@ -151,6 +151,8 @@ They have the format `good_query_SUFFIX!(DBMOD: ident, [DBNAME: string,] [VERSIO
   - `utctime_s_jiff`, `utctime_ms_jiff`
   - `auto`
 
+  VALUE in an inline parameter can be any Rust expression.
+
 Example:
 
 ```rust,ignore
@@ -159,9 +161,12 @@ good_query!(dbm, r#"insert into users (name, points) values (${string = "rust hu
 
 ### Rust features
 
-- `pg` - enables generating code for PostgreSQL
-- `sqlite` - enables generating code for Sqlite
-- `chrono` - enable datetime field/expression types
+- `pg` - enables generating code for PostgreSQL via `tokio-postgres`
+- `sqlite` - enables generating code for Sqlite via `rusqlite`
+- `chrono` - enable `chrono` datetime field/expression types
+- `jiff` - enable `jiff` datetime field/expression types
+- `deadpool` - implements the PostgreSQL connection trait for `deadpool-postgres` pools and pooled connections (to migrate with a pooled connection, pass `&mut **conn`)
+- `import` - builds the `good-ormning-import` binary
 
 ## A few words on the future
 

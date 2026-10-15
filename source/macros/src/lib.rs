@@ -64,60 +64,83 @@ fn get_db_info(_engine: &str, provided_db_name: String) -> String {
     provided_db_name
 }
 
+/// The converters report unsupported SQL by panicking; turn those into normal
+/// compile errors rather than "proc macro panicked".
+fn catch_errors(f: impl FnOnce() -> proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let old_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| { }));
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(old_hook);
+    match res {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "Unknown error".to_string()
+            };
+            let msg = format!("good-ormning: {}", msg);
+            quote!(compile_error!(#msg))
+        },
+    }
+}
+
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_many_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::Many).into()
+    catch_errors(|| parse_and_generate_pg(input, good_ormning_core::QueryResCount::Many)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_many_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::Many).into()
+    catch_errors(|| parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::Many)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_one_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::One).into()
+    catch_errors(|| parse_and_generate_pg(input, good_ormning_core::QueryResCount::One)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_one_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::One).into()
+    catch_errors(|| parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::One)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_opt_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::MaybeOne).into()
+    catch_errors(|| parse_and_generate_pg(input, good_ormning_core::QueryResCount::MaybeOne)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_opt_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::MaybeOne).into()
+    catch_errors(|| parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::MaybeOne)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_pg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_pg(input, good_ormning_core::QueryResCount::None).into()
+    catch_errors(|| parse_and_generate_pg(input, good_ormning_core::QueryResCount::None)).into()
 }
 
 /// See the `good_query` macro help in the readme.
 #[proc_macro]
 pub fn good_query_sqlite(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as GoodQueryInput);
-    parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::None).into()
+    catch_errors(|| parse_and_generate_sqlite(input, good_ormning_core::QueryResCount::None)).into()
 }
 
 struct GoodQueryInput {
@@ -216,7 +239,30 @@ impl Parse for GoodQueryInput {
                     final_sql.push_str(&sql[last_end .. i]);
                     i += 2;
                     let content_start = i;
-                    while i < bytes.len() && bytes[i] != b'}' {
+                    let mut depth = 1usize;
+                    while i < bytes.len() {
+                        match bytes[i] {
+                            b'{' => {
+                                depth += 1;
+                            },
+                            b'}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            },
+                            b'"' => {
+                                // Skip over a rust string literal so braces inside it don't count
+                                i += 1;
+                                while i < bytes.len() && bytes[i] != b'"' {
+                                    if bytes[i] == b'\\' {
+                                        i += 1;
+                                    }
+                                    i += 1;
+                                }
+                            },
+                            _ => { },
+                        }
                         i += 1;
                     }
                     if i >= bytes.len() {
@@ -285,7 +331,7 @@ fn parse_and_generate_pg(
     let path =
         std::path::Path::new(&out_dir)
             .join("good_ormning")
-            .join(good_ormning_core::utils::json_file_name(&db_name));
+            .join(good_ormning_core::utils::json_file_name("pg", &db_name));
     if !path.exists() {
         let e = format!("Schema file not found at {:?}. Did you run the build script?", path.to_string_lossy());
         return quote!(compile_error!(#e));
@@ -367,6 +413,7 @@ fn parse_and_generate_pg(
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::pg::PgConnection;
+            use ::good_ormning::runtime::pg::tokio_postgres;
             #(#generated) * #query_name(#conn, #(#args,) *)
         }
     }
@@ -394,7 +441,7 @@ fn parse_and_generate_sqlite(
     let path =
         std::path::Path::new(&out_dir)
             .join("good_ormning")
-            .join(good_ormning_core::utils::json_file_name(&db_name));
+            .join(good_ormning_core::utils::json_file_name("sqlite", &db_name));
     if !path.exists() {
         let e = format!("Schema file not found at {:?}. Did you run the build script?", path.to_string_lossy());
         return quote!(compile_error!(#e));
@@ -477,6 +524,7 @@ fn parse_and_generate_sqlite(
             use ::good_ormning::runtime::GoodError;
             use ::good_ormning::runtime::ToGoodError;
             use ::good_ormning::runtime::sqlite::SqliteConnection;
+            use ::good_ormning::runtime::sqlite::rusqlite;
             #(#generated) * #query_name(#conn, #(#args,) *)
         }
     }

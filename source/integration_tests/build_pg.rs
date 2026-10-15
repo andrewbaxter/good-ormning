@@ -9,9 +9,13 @@ use good_ormning::{
         new_select_body,
         query::utils::CteBuilder,
         schema::field::{
+            field_auto,
             field_bool,
+            field_f64,
             field_i32,
+            field_i64,
             field_str,
+            field_u32,
             field_utctime_s_chrono,
             field_utctime_s_jiff,
         },
@@ -841,6 +845,28 @@ pub fn build() {
         t.field("b", field_bool().build());
         generate(GenerateArgs {
             db_name: Some("pg_gen_nested_paren".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # Regression tests for query features
+    {
+        let v = PgVersion::new();
+        let t = v.table("t");
+        let id = t.field("id", field_auto().build());
+        t.primary_key("t_pk", &[&id]);
+        let name = t.field("name", field_str().build());
+        t.field("n", field_i32().build());
+        t.field("f", field_f64().build());
+        t.field("x", field_i64().opt().build());
+        t.field("u", field_u32().build());
+        t.unique_index("t_name", &[&name]);
+        let u = v.table("u");
+        u.field("uname", field_str().build());
+        u.field("t_id", field_i64().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_fixes".to_string()),
             versions: vec![(1usize, v.build())],
             ..Default::default()
         }).unwrap();

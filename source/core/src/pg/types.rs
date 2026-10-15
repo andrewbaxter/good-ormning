@@ -9,7 +9,12 @@ use {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SimpleSimpleType {
+    /// An untyped decimal literal, unifies with any float type
+    AnyFloat,
+    /// An untyped integer literal, unifies with any integer (or float) type
     AnyInt,
+    /// An untyped timestamp (like `now()`), unifies with any timestamp type
+    AnyTime,
     AnyNull,
     Auto,
     Bool,
@@ -61,17 +66,43 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             ret_type: quote!(i64),
             arg_type: quote!(i64),
         },
+        SimpleSimpleType::AnyTime => {
+            #[cfg(feature = "chrono")]
+            {
+                RustTypes {
+                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomUtcTimeChrono),
+                    ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
+                    arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
+                }
+            }
+            #[cfg(all(not(feature = "chrono"), feature = "jiff"))]
+            {
+                RustTypes {
+                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomUtcTimeJiff),
+                    ret_type: quote!(jiff::Timestamp),
+                    arg_type: quote!(jiff::Timestamp),
+                }
+            }
+            #[cfg(not(any(feature = "chrono", feature = "jiff")))]
+            {
+                RustTypes {
+                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomString),
+                    ret_type: quote!(String),
+                    arg_type: quote!(&str),
+                }
+            }
+        },
         SimpleSimpleType::U32 => RustTypes {
             custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomU32),
-            ret_type: quote!(i64),
-            arg_type: quote!(i64),
+            ret_type: quote!(u32),
+            arg_type: quote!(u32),
         },
         SimpleSimpleType::F32 => RustTypes {
             custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomF32),
             ret_type: quote!(f32),
             arg_type: quote!(f32),
         },
-        SimpleSimpleType::F64 => RustTypes {
+        SimpleSimpleType::AnyFloat | SimpleSimpleType::F64 => RustTypes {
             custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomF64),
             ret_type: quote!(f64),
             arg_type: quote!(f64),
@@ -130,9 +161,10 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::I16 => "smallint",
         SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 => "int",
         SimpleSimpleType::I64 => "bigint",
+        SimpleSimpleType::AnyTime => "timestamp with time zone",
         SimpleSimpleType::U32 => "bigint",
         SimpleSimpleType::F32 => "real",
-        SimpleSimpleType::F64 => "double precision",
+        SimpleSimpleType::AnyFloat | SimpleSimpleType::F64 => "double precision",
         SimpleSimpleType::Bool => "bool",
         SimpleSimpleType::String => "text",
         SimpleSimpleType::Bytes => "bytea",
@@ -291,6 +323,48 @@ pub fn unify_types(left: &SimpleSimpleType, right: &SimpleSimpleType) -> Option<
         return Some(right.clone());
     }
     if *right == SimpleSimpleType::AnyNull {
+        return Some(left.clone());
+    }
+    let is_float =
+        |t: &SimpleSimpleType| matches!(
+            t,
+            SimpleSimpleType::AnyFloat | SimpleSimpleType::F32 | SimpleSimpleType::F64
+        );
+    let is_time = |t: &SimpleSimpleType| {
+        #[allow(unused_mut)]
+        let mut out = *t == SimpleSimpleType::AnyTime;
+        #[cfg(feature = "chrono")]
+        {
+            out =
+                out ||
+                    matches!(
+                        t,
+                        SimpleSimpleType::UtcTimeSChrono | SimpleSimpleType::UtcTimeMsChrono |
+                            SimpleSimpleType::FixedOffsetTimeChrono
+                    );
+        }
+        #[cfg(feature = "jiff")]
+        {
+            out = out || matches!(t, SimpleSimpleType::UtcTimeSJiff | SimpleSimpleType::UtcTimeMsJiff);
+        }
+        return out;
+    };
+    if *left == SimpleSimpleType::AnyTime && is_time(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyTime && is_time(left) {
+        return Some(left.clone());
+    }
+    if *left == SimpleSimpleType::AnyFloat && is_float(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyFloat && is_float(left) {
+        return Some(left.clone());
+    }
+    if *left == SimpleSimpleType::AnyInt && is_float(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyInt && is_float(left) {
         return Some(left.clone());
     }
     if *left == SimpleSimpleType::AnyInt && is_int(right) {

@@ -1970,7 +1970,7 @@ fn test_query_cte_subquery() -> Result<(), loga::Error> {
            "#;
         &mut db
     )?;
-    assert_eq!(res, 1i32);
+    assert_eq!(res, Some(1i32));
     return Ok(());
 }
 
@@ -2034,7 +2034,7 @@ fn test_query_glob() -> Result<(), loga::Error> {
 
     //# genemichaels-external: sql-formatter-sqlite
     db.0.execute(r#"insert into "bananna" ( "hizat" ) values ( 'world' )"#, [])?;
-    let count: i64 = 
+    let count: i64 =
         //# genemichaels-external: sql-formatter-sqlite
         db.0.query_row(r#"select count(*) from "bananna" where "hizat" glob 'hel*'"#, [], |row| row.get(0))?;
     assert_eq!(count, 1);
@@ -3407,4 +3407,144 @@ fn test_update_where() -> Result<(), loga::Error> {
         &mut db
     )?, "tep");
     Ok(())
+}
+
+#[test]
+fn test_fixes_sqlite() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_fixes");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+
+    // Multi-row insert, rowid alias column not required, float literal
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"insert into "t" ("name", "n", "f") values ('a', 1, 1.5), ('b', 2, 2.5), ('c', 2, 3.5)"#;
+        &mut db
+    )?;
+
+    // On conflict with target does nothing
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"insert into "t" ("name", "n", "f") values ('a', 9, 9.5) on conflict ("name") do nothing"#;
+        &mut db
+    )?;
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select count("t"."rowid") as "c" from "t""#;
+        &mut db
+    )?, 3);
+
+    // Inline param with braces in the value
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"insert into "u" ("uname", "t_id") values (${string = &format!("{}", "x")}, ${opt i64 = Some(1)})"#;
+        &mut db
+    )?;
+
+    // count distinct
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select count(distinct "t"."n") as "c" from "t""#;
+        &mut db
+    )?, 2);
+
+    // Scalar subquery is optional
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select (select "t"."name" from "t" where "t"."n" = 99) as "x""#;
+        &mut db
+    )?, None);
+
+    // Union with order by output name and limit applying to the whole
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" as "h" from "t" union select "u"."uname" as "h" from "u" order by "h" desc limit 2"#;
+        &mut db
+    )?, vec!["x".to_string(), "c".to_string()]);
+
+    // Select * with join expands all tables
+    let rows = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select * from "t" inner join "u" on "u"."t_id" = "t"."rowid""#;
+        &mut db
+    )?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].name, "a");
+    assert_eq!(rows[0].uname, "x");
+    assert_eq!(rows[0].t_id, Some(1));
+
+    // In with an array param
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."n" in ($1) order by "t"."name""#;
+        &mut db,
+        p1: arr i32 = vec ![2, 3]
+    )?, vec!["b".to_string(), "c".to_string()]);
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" in ($1) order by "t"."name""#;
+        &mut db,
+        p1: arr string = vec !["a", "c"]
+    )?, vec!["a".to_string(), "c".to_string()]);
+
+    // Self join with aliases, derived table alias
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "a"."name" as "an" from "t" as "a" inner join "t" as "b" on "a"."n" = "b"."n" and "a"."rowid" <> "b"."rowid""#;
+        &mut db
+    )?.len(), 2);
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "s"."name" as "nm" from (select "t"."name" from "t") as "s" order by "nm""#;
+        &mut db
+    )?.len(), 3);
+
+    // Recursive CTE, CTE column names from fields
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"with recursive "c" ("n") as (select 1 union all select "c"."n" + 1 from "c" where "c"."n" < 3) select "c"."n" from "c""#;
+        &mut db
+    )?, vec![1, 2, 3]);
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"with "c" as (select "t"."name" from "t") select "c"."name" from "c" order by "c"."name""#;
+        &mut db
+    )?.len(), 3);
+
+    // Functions, cast, float comparisons, int literal with float field
+    assert_eq!(
+        good_ormning::sqlite::good_query_many!(
+            dbm,
+            "sqlite_gen_fixes",
+            r#"select coalesce("t"."x", 0) as "v", cast("t"."n" as text) as "s", upper("t"."name") as "up", length("t"."name") as "l", abs("t"."f" * 2) as "a" from "t" where "t"."f" > 1.5 and "t"."f" < 10 order by "t"."name""#;
+            &mut db
+        )?.into_iter().map(|r| (r.v, r.s, r.up, r.l, r.a)).collect::<Vec<_>>(),
+        vec![
+            (0i64, "2".to_string(), "B".to_string(), 1i64, 5.0f64),
+            (0i64, "2".to_string(), "C".to_string(), 1i64, 7.0f64),
+        ]
+    );
+
+    // One with multiple results is an error
+    assert!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t""#;
+        &mut db
+    ).is_err());
+    return Ok(());
 }

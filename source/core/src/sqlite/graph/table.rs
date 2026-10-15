@@ -48,8 +48,19 @@ impl NodeDataDispatch for NodeTable_ {
         let mut stmt = Tokens::new();
         stmt.s("create table").id(&self.def.id).s("(");
         let mut first = true;
-        for f in self.def.fields.values() {
-            if f.id == "rowid" {
+        for (f_key, f) in &self.def.fields {
+            if f_key == "rowid" {
+                if f.id == "rowid" {
+                    // Implicit rowid, no column
+                    continue;
+                }
+
+                // Rowid alias - `integer primary key` makes the column an alias for the rowid.
+                if !first {
+                    stmt.s(",");
+                }
+                first = false;
+                stmt.id(&f.id).s("integer primary key");
                 continue;
             }
             if !first {
@@ -62,6 +73,13 @@ impl NodeDataDispatch for NodeTable_ {
             }
         }
         for c in self.def.constraints.values() {
+            // The primary key for a rowid alias is declared inline with the column
+            if let crate::sqlite::schema::constraint::ConstraintType::PrimaryKey(x) = &c.type_ {
+                if x.fields.len() == 1 && x.fields[0] == "rowid" &&
+                    self.def.fields.get("rowid").map(|f| f.id != "rowid").unwrap_or(false) {
+                    continue;
+                }
+            }
             if !first {
                 stmt.s(",");
             }

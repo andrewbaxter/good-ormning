@@ -9,6 +9,9 @@ use {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SimpleSimpleType {
+    /// An untyped decimal literal, unifies with any float type
+    AnyFloat,
+    /// An untyped integer literal, unifies with any integer (or float) type
     AnyInt,
     AnyNull,
     Auto,
@@ -71,7 +74,7 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             arg_type: quote!(f32),
             custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomF32),
         },
-        SimpleSimpleType::F64 => RustTypes {
+        SimpleSimpleType::AnyFloat | SimpleSimpleType::F64 => RustTypes {
             ret_type: quote!(f64),
             arg_type: quote!(f64),
             custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomF64),
@@ -132,7 +135,7 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::I64 => "integer",
         SimpleSimpleType::U32 => "integer",
         SimpleSimpleType::F32 => "real",
-        SimpleSimpleType::F64 => "real",
+        SimpleSimpleType::AnyFloat | SimpleSimpleType::F64 => "real",
         SimpleSimpleType::Bool => "integer",
         SimpleSimpleType::String => "text",
         SimpleSimpleType::Bytes => "blob",
@@ -278,6 +281,23 @@ pub fn unify_types(left: &SimpleSimpleType, right: &SimpleSimpleType) -> Option<
         return Some(right.clone());
     }
     if *right == SimpleSimpleType::AnyNull {
+        return Some(left.clone());
+    }
+    let is_float =
+        |t: &SimpleSimpleType| matches!(
+            t,
+            SimpleSimpleType::AnyFloat | SimpleSimpleType::F32 | SimpleSimpleType::F64
+        );
+    if *left == SimpleSimpleType::AnyFloat && is_float(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyFloat && is_float(left) {
+        return Some(left.clone());
+    }
+    if *left == SimpleSimpleType::AnyInt && is_float(right) {
+        return Some(right.clone());
+    }
+    if *right == SimpleSimpleType::AnyInt && is_float(left) {
         return Some(left.clone());
     }
     if *left == SimpleSimpleType::AnyInt && is_int(right) {

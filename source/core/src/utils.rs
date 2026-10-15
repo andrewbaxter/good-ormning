@@ -50,8 +50,8 @@ pub struct Errs_ {
     errs: Vec<String>,
 }
 
-pub fn json_file_name(db_name: &str) -> String {
-    format!("good_ormning_{}.json", db_name)
+pub fn json_file_name(engine: &str, db_name: &str) -> String {
+    format!("good_ormning_{}_{}.json", engine, db_name)
 }
 
 pub fn rs_file_name(db_name: &str) -> String {

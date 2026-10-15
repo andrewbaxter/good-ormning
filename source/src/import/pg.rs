@@ -52,23 +52,17 @@ fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
     };
 }
 
-fn map_type(typname: &str, col_default: Option<&str>) -> Result<SimpleSimpleType, loga::Error> {
-    // int8 is bigint; bigserial has a nextval() default.
-    if typname == "int8" {
-        if col_default.map(|d| d.starts_with("nextval(")).unwrap_or(false) {
-            return Ok(SimpleSimpleType::Auto);
-        }
-        return Ok(SimpleSimpleType::I64);
-    }
+fn map_type(typname: &str) -> Option<SimpleSimpleType> {
     match typname {
-        "int2" => return Ok(SimpleSimpleType::I16),
-        "int4" => return Ok(SimpleSimpleType::I32),
-        "float4" => return Ok(SimpleSimpleType::F32),
-        "float8" => return Ok(SimpleSimpleType::F64),
-        "bool" => return Ok(SimpleSimpleType::Bool),
-        "bytea" => return Ok(SimpleSimpleType::Bytes),
-        "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => return Ok(SimpleSimpleType::String),
-        _ => return Err(loga::err(format!("Unknown PostgreSQL type: {:?}", typname))),
+        "int2" => return Some(SimpleSimpleType::I16),
+        "int4" => return Some(SimpleSimpleType::I32),
+        "int8" => return Some(SimpleSimpleType::I64),
+        "float4" => return Some(SimpleSimpleType::F32),
+        "float8" => return Some(SimpleSimpleType::F64),
+        "bool" => return Some(SimpleSimpleType::Bool),
+        "bytea" => return Some(SimpleSimpleType::Bytes),
+        "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => return Some(SimpleSimpleType::String),
+        _ => return None,
     }
 }
 
@@ -80,7 +74,7 @@ fn parse_index_columns(indexdef: &str) -> Result<Vec<String>, loga::Error> {
         Statement::CreateIndex(CreateIndex { columns, .. }) => {
             let mut names = vec![];
             for c in columns {
-                match c.expr {
+                match c.column.expr {
                     Expr::Identifier(id) => names.push(id.value),
                     other => {
                         return Err(loga::err(format!("Unexpected index column expression: {:?}", other)));
@@ -104,7 +98,7 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
            WHERE
              n.nspname = 'public'
              AND c.relkind = 'r'
-             AND c.relname NOT LIKE '__good_%'
+             AND c.relname NOT LIKE '\_\_good\_%' ESCAPE '\'
            ORDER BY
              c.relname
            "#,
@@ -120,7 +114,8 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
                  a.attname,
                  t.typname,
                  NOT a.attnotnull,
-                 pg_catalog.pg_get_expr (d.adbin, d.adrelid)
+                 pg_catalog.pg_get_expr (d.adbin, d.adrelid),
+                 a.attidentity::text
                FROM
                  pg_catalog.pg_attribute a
                  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
@@ -146,11 +141,53 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             let typname: String = row.get(1);
             let is_nullable: bool = row.get(2);
             let col_default: Option<String> = row.get(3);
-            let sst =
-                map_type(
-                    &typname,
-                    col_default.as_deref(),
-                ).context(format!("Mapping type for column {:?} of table {:?}", col_name, table_name))?;
+            let attidentity: String = row.get(4);
+            let is_serial = col_default.as_deref().map(|d| d.starts_with("nextval(")).unwrap_or(false);
+            let is_identity = !attidentity.is_empty();
+            let sst = if is_serial || is_identity {
+                if typname != "int8" {
+                    eprintln!(
+                        "Warning: column {:?} of table {:?} is a {} {} column; good-ormning only supports 64-bit auto-increment columns, widening to bigserial",
+                        col_name,
+                        table_name,
+                        typname,
+                        if is_identity {
+                            "identity"
+                        } else {
+                            "serial"
+                        }
+                    );
+                }
+                SimpleSimpleType::Auto
+            } else {
+                match map_type(&typname) {
+                    Some(sst) => sst,
+                    None => {
+                        if typname == "timestamp" || typname == "timestamptz" {
+                            return Err(
+                                loga::err(
+                                    format!(
+                                        "Column {:?} of table {:?} has SQL type {:?}; timestamp columns can't be imported automatically because the Rust type (chrono/jiff) and precision can't be determined from the schema, so this field must be added manually",
+                                        col_name,
+                                        table_name,
+                                        typname
+                                    ),
+                                ),
+                            );
+                        }
+                        return Err(
+                            loga::err(
+                                format!(
+                                    "Column {:?} of table {:?} has unsupported SQL type {:?}",
+                                    col_name,
+                                    table_name,
+                                    typname
+                                ),
+                            ),
+                        );
+                    },
+                }
+            };
             fields.insert(col_name.clone(), Field {
                 id: col_name.clone(),
                 renamed_from: None,
@@ -242,14 +279,26 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             });
         }
 
-        // Non-constraint indexes: use pg_index, filtering out pk/fk/unique constraint
-        // indexes.
+        // Indexes, excluding the primary key index (covered by the PK constraint) and
+        // exclusion constraint indexes (not representable). Unique constraints are kept
+        // as unique indexes.
         let idx_rows = client.query(
             //# genemichaels-external: sql-formatter-pg
             r#"SELECT
                  ic.relname,
                  pg_catalog.pg_get_indexdef (ix.indexrelid),
-                 ix.indisunique
+                 ix.indisunique,
+                 ix.indpred IS NOT NULL,
+                 ix.indexprs IS NOT NULL,
+                 EXISTS (
+                   SELECT
+                     1
+                   FROM
+                     pg_catalog.pg_constraint con
+                   WHERE
+                     con.conindid = ix.indexrelid
+                     AND con.contype = 'x'
+                 )
                FROM
                  pg_catalog.pg_index ix
                  JOIN pg_catalog.pg_class tc ON tc.oid = ix.indrelid
@@ -259,14 +308,6 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
                  tn.nspname = 'public'
                  AND tc.relname = $1
                  AND NOT ix.indisprimary
-                 AND NOT EXISTS (
-                   SELECT
-                     1
-                   FROM
-                     pg_catalog.pg_constraint con
-                   WHERE
-                     con.conindid = ix.indexrelid
-                 )
                ORDER BY
                  ic.relname
                "#,
@@ -277,6 +318,33 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             let index_name: String = row.get(0);
             let indexdef: String = row.get(1);
             let is_unique: bool = row.get(2);
+            let is_partial: bool = row.get(3);
+            let is_expression: bool = row.get(4);
+            let is_exclusion: bool = row.get(5);
+            if is_partial {
+                eprintln!(
+                    "Warning: skipping index {:?} on table {:?}: partial indexes (WHERE) are not supported",
+                    index_name,
+                    table_name
+                );
+                continue;
+            }
+            if is_expression {
+                eprintln!(
+                    "Warning: skipping index {:?} on table {:?}: expression indexes are not supported",
+                    index_name,
+                    table_name
+                );
+                continue;
+            }
+            if is_exclusion {
+                eprintln!(
+                    "Warning: skipping index {:?} on table {:?}: exclusion constraints are not supported",
+                    index_name,
+                    table_name
+                );
+                continue;
+            }
             let cols =
                 parse_index_columns(
                     &indexdef,

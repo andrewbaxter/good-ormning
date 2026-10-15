@@ -40,6 +40,7 @@ use {
                 insert::{
                     Insert,
                     InsertConflict,
+                    InsertSource,
                 },
                 select::{
                     Join,
@@ -503,6 +504,8 @@ impl InsertBuilder {
 pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
     DeleteBuilder { q: Delete {
         with: None,
+        alias: None,
+        using: vec![],
         table: table.to_ref(),
         returning: vec![],
         where_: None,
@@ -518,7 +521,7 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
     }
     InsertBuilder { q: Insert {
         table: table.to_ref(),
-        values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+        source: InsertSource::Values(values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect()),
         on_conflict: None,
         returning: vec![],
     } }
@@ -540,6 +543,7 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         limit: None,
         offset: None,
         distinct: false,
+        distinct_on: vec![],
         junctions: vec![],
     } }
 }
@@ -576,6 +580,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         limit: None,
         offset: None,
         distinct: false,
+        distinct_on: vec![],
         junctions: vec![],
     } }
 }
@@ -588,6 +593,8 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
         }
     }
     UpdateBuilder { q: Update {
+        alias: None,
+        from: vec![],
         table: table.to_ref(),
         values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
         where_: None,

@@ -502,6 +502,8 @@ impl InsertBuilder {
 pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
     DeleteBuilder { q: Delete {
         with: None,
+        alias: None,
+        using: vec![],
         table: table.to_ref(),
         returning: vec![],
         where_: None,
@@ -603,6 +605,8 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
         }
     }
     UpdateBuilder { q: Update {
+        alias: None,
+        from: vec![],
         table: table.to_ref(),
         values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
         where_: None,

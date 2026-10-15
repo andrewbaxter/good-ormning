@@ -26,23 +26,16 @@ chrono = [
 jiff = ["dep:jiff", "good-ormning-core/jiff", "good-ormning-macros/jiff"]
 pg = ["dep:tokio-postgres"]
 sqlite = ["dep:rusqlite"]
-deadpool = ["dep:deadpool-postgres", "dep:deadpool-sqlite"]
-import = ["dep:aargvark", "dep:tokio", "pg", "sqlite"]
+deadpool = ["dep:deadpool-postgres", "pg"]
+import = ["dep:aargvark", "dep:tokio", "dep:loga", "dep:sqlparser", "pg", "sqlite"]
 
 [dependencies]
 chrono = { version = "0.4", optional = true, features = ["serde"] }
 jiff = { version = "0.2", optional = true, features = ["serde"] }
-enum_dispatch = "0.3"
-flowcontrol = "0.2.2"
 genemichaels-lib = "0.5.0-pre3"
-hex = "0.4"
 proc-macro2 = "1"
 quote = "1"
 rpds = "1"
-dyn-clone = "1.0"
-samevariant = "0.0"
-stable-hash = "0.4"
-syn = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.37", optional = true, features = [
@@ -51,15 +44,14 @@ rusqlite = { version = "0.37", optional = true, features = [
 ] }
 tokio-postgres = { version = "0.7", optional = true }
 deadpool-postgres = { version = "0.12", optional = true }
-deadpool-sqlite = { version = "0.12", optional = true }
 async-trait = "0.1"
 aargvark = { version = "0.9", optional = true }
-tokio = { version = ">=0", features = [
+tokio = { version = "1", features = [
     "macros",
     "rt-multi-thread",
 ], optional = true }
-loga = "0.4"
-sqlparser = "0.52"
+loga = { version = "0.4", optional = true }
+sqlparser = { version = "0.56.0", optional = true }
 convert_case = "0.7.1"
 good-ormning-core = { version = "0.5.18", path = "core" }
 good-ormning-macros = { version = "0.5.18", path = "macros" }

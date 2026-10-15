@@ -14,6 +14,7 @@ use {
     crate::runtime::GoodError,
     std::borrow::Cow,
 };
+pub use tokio_postgres;
 
 pub trait GoodErrorQuery<T> {
     fn to_good_error_query(self, query: &str) -> Result<T, GoodError>;
@@ -95,8 +96,8 @@ pub trait GoodOrmningCustomString<T> {
 }
 
 pub trait GoodOrmningCustomU32<T> {
-    fn from_sql(value: i64) -> Result<T, String>;
-    fn to_sql(value: &T) -> i64;
+    fn from_sql(value: u32) -> Result<T, String>;
+    fn to_sql(value: &T) -> u32;
 }
 
 #[cfg(feature = "chrono")]
@@ -123,6 +124,25 @@ pub trait PgConnection: Send {
         query: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<Vec<tokio_postgres::Row>, GoodError>;
+}
+
+#[async_trait]
+impl<T: PgConnection + ?Sized> PgConnection for &mut T {
+    async fn execute(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, GoodError> {
+        (**self).execute(query, params).await
+    }
+
+    async fn query(
+        &mut self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>, GoodError> {
+        (**self).query(query, params).await
+    }
 }
 
 #[cfg(feature = "deadpool")]

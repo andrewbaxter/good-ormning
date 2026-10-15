@@ -9,7 +9,10 @@ use {
                     ExprType,
                     check_bool,
                 },
-                select::IndexHint,
+                select::{
+                    IndexHint,
+                    NamedSelectSource,
+                },
                 utils::{
                     QueryBody,
                     Returning,
@@ -26,6 +29,11 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Delete {
+    /// Alias for the deleted-from table, for use in `where`
+    pub alias: Option<String>,
+    /// Additional tables (`delete ... using ...`, PostgreSQL only) whose fields can be
+    /// used in `where`
+    pub using: Vec<NamedSelectSource>,
     pub index_hint: Option<IndexHint>,
     pub returning: Vec<Returning>,
     pub table: TableRef,
@@ -50,7 +58,22 @@ impl QueryBody for Delete {
         };
         let mut scope = HashMap::new();
         for (k, info) in &table_info.fields {
-            scope.insert(Binding::field(k), info.type_.clone());
+            let mut name = Binding::field(k);
+            if let Some(alias) = &self.alias {
+                name = name.with_alias(alias);
+            }
+            scope.insert(name, info.type_.clone());
+        }
+        if let Some(alias) = &self.alias {
+            ctx.table_aliases.insert(alias.clone(), self.table.clone());
+        }
+        let mut using_tokens = vec![];
+        for (i, f) in self.using.iter().enumerate() {
+            let (fields, tokens) = f.build(ctx, &path.push_back(format!("Using {}", i)));
+            for (k, v) in fields.0 {
+                scope.insert(k, v);
+            }
+            using_tokens.push(tokens);
         }
 
         // Build query
@@ -59,6 +82,9 @@ impl QueryBody for Delete {
             out.s(&crate::sqlite::query::utils::build_with(ctx, path, with).to_string());
         }
         out.s("delete from").id(&table_info.sql_name);
+        if let Some(alias) = &self.alias {
+            out.s("as").id(alias);
+        }
         if let Some(hint) = &self.index_hint {
             match hint {
                 IndexHint::IndexedBy(name) => {
@@ -68,6 +94,11 @@ impl QueryBody for Delete {
                     out.s("not indexed");
                 },
             }
+        }
+        if !using_tokens.is_empty() {
+            ctx
+                .errs
+                .err(path, "SQLite doesn't support `delete ... using`, use a subquery in the `where`".to_string());
         }
         if let Some(where_) = &self.where_ {
             out.s("where");

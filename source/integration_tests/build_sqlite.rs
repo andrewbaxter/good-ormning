@@ -10,6 +10,7 @@ use good_ormning::{
         query::utils::CteBuilder,
         schema::field::{
             field_bool,
+            field_f64,
             field_i32,
             field_i64,
             field_str,
@@ -1010,6 +1011,26 @@ pub fn build() {
         t.field("b", field_bool().build());
         generate(GenerateArgs {
             db_name: Some("sqlite_gen_nested_paren".to_string()),
+            versions: vec![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # Regression tests for query features
+    {
+        let v = SqliteVersion::new();
+        let t = v.table("t");
+        t.rowid_field(Some("id"));
+        let name = t.field("name", field_str().build());
+        t.field("n", field_i32().build());
+        t.field("f", field_f64().build());
+        t.field("x", field_i64().opt().build());
+        t.unique_index("t_name", &[&name]);
+        let u = v.table("u");
+        u.field("uname", field_str().build());
+        u.field("t_id", field_i64().opt().build());
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_fixes".to_string()),
             versions: vec![(1usize, v.build())],
             ..Default::default()
         }).unwrap();

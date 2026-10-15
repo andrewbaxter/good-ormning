@@ -5,6 +5,7 @@ use chrono::{
     FixedOffset,
 };
 use crate::runtime::GoodError;
+pub use rusqlite;
 #[cfg(feature = "jiff")]
 use jiff::{
     Zoned,
@@ -180,6 +181,7 @@ impl SqliteConnection for rusqlite::Transaction<'_> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum GoodOrmningSqliteTimestamp {
     I64(i64),
     String(String),

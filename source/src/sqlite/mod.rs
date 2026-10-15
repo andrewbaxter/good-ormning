@@ -194,25 +194,22 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
     if let Err(e) = fs::create_dir_all(&json_dir) {
         return Err(vec![format!("Error creating directory {:?}: {:?}", json_dir, e)]);
     }
-    let json_path = json_dir.join(good_ormning_core::utils::json_file_name(db_name));
+    let json_path = json_dir.join(good_ormning_core::utils::json_file_name("sqlite", db_name));
+    if args.versions.is_empty() {
+        return Err(vec!["No versions provided".to_string()]);
+    }
 
     // Serialize versions for proc macro
     {
-        let mut versions_map: HashMap<usize, Version> = if json_path.exists() {
-            serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
+        let mut versions_map: HashMap<usize, Version> = HashMap::new();
         for (version_i, version) in args.versions.iter() {
-            let entry = versions_map.entry(*version_i).or_insert_with(|| Version::default());
-            for (k, v) in &version.tables {
-                entry.tables.insert(k.clone(), v.clone());
-            }
-            for (k, v) in &version.custom_types {
-                entry.custom_types.insert(k.clone(), v.clone());
+            if versions_map.insert(*version_i, version.clone()).is_some() {
+                return Err(vec![format!("Version {} was provided multiple times", version_i)]);
             }
         }
-        let _ = fs::write(json_path, serde_json::to_string(&versions_map).unwrap());
+        if let Err(e) = fs::write(&json_path, serde_json::to_string(&versions_map).unwrap()) {
+            return Err(vec![format!("Error writing schema file {:?}: {:?}", json_path, e)]);
+        }
     }
     let mut errs = Errs::new();
     let mut migrations = vec![];
@@ -386,6 +383,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         pub const DB_NAME: & str = #db_name;
         use good_ormning::runtime::GoodError;
         use good_ormning::runtime::ToGoodError;
+        use good_ormning::runtime::sqlite::rusqlite;
         #(#db_types) * pub enum #enum_name < C: good_ormning:: runtime:: sqlite:: SqliteConnection > {
             #(#enum_variants,) *
         }
@@ -417,7 +415,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                     match db.execute(query, ()) {
                         Ok(_) => { },
                         Err(good_ormning::runtime::sqlite::SqliteError::Busy) => {
-                            std::thread::sleep(std::time::Duration::from_millis(5000));
+                            std::thread::sleep(std::time::Duration::from_millis(100));
                             continue;
                         },
                         Err(e) => return Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
