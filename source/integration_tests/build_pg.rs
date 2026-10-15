@@ -470,6 +470,107 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Migrate - constraints: create with forward reference, rename parts, change
+    //
+    // referenced primary key
+    {
+        let v0 = PgVersion::new();
+        {
+            // Sorts before the referenced table
+            let aapeel = v0.table("aapeel");
+            let aapeel_hizat = aapeel.field("bananna_hizat", field_str().build());
+            let bananna = v0.table("bananna");
+            let hizat = bananna.field("hizat", field_str().build());
+            bananna.field("zomzom", field_i32().build());
+            bananna.primary_key("bananna_pk", &[&hizat]);
+            aapeel.foreign_key("aapeel_bananna", &[(&aapeel_hizat, &hizat)]);
+            let peel = v0.table("peel");
+            let peel_hizat = peel.field("bananna_hizat", field_str().build());
+            peel.field("bananna_zomzom", field_i32().build());
+            peel.foreign_key("peel_bananna", &[(&peel_hizat, &hizat)]);
+        }
+        let v1 = PgVersion::new();
+        {
+            let banana = v1.table("banana").renamed_from("bananna");
+            let hizat2 = banana.field("hizat2", field_str().build()).renamed_from("hizat");
+            banana.field("zomzom", field_i32().build());
+            banana.primary_key("banana_pk", &[&hizat2]).renamed_from("bananna_pk");
+            let peel = v1.table("peel");
+            let peel_hizat = peel.field("bananna_hizat", field_str().build());
+            peel.field("bananna_zomzom", field_i32().build());
+            peel.foreign_key("peel_bananna", &[(&peel_hizat, &hizat2)]);
+        }
+        let v2 = PgVersion::new();
+        {
+            let banana = v2.table("banana");
+            banana.field("hizat2", field_str().build());
+            let zomzom = banana.field("zomzom", field_i32().build());
+            banana.primary_key("banana_pk", &[&zomzom]);
+            let peel = v2.table("peel");
+            peel.field("bananna_hizat", field_str().build());
+            let peel_zomzom = peel.field("bananna_zomzom", field_i32().build());
+            peel.foreign_key("peel_bananna", &[(&peel_zomzom, &zomzom)]);
+        }
+        let v3 = PgVersion::new();
+        {
+            // Drop tables linked by a foreign key
+            v3.table("other").field("other", field_i32().build());
+        }
+        let v4 = PgVersion::new();
+        {
+            let banana = v4.table("banana");
+            let zomzom = banana.field("zomzom", field_i32().build());
+            banana.primary_key("banana_pk", &[&zomzom]);
+            let peel = v4.table("peel");
+            let peel_zomzom = peel.field("bananna_zomzom", field_i32().build());
+            peel.foreign_key("peel_bananna", &[(&peel_zomzom, &zomzom)]);
+        }
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_migrate_constraints".to_string()),
+            versions: vec![
+                // Versions (previous)
+                (0usize, v0.build()),
+                (1usize, v1.build()),
+                (2usize, v2.build()),
+                (3usize, v3.build()),
+                (4usize, v4.build()),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # Migrate - indices: rename parts, make unique
+    {
+        let v0 = PgVersion::new();
+        {
+            let bananna = v0.table("bananna");
+            let hizat = bananna.field("hizat", field_str().build());
+            bananna.index("bananna_hizat", &[&hizat]);
+        }
+        let v1 = PgVersion::new();
+        {
+            let banana = v1.table("banana").renamed_from("bananna");
+            let hizat2 = banana.field("hizat2", field_str().build()).renamed_from("hizat");
+            banana.index("banana_hizat2", &[&hizat2]).renamed_from("bananna_hizat");
+        }
+        let v2 = PgVersion::new();
+        {
+            let banana = v2.table("banana");
+            let hizat2 = banana.field("hizat2", field_str().build());
+            banana.unique_index("banana_hizat2", &[&hizat2]);
+        }
+        generate(GenerateArgs {
+            db_name: Some("pg_gen_migrate_indices".to_string()),
+            versions: vec![
+                // Versions (previous)
+                (0usize, v0.build()),
+                (1usize, v1.build()),
+                (2usize, v2.build()),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Migrate - add table
     {
         let v = PgVersion::new();

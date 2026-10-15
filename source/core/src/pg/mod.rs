@@ -89,6 +89,7 @@ use {
         cell::RefCell,
         collections::{
             BTreeMap,
+            BTreeSet,
             HashMap,
             HashSet,
         },
@@ -1124,6 +1125,8 @@ impl Version {
                     def: field.clone(),
                 })));
             }
+            let old_field_id =
+                |t: &Table, f: &String| t.fields.get(f).unwrap().renamed_from.clone().unwrap_or_else(|| f.clone());
             for (index_id, index) in &table.indices {
                 let mut deps = vec![table_graph_id.clone()];
                 for f in &index.fields {
@@ -1135,16 +1138,23 @@ impl Version {
                         table_id: table_id.clone(),
                         table_renamed_from: table_renamed_from.clone(),
                         def: index.clone(),
+                        fields_old_ids: index.fields.iter().map(|f| old_field_id(table, f)).collect(),
                     })),
                 );
             }
             for (constraint_id, constraint) in &table.constraints {
                 let mut deps = vec![table_graph_id.clone()];
+                let type_old_ids;
+                let mut remote_keys = vec![];
                 match &constraint.type_ {
                     ConstraintType::PrimaryKey(x) => {
                         for f in &x.fields {
                             deps.push(GraphId::Field(table_id.clone(), f.clone()));
                         }
+                        type_old_ids =
+                            ConstraintType::PrimaryKey(
+                                PrimaryKeyDef { fields: x.fields.iter().map(|f| old_field_id(table, f)).collect() },
+                            );
                     },
                     ConstraintType::ForeignKey(x) => {
                         deps.push(GraphId::Table(x.remote_table.clone()));
@@ -1152,6 +1162,37 @@ impl Version {
                             deps.push(GraphId::Field(table_id.clone(), l.clone()));
                             deps.push(GraphId::Field(x.remote_table.clone(), r.clone()));
                         }
+                        let remote_table = self.tables.get(&x.remote_table).unwrap();
+
+                        // Postgres requires a unique constraint or index on the referenced fields
+                        let remote_fields = x.fields.iter().map(|(_, r)| r).collect::<BTreeSet<_>>();
+                        for (remote_constraint_id, remote_constraint) in &remote_table.constraints {
+                            if let ConstraintType::PrimaryKey(pk) = &remote_constraint.type_ {
+                                if pk.fields.iter().collect::<BTreeSet<_>>() == remote_fields {
+                                    remote_keys.push(
+                                        GraphId::Constraint(x.remote_table.clone(), remote_constraint_id.clone()),
+                                    );
+                                }
+                            }
+                        }
+                        for (remote_index_id, remote_index) in &remote_table.indices {
+                            if remote_index.unique &&
+                                remote_index.fields.iter().collect::<BTreeSet<_>>() == remote_fields {
+                                remote_keys.push(GraphId::Index(x.remote_table.clone(), remote_index_id.clone()));
+                            }
+                        }
+                        deps.extend(remote_keys.iter().cloned());
+                        type_old_ids = ConstraintType::ForeignKey(ForeignKeyDef {
+                            fields: x
+                                .fields
+                                .iter()
+                                .map(|(l, r)| (old_field_id(table, l), old_field_id(remote_table, r)))
+                                .collect(),
+                            remote_table: remote_table
+                                .renamed_from
+                                .clone()
+                                .unwrap_or_else(|| x.remote_table.clone()),
+                        });
                     },
                 }
                 out.insert(
@@ -1160,6 +1201,8 @@ impl Version {
                         table_id: table_id.clone(),
                         table_renamed_from: table_renamed_from.clone(),
                         def: constraint.clone(),
+                        type_old_ids: type_old_ids,
+                        remote_keys: remote_keys,
                     })),
                 );
             }

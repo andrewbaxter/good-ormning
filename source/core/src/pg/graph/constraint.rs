@@ -1,7 +1,10 @@
 use {
     crate::{
         graphmigrate::Comparison,
-        pg::schema::constraint::Constraint,
+        pg::schema::constraint::{
+            Constraint,
+            ConstraintType,
+        },
         utils::Tokens,
     },
     std::collections::HashSet,
@@ -19,14 +22,21 @@ pub struct NodeConstraint_ {
     pub def: Constraint,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
+    /// `def.type_` with table and field ids replaced by their pre-rename ids, for
+    /// comparing with the previous version.
+    pub type_old_ids: ConstraintType,
+    /// For foreign keys, the remote unique constraints and indices backing it. The
+    /// foreign key must be dropped before and added after these.
+    pub remote_keys: Vec<GraphId>,
 }
 
 impl NodeConstraint_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.table_id != old.table_id ||
-            self.def.id != old.def.id ||
-            self.def.type_ != old.def.type_ {
+        if created.contains(&GraphId::Table(self.table_id.clone())) || self.type_old_ids != old.def.type_ ||
+            self.remote_keys.iter().any(|k| created.contains(k)) {
             Comparison::Recreate
+        } else if self.def.id != old.def.id {
+            Comparison::Update
         } else {
             Comparison::DoNothing
         }
@@ -34,7 +44,19 @@ impl NodeConstraint_ {
 }
 
 impl NodeData for NodeConstraint_ {
-    fn update(&self, _ctx: &mut PgMigrateCtx, _old: &Self) { }
+    fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
+        if self.def.id != old.def.id {
+            let mut stmt = Tokens::new();
+            stmt
+                .s("alter table")
+                .id(&self.table_id)
+                .s("rename constraint")
+                .id(&old.def.id)
+                .s("to")
+                .id(&self.def.id);
+            ctx.statements.push(stmt.to_string());
+        }
+    }
 }
 
 impl NodeDataDispatch for NodeConstraint_ {
@@ -42,7 +64,7 @@ impl NodeDataDispatch for NodeConstraint_ {
         let mut stmt = Tokens::new();
         stmt.s("alter table").id(&self.table_id).s("add constraint").id(&self.def.id);
         match &self.def.type_ {
-            crate::pg::schema::constraint::ConstraintType::PrimaryKey(x) => {
+            ConstraintType::PrimaryKey(x) => {
                 stmt.s("primary key (");
                 for (i, f_id) in x.fields.iter().enumerate() {
                     if i > 0 {
@@ -52,7 +74,7 @@ impl NodeDataDispatch for NodeConstraint_ {
                 }
                 stmt.s(")");
             },
-            crate::pg::schema::constraint::ConstraintType::ForeignKey(x) => {
+            ConstraintType::ForeignKey(x) => {
                 stmt.s("foreign key (");
                 for (i, (l_id, _)) in x.fields.iter().enumerate() {
                     if i > 0 {

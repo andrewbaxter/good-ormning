@@ -1,19 +1,33 @@
 #[cfg(test)]
 mod test {
-    use super::{
-        GenerateArgs,
-        Version,
-        generate,
-        query::expr::SerialExpr,
-        schema::field::{
-            field_auto,
-            field_i32,
-            field_str,
+    use {
+        good_ormning_core::QueryResCount,
+        super::{
+            GenerateArgs,
+            Version,
+            generate,
+            new_insert,
+            new_select,
+            query::expr::{
+                Expr,
+                SerialExpr,
+            },
+            schema::field::{
+                field_auto,
+                field_i32,
+                field_str,
+            },
         },
     };
 
+    fn assert_generate_err(args: GenerateArgs, err_text: &str) {
+        std::env::set_var("OUT_DIR", std::env::temp_dir().join("good_ormning_unit_tests"));
+        let errs = generate(args).unwrap_err();
+        assert!(errs.iter().any(|e| e.contains(err_text)), "{:?}", errs);
+    }
+
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "already exists on table")]
     fn test_add_field_dup_bad() {
         generate(GenerateArgs {
             db_name: None,
@@ -28,7 +42,7 @@ mod test {
                     let v = Version::new();
                     let bananna = v.table("bananna");
                     bananna.field("hizat", field_str().build());
-                    bananna.field("zomzom", field_i32().build());
+                    bananna.field("hizat", field_i32().build());
                     v.build()
                 }),
             ],
@@ -38,8 +52,8 @@ mod test {
 
     #[test]
     fn test_add_field_serial_bad() {
-        assert!(generate(GenerateArgs {
-            db_name: None,
+        assert_generate_err(GenerateArgs {
+            db_name: Some("test_add_field_serial_bad".to_string()),
             versions: vec![
                 // Versions (previous)
                 (0usize, {
@@ -51,16 +65,16 @@ mod test {
                     let v = Version::new();
                     let bananna = v.table("bananna");
                     bananna.field("hizat", field_str().build());
-                    bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build(),);
+                    bananna.field("zomzom", field_auto().migrate_fill(SerialExpr::LitAuto(0)).build());
                     v.build()
                 }),
             ],
             ..Default::default()
-        }).is_err());
+        }, "Auto (serial) fields can't be added after table creation");
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "already exists")]
     fn test_add_table_dup_bad() {
         generate(GenerateArgs {
             db_name: None,
@@ -86,35 +100,40 @@ mod test {
     fn test_res_count_none_bad() {
         let v = Version::new();
         let bananna = v.table("bananna");
-        bananna.field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
+        let hizat = bananna.field("hizat", field_str().build());
+        assert_generate_err(GenerateArgs {
+            db_name: Some("test_res_count_none_bad".to_string()),
             versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
+            queries: vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
+        }, "Query has returning values but result count is None");
     }
 
     #[test]
     fn test_returning_none_bad() {
         let v = Version::new();
         let bananna = v.table("bananna");
-        bananna.field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
+        let hizat = bananna.field("hizat", field_str().build());
+        assert_generate_err(GenerateArgs {
+            db_name: Some("test_returning_none_bad".to_string()),
             versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
+            queries: vec![
+                new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
+                    .return_field(&hizat)
+                    .build_query("x", QueryResCount::None),
+            ],
+        }, "Query has returning values but result count is None");
     }
 
     #[test]
     fn test_select_nothing_bad() {
         let v = Version::new();
-        v.table("bananna").field("hizat", field_str().build());
-        assert!(generate(GenerateArgs {
-            db_name: None,
+        let bananna = v.table("bananna");
+        bananna.field("hizat", field_str().build());
+        assert_generate_err(GenerateArgs {
+            db_name: Some("test_select_nothing_bad".to_string()),
             versions: vec![(0usize, v.build())],
-            ..Default::default()
-        }).is_err());
+            queries: vec![new_select(&bananna).build_query("x", QueryResCount::None)],
+        }, "Select must have at least one output");
     }
 }
 

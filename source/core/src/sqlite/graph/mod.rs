@@ -3,6 +3,8 @@ pub mod field;
 pub mod index;
 pub mod table;
 pub mod utils;
+#[cfg(test)]
+mod test;
 
 pub use self::utils::SqliteMigrateCtx;
 use {

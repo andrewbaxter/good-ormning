@@ -549,6 +549,77 @@ pub fn build() {
         }).unwrap();
     }
 
+    // # Migrate - indices: rename parts, make unique
+    {
+        let v0 = SqliteVersion::new();
+        {
+            let bananna = v0.table("bananna");
+            let hizat = bananna.field("hizat", field_str().build());
+            bananna.index("bananna_hizat", &[&hizat]);
+        }
+        let v1 = SqliteVersion::new();
+        {
+            let banana = v1.table("banana").renamed_from("bananna");
+            let hizat2 = banana.field("hizat2", field_str().build()).renamed_from("hizat");
+            banana.index("banana_hizat2", &[&hizat2]).renamed_from("bananna_hizat");
+        }
+        let v2 = SqliteVersion::new();
+        {
+            let banana = v2.table("banana");
+            let hizat2 = banana.field("hizat2", field_str().build());
+            banana.unique_index("banana_hizat2", &[&hizat2]);
+        }
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_indices".to_string()),
+            versions: vec![
+                // Versions (previous)
+                (0usize, v0.build()),
+                (1usize, v1.build()),
+                (2usize, v2.build()),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
+    // # Migrate - change primary key by rebuilding table
+    {
+        let v0 = SqliteVersion::new();
+        {
+            let bananna = v0.table("bananna");
+            let hizat = bananna.field("hizat", field_str().build());
+            bananna.field("zomzom", field_i32().build());
+            bananna.primary_key("bananna_pk", &[&hizat]);
+        }
+        let v1 = SqliteVersion::new();
+        {
+            let bananna = v1.table("bananna");
+            let hizat = bananna.field("hizat", field_str().build());
+            bananna.field("zomzom", field_i32().build());
+            bananna.primary_key("bananna_pk", &[&hizat]);
+            let bananna_new = v1.table("bananna_new");
+            bananna_new.field("hizat", field_str().build());
+            let zomzom = bananna_new.field("zomzom", field_i32().build());
+            bananna_new.primary_key("bananna_pk", &[&zomzom]);
+        }
+        let v2 = SqliteVersion::new();
+        {
+            let bananna = v2.table("bananna").renamed_from("bananna_new");
+            bananna.field("hizat", field_str().build());
+            let zomzom = bananna.field("zomzom", field_i32().build());
+            bananna.primary_key("bananna_pk", &[&zomzom]);
+        }
+        generate(GenerateArgs {
+            db_name: Some("sqlite_gen_migrate_rebuild_table".to_string()),
+            versions: vec![
+                // Versions (previous)
+                (0usize, v0.build()),
+                (1usize, v1.build()),
+                (2usize, v2.build()),
+            ],
+            ..Default::default()
+        }).unwrap();
+    }
+
     // # Migrate - rename field
     {
         let v = SqliteVersion::new();

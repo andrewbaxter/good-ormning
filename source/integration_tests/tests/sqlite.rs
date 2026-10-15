@@ -908,6 +908,110 @@ fn test_migrate_remove_table() -> Result<(), loga::Error> {
 }
 
 #[test]
+fn test_migrate_indices() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_migrate_indices");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, None)?;
+    good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_migrate_indices",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "banana" ("hizat2")
+           values
+             ('a')
+           "#;
+        &mut db
+    )?;
+
+    // Index is unique
+    assert!(good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_migrate_indices",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "banana" ("hizat2")
+           values
+             ('a')
+           "#;
+        &mut db
+    ).is_err());
+    Ok(())
+}
+
+#[test]
+fn test_migrate_rebuild_table() -> Result<(), loga::Error> {
+    good_module!(dbm, "sqlite_gen_migrate_rebuild_table");
+    let db = rusqlite::Connection::open_in_memory()?;
+    let mut db = dbm::migrate(db, Some(&|v| {
+        match v {
+            dbm::DbSqliteGenMigrateRebuildTableVersions::V0(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_migrate_rebuild_table",
+                    0,
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "bananna" ("hizat", "zomzom")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                )?;
+            },
+            dbm::DbSqliteGenMigrateRebuildTableVersions::V1(db) => {
+                good_ormning::sqlite::good_query!(
+                    dbm,
+                    "sqlite_gen_migrate_rebuild_table",
+                    1,
+                    //# genemichaels-external: sql-formatter-sqlite
+                    r#"insert into
+                         "bananna_new" ("hizat", "zomzom")
+                       select
+                         "bananna"."hizat",
+                         "bananna"."zomzom"
+                       from
+                         "bananna"
+                       "#;
+                    db
+                )?;
+            },
+            _ => { },
+        }
+        Ok(())
+    }))?;
+    let rows = good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_migrate_rebuild_table",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"select
+             "bananna"."hizat" as "hizat",
+             "bananna"."zomzom" as "zomzom"
+           from
+             "bananna"
+           "#;
+        &mut db
+    )?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(&rows[0].hizat, "a");
+    assert_eq!(rows[0].zomzom, 1);
+
+    // New primary key is enforced
+    assert!(good_ormning::sqlite::good_query!(
+        dbm,
+        "sqlite_gen_migrate_rebuild_table",
+        //# genemichaels-external: sql-formatter-sqlite
+        r#"insert into
+             "bananna" ("hizat", "zomzom")
+           values
+             ('b', 1)
+           "#;
+        &mut db
+    ).is_err());
+    Ok(())
+}
+
+#[test]
 fn test_migrate_rename_field() -> Result<(), loga::Error> {
     good_module!(dbm, "sqlite_gen_migrate_rename_field");
     let db = rusqlite::Connection::open_in_memory()?;

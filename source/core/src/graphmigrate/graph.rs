@@ -36,9 +36,11 @@ impl<T> Graph<T> {
     }
 
     pub fn reverse_edges(&mut self) {
-        let mut replace = BTreeMap::new();
-        for (k, v) in &mut self.edges {
-            replace.insert(*k, v.split_off(0));
+        let mut replace: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for (a, bs) in &self.edges {
+            for b in bs {
+                replace.entry(*b).or_default().push(*a);
+            }
         }
         self.edges = replace;
     }

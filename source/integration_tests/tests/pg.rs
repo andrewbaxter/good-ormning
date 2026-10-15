@@ -528,6 +528,126 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
 }
 
 #[tokio::test]
+async fn test_migrate_constraints() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_migrate_constraints");
+    let (db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, Some(&|v| Box::pin(async move {
+        match v {
+            dbm::DbPgGenMigrateConstraintsVersions::V0(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_migrate_constraints",
+                    0,
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "bananna" ("hizat", "zomzom")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                ).await?;
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_migrate_constraints",
+                    0,
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "peel" ("bananna_hizat", "bananna_zomzom")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                ).await?;
+            },
+            dbm::DbPgGenMigrateConstraintsVersions::V2(db) => {
+                good_ormning::pg::good_query!(
+                    dbm,
+                    "pg_gen_migrate_constraints",
+                    2,
+                    //# genemichaels-external: sql-formatter-pg
+                    r#"insert into
+                         "peel" ("bananna_hizat", "bananna_zomzom")
+                       values
+                         ('a', 1)
+                       "#;
+                    db
+                ).await?;
+            },
+            _ => { },
+        }
+        Ok(())
+    }))).await?;
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_migrate_constraints",
+        //# genemichaels-external: sql-formatter-pg
+        r#"insert into
+             "banana" ("zomzom")
+           values
+             (2)
+           "#;
+        &mut db
+    ).await?;
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_migrate_constraints",
+        //# genemichaels-external: sql-formatter-pg
+        r#"insert into
+             "peel" ("bananna_zomzom")
+           values
+             (2)
+           "#;
+        &mut db
+    ).await?;
+
+    // Foreign key is enforced
+    assert!(good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_migrate_constraints",
+        //# genemichaels-external: sql-formatter-pg
+        r#"insert into
+             "peel" ("bananna_zomzom")
+           values
+             (3)
+           "#;
+        &mut db
+    ).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_indices() -> Result<(), loga::Error> {
+    good_module!(dbm, "pg_gen_migrate_indices");
+    let (db, _cont) = db().await?;
+    let mut db = dbm::migrate(db, None).await?;
+    good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_migrate_indices",
+        //# genemichaels-external: sql-formatter-pg
+        r#"insert into
+             "banana" ("hizat2")
+           values
+             ('a')
+           "#;
+        &mut db
+    ).await?;
+
+    // Index is unique
+    assert!(good_ormning::pg::good_query!(
+        dbm,
+        "pg_gen_migrate_indices",
+        //# genemichaels-external: sql-formatter-pg
+        r#"insert into
+             "banana" ("hizat2")
+           values
+             ('a')
+           "#;
+        &mut db
+    ).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_migrate_add_table() -> Result<(), loga::Error> {
     good_module!(dbm, "pg_gen_migrate_add_table");
     let (db, _cont) = db().await?;

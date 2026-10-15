@@ -2,7 +2,10 @@ use {
     crate::{
         graphmigrate::Comparison,
         pg::{
-            schema::table::Table,
+            schema::{
+                constraint::ConstraintType,
+                table::Table,
+            },
             types::to_sql_type,
         },
         utils::Tokens,
@@ -59,13 +62,20 @@ impl NodeDataDispatch for NodeTable_ {
             }
         }
         for c in self.def.constraints.values() {
+            // Foreign keys to other tables are added separately, after the remote table is
+            // created
+            if let ConstraintType::ForeignKey(x) = &c.type_ {
+                if x.remote_table != self.table_id {
+                    continue;
+                }
+            }
             if !first {
                 stmt.s(",");
             }
             first = false;
             stmt.s("constraint").id(&c.id);
             match &c.type_ {
-                crate::pg::schema::constraint::ConstraintType::PrimaryKey(x) => {
+                ConstraintType::PrimaryKey(x) => {
                     stmt.s("primary key (");
                     for (i, f_id) in x.fields.iter().enumerate() {
                         if i > 0 {
@@ -75,7 +85,7 @@ impl NodeDataDispatch for NodeTable_ {
                     }
                     stmt.s(")");
                 },
-                crate::pg::schema::constraint::ConstraintType::ForeignKey(x) => {
+                ConstraintType::ForeignKey(x) => {
                     stmt.s("foreign key (");
                     for (i, (l_id, _)) in x.fields.iter().enumerate() {
                         if i > 0 {
@@ -119,7 +129,12 @@ impl NodeDataDispatch for NodeTable_ {
             Node::Field(f) if f.table_id == self.table_id => {
                 None
             },
-            Node::Constraint(c) if c.table_id == self.table_id => {
+            // Foreign keys to other tables are added separately, after the remote table is
+            // created
+            Node::Constraint(c) if c.table_id == self.table_id && match &c.def.type_ {
+                ConstraintType::PrimaryKey(_) => true,
+                ConstraintType::ForeignKey(x) => x.remote_table == self.table_id,
+            } => {
                 self.def.constraints.insert(c.def.id.clone(), c.def.clone());
                 None
             },
@@ -138,7 +153,12 @@ impl NodeDataDispatch for NodeTable_ {
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         match other {
             Node::Field(f) if f.table_id == self.table_id => None,
-            Node::Constraint(e) if e.table_id == self.table_id => None,
+            // Foreign keys to other tables are dropped separately, before the remote table is
+            // dropped
+            Node::Constraint(e) if e.table_id == self.table_id && match &e.def.type_ {
+                ConstraintType::PrimaryKey(_) => true,
+                ConstraintType::ForeignKey(x) => x.remote_table == self.table_id,
+            } => None,
             Node::Index(e) if e.table_id == self.table_id => None,
             other => Some(other),
         }

@@ -19,13 +19,18 @@ pub struct NodeIndex_ {
     pub def: Index,
     pub table_id: String,
     pub table_renamed_from: Option<String>,
+    /// `def.fields` with field ids replaced by their pre-rename ids, for comparing
+    /// with the previous version.
+    pub fields_old_ids: Vec<String>,
 }
 
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.table_id != old.table_id ||
-            self.def.id != old.def.id ||
-            self.def.fields != old.def.fields {
+        // The old node is looked up through renames, so table renames don't matter.
+        // Sqlite can't rename indices so they're recreated.
+        if created.contains(&GraphId::Table(self.table_id.clone())) || self.def.id != old.def.id ||
+            self.def.unique != old.def.unique ||
+            self.fields_old_ids != old.def.fields {
             Comparison::Recreate
         } else {
             Comparison::DoNothing
