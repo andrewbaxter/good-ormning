@@ -1,4 +1,5 @@
 pub mod graphmigrate;
+pub mod mariadb;
 pub mod pg;
 pub mod sqlite;
 pub mod utils;

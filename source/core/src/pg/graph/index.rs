@@ -27,14 +27,14 @@ pub struct NodeIndex_ {
 impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
         // The old node is looked up through renames, so table renames don't matter
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.def.unique != old.def.unique ||
+        return if created.contains(&GraphId::Table(self.table_id.clone())) || self.def.unique != old.def.unique ||
             self.fields_old_ids != old.def.fields {
             Comparison::Recreate
         } else if self.def.id != old.def.id {
             Comparison::Update
         } else {
             Comparison::DoNothing
-        }
+        };
     }
 }
 
@@ -67,7 +67,7 @@ impl NodeDataDispatch for NodeIndex_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -75,6 +75,6 @@ impl NodeDataDispatch for NodeIndex_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 }

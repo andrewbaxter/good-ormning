@@ -82,7 +82,10 @@ async fn test_import_pg() {
     ] {
         client.simple_query(stmt).await.unwrap();
     }
-    let version = pg::read_schema(&client).await.unwrap();
+    let (version, failures) = pg::read_schema(&client, false).await.unwrap();
+    assert_eq!(failures.len(), 2, "{:?}", failures);
+    assert!(failures.iter().any(|f| f.contains("idx_posts_expr")), "{:?}", failures);
+    assert!(failures.iter().any(|f| f.contains("idx_posts_partial")), "{:?}", failures);
 
     // Verify tables
     assert!(version.tables.contains_key("users"), "missing users table");
@@ -145,6 +148,22 @@ async fn test_import_pg() {
 
     // Unsupported types produce an error naming the column
     client.simple_query("CREATE TABLE events (id bigserial PRIMARY KEY, at timestamptz NOT NULL)").await.unwrap();
-    let err = pg::read_schema(&client).await.err().expect("timestamptz column should fail to import").to_string();
-    assert!(err.contains("\"at\"") && err.contains("\"events\"") && err.contains("timestamptz"), "{}", err);
+    client.simple_query("CREATE TABLE events2 (id bigserial PRIMARY KEY, at timestamp NOT NULL)").await.unwrap();
+    let (version, failures) = pg::read_schema(&client, false).await.unwrap();
+    assert_eq!(
+        version.tables["events"].fields["at"].type_.type_.type_.type_,
+        good_ormning_core::pg::types::SimpleSimpleType::UtcTimeMsJiff
+    );
+    assert!(!version.tables["events2"].fields.contains_key("at"));
+    assert_eq!(failures.len(), 3, "{:?}", failures);
+    assert!(
+        failures.iter().any(|f| f.contains("\"at\"") && f.contains("\"events2\"") && f.contains("timestamp")),
+        "{:?}",
+        failures
+    );
+    let (version, _) = pg::read_schema(&client, true).await.unwrap();
+    assert_eq!(
+        version.tables["events"].fields["at"].type_.type_.type_.type_,
+        good_ormning_core::pg::types::SimpleSimpleType::UtcTimeMsChrono
+    );
 }

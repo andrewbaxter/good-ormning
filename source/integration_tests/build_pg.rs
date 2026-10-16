@@ -1,8 +1,6 @@
 use good_ormning::{
     PgFieldTypeBuilder as FieldTypeBuilder,
-    PgType as Type,
     pg::{
-        FieldHandle,
         Version as PgVersion,
         generate,
         GenerateArgs,
@@ -653,7 +651,24 @@ pub fn build() {
         let hizat2 = bananna.field("hizat2", field_i32().build());
         let mut hibbo_builder =
             CteBuilder::new("hibbo", Box::new(new_select_body(&bananna).return_field(&hizat2).build()));
-        hibbo_builder.field("zathi", get_type(&hizat2));
+        let zathi_type =
+            hizat2
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&hizat2.table.id)
+                .unwrap()
+                .fields
+                .get(&hizat2.id)
+                .unwrap()
+                .type_
+                .type_
+                .clone();
+        hibbo_builder.field("zathi", zathi_type);
         hibbo_builder.build();
         generate(GenerateArgs {
             db_name: Some("pg_gen_select_cte".to_string()),
@@ -867,6 +882,7 @@ pub fn build() {
         u.field("t_id", field_i64().opt().build());
         generate(GenerateArgs {
             db_name: Some("pg_gen_fixes".to_string()),
+            default_time_library: Some(good_ormning::utils::TimeLibrary::Chrono),
             versions: vec![(1usize, v.build())],
             ..Default::default()
         }).unwrap();
@@ -885,9 +901,4 @@ pub fn build() {
             ..Default::default()
         }).unwrap();
     }
-}
-
-fn get_type(f: &FieldHandle) -> Type {
-    let version = f.table.version.0.borrow();
-    version.as_ref().unwrap().tables.get(&f.table.id).unwrap().fields.get(&f.id).unwrap().type_.type_.clone()
 }

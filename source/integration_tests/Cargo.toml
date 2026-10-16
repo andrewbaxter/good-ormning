@@ -13,6 +13,7 @@ tokio = { version = ">=0", features = ["macros", "rt"] }
     "chrono",
     "pg",
     "sqlite",
+    "mariadb",
     "jiff",
     "import",
     "deadpool",
@@ -34,7 +35,13 @@ deadpool-sqlite = { version = "0.12", features = ["rt_tokio_1"] }
 syn = { version = "2", features = ["full"] }
 
 [build-dependencies]
-"good-ormning" = { path = "..", features = ["chrono", "jiff", "pg", "sqlite"] }
+"good-ormning" = { path = "..", features = [
+    "chrono",
+    "jiff",
+    "pg",
+    "sqlite",
+    "mariadb",
+] }
 flowcontrol = ">=0"
 
 [lints.clippy]

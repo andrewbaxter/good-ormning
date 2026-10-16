@@ -43,7 +43,7 @@ pub struct SimpleType {
 }
 
 pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
-    match t {
+    return match t {
         SimpleSimpleType::Auto => RustTypes {
             ret_type: quote!(i64),
             arg_type: quote!(i64),
@@ -124,11 +124,11 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             arg_type: quote!(jiff::Timestamp),
             custom_trait: quote!(good_ormning::runtime::sqlite::GoodOrmningCustomUtcTimeJiff),
         },
-    }
+    };
 }
 
 pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
-    match t {
+    return match t {
         SimpleSimpleType::Auto => "integer",
         SimpleSimpleType::I16 => "integer",
         SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 => "integer",
@@ -149,7 +149,7 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::UtcTimeSJiff => "integer",
         #[cfg(feature = "jiff")]
         SimpleSimpleType::UtcTimeMsJiff => "text",
-    }
+    };
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

@@ -378,6 +378,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             args.queries,
             "",
             quote!(#latest_newtype_name < impl good_ormning:: runtime:: sqlite:: SqliteConnection, >),
+            None,
         );
     let tokens = quote!{
         pub const DB_NAME: & str = #db_name;
@@ -562,7 +563,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         },
     };
     errs.raise()?;
-    Ok(())
+    return Ok(());
 }
 
 pub struct GenerateArgs {
@@ -582,10 +583,10 @@ pub struct GenerateArgs {
 
 impl Default for GenerateArgs {
     fn default() -> Self {
-        Self {
+        return Self {
             db_name: None,
             versions: vec![],
             queries: vec![],
-        }
+        };
     }
 }

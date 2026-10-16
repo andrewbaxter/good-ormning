@@ -18,11 +18,11 @@ pub struct SqliteMigrateCtx {
 
 impl SqliteMigrateCtx {
     pub fn new(errs: Errs, table_sql_names: HashMap<String, String>, version: Version) -> Self {
-        Self {
+        return Self {
             errs: errs,
             statements: vec![],
             table_sql_names: table_sql_names,
             version: version,
-        }
+        };
     }
 }

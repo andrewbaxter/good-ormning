@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build rust-ai-lint
+        run: |
+          nix-build https://github.com/andrewbaxter/rust-ai-lint/archive/master.tar.gz \
+            --arg pkgs 'import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/d58a46e3bc02d91ebe04667f8397752a749c0024.tar.gz") { }' \
+            -o "$RUNNER_TEMP/rust-ai-lint"
+      - name: Lint
+        run: |
+          "$RUNNER_TEMP/rust-ai-lint/bin/rust-ai-lint" --all-features
+          # the linter fixes formatting in place instead of reporting it
+          git diff --exit-code
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      GOOD_ORMNING_TEST_MARIADB_URL: mysql://root@127.0.0.1:3306
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: source
+      - name: Test
+        working-directory: source
+        run: cargo test --workspace --all-features

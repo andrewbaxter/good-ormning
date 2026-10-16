@@ -1,7 +1,12 @@
 use {
     proc_macro2::TokenStream,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     std::{
         cell::RefCell,
+        collections::HashMap,
         fmt,
         rc::Rc,
     },
@@ -36,7 +41,7 @@ impl Errs {
         if !errs.is_empty() {
             return Err(errs);
         }
-        Ok(())
+        return Ok(());
     }
 }
 
@@ -58,6 +63,38 @@ pub fn rs_file_name(db_name: &str) -> String {
     format!("good_ormning_{}.rs", db_name)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum TimeLibrary {
+    #[cfg(feature = "chrono")]
+    Chrono,
+    #[cfg(feature = "jiff")]
+    Jiff,
+}
+
+pub fn time_library(setting: Option<TimeLibrary>) -> Result<Option<TimeLibrary>, String> {
+    if setting.is_some() {
+        return Ok(setting);
+    }
+    let enabled: Vec<TimeLibrary> = vec![
+        #[cfg(feature = "chrono")]
+        TimeLibrary::Chrono,
+        #[cfg(feature = "jiff")]
+        TimeLibrary::Jiff,
+    ];
+    if enabled.len() > 1 {
+        return Err(
+            "Both the `chrono` and `jiff` features are enabled, so set `default_time_library` in `GenerateArgs` to choose the Rust type of untyped dates and times (like `now()`)".to_string(),
+        );
+    }
+    return Ok(enabled.into_iter().next());
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SchemaFile<V> {
+    pub default_time_library: Option<TimeLibrary>,
+    pub versions: HashMap<usize, V>,
+}
+
 pub struct RustTypes {
     pub arg_type: TokenStream,
     pub custom_trait: TokenStream,
@@ -65,7 +102,7 @@ pub struct RustTypes {
 }
 
 pub fn sanitize_ident(v: &str) -> (bool, String) {
-    match v {
+    return match v {
         "as" |
         "break" |
         "const" |
@@ -121,35 +158,54 @@ pub fn sanitize_ident(v: &str) -> (bool, String) {
             format!("{}_", v),
         ),
         s => (false, s.into()),
-    }
+    };
 }
 
-pub struct Tokens(String);
+pub struct Tokens {
+    out: String,
+    quote: char,
+}
 
 impl Tokens {
     pub fn f(&mut self, f: impl FnOnce(&mut Self)) -> &mut Self {
         f(self);
-        self
+        return self;
     }
 
     pub fn id(&mut self, i: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
+        if !self.out.is_empty() {
+            self.out.push(' ');
         }
-        self.0.push_str(&format!("\"{}\"", i));
-        self
+        self.out.push(self.quote);
+        if self.quote == '`' {
+            self.out.push_str(&i.replace('`', "``"));
+        } else {
+            self.out.push_str(i);
+        }
+        self.out.push(self.quote);
+        return self;
     }
 
     pub fn new() -> Tokens {
-        return Tokens(String::new());
+        return Tokens {
+            out: String::new(),
+            quote: '"',
+        };
+    }
+
+    pub fn new_mariadb() -> Tokens {
+        return Tokens {
+            out: String::new(),
+            quote: '`',
+        };
     }
 
     pub fn s(&mut self, s: &str) -> &mut Self {
-        if !self.0.is_empty() {
-            self.0.push(' ');
+        if !self.out.is_empty() {
+            self.out.push(' ');
         }
-        self.0.push_str(s);
-        self
+        self.out.push_str(s);
+        return self;
     }
 }
 
@@ -161,6 +217,6 @@ impl Default for Tokens {
 
 impl fmt::Display for Tokens {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        return f.write_str(&self.0);
+        return f.write_str(&self.out);
     }
 }

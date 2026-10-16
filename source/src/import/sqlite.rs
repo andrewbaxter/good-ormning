@@ -43,27 +43,11 @@ fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
     };
 }
 
-fn map_type(type_str: &str) -> Option<SimpleSimpleType> {
-    let t = type_str.to_lowercase();
-    if t.contains("real") || t.contains("floa") || t.contains("doub") {
-        return Some(SimpleSimpleType::F64);
-    } else if t.contains("bool") {
-        return Some(SimpleSimpleType::Bool);
-    } else if t.contains("blob") || t.is_empty() {
-        return Some(SimpleSimpleType::Bytes);
-    } else if t.contains("char") || t.contains("clob") || t.contains("text") {
-        return Some(SimpleSimpleType::String);
-    } else if t.contains("int") {
-        return Some(SimpleSimpleType::I64);
-    } else {
-        return None;
-    }
-}
-
 /// Read the current schema from a SQLite connection, returning a `Version` using
 /// the existing good-ormning schema model. Internal field IDs match SQL column
 /// names, except for rowid-alias columns which use the field ID `"rowid"`.
-pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
+pub fn read_schema(conn: &Connection) -> Result<(Version, Vec<String>), loga::Error> {
+    let mut failures = vec![];
     let table_names: Vec<String> = {
         let mut stmt = conn.prepare(
             //# genemichaels-external: sql-formatter-sqlite
@@ -129,12 +113,12 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             ).context("Preparing table_info")?;
             let mut out = vec![];
             let rows = stmt.query_map([table_name], |r| {
-                Ok(ColInfo {
+                return Ok(ColInfo {
                     name: r.get(0)?,
                     type_str: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
                     notnull: r.get::<_, i64>(2)? != 0,
                     pk_pos: r.get::<_, i64>(3)?,
-                })
+                });
             }).context("Querying table_info")?;
             for row in rows {
                 out.push(row.map_err(loga::err).context("Reading row from table_info")?);
@@ -178,20 +162,27 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     );
                 }
                 let field_id = col.name.clone();
-                let sst = match map_type(&col.type_str) {
-                    Some(sst) => sst,
-                    None => {
-                        return Err(
-                            loga::err(
-                                format!(
-                                    "Column {:?} of table {:?} has unsupported SQL type {:?}",
-                                    col.name,
-                                    table_name,
-                                    col.type_str
-                                ),
-                            ),
-                        );
-                    },
+                let t = col.type_str.to_lowercase();
+                let sst = if t.contains("real") || t.contains("floa") || t.contains("doub") {
+                    SimpleSimpleType::F64
+                } else if t.contains("bool") {
+                    SimpleSimpleType::Bool
+                } else if t.contains("blob") || t.is_empty() {
+                    SimpleSimpleType::Bytes
+                } else if t.contains("char") || t.contains("clob") || t.contains("text") {
+                    SimpleSimpleType::String
+                } else if t.contains("int") {
+                    SimpleSimpleType::I64
+                } else {
+                    failures.push(
+                        format!(
+                            "Column {:?} of table {:?} has unsupported SQL type {:?}",
+                            col.name,
+                            table_name,
+                            col.type_str
+                        ),
+                    );
+                    continue;
                 };
                 fields.insert(field_id.clone(), Field {
                     id: col.name.clone(),
@@ -230,13 +221,13 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
             ).context("Preparing foreign_key_list")?;
             let mut out = vec![];
             let rows = stmt.query_map([table_name], |r| {
-                Ok(RawFk {
+                return Ok(RawFk {
                     fk_id: r.get(0)?,
                     seq: r.get(1)?,
                     remote_table: r.get(2)?,
                     local_col: r.get(3)?,
                     remote_col: r.get(4)?,
-                })
+                });
             }).context("Querying foreign_key_list")?;
             for row in rows {
                 out.push(row.map_err(loga::err).context("Reading row from foreign_key_list")?);
@@ -270,12 +261,12 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                 ).context("Preparing index_list")?;
                 let mut out = vec![];
                 let rows = stmt.query_map([table_name], |r| {
-                    Ok(IdxEntry {
+                    return Ok(IdxEntry {
                         name: r.get(0)?,
                         unique: r.get::<_, i64>(1)? != 0,
                         origin: r.get(2)?,
                         partial: r.get::<_, i64>(3)? != 0,
-                    })
+                    });
                 }).context("Querying index_list")?;
                 for row in rows {
                     out.push(row.map_err(loga::err).context("Reading row from index_list")?);
@@ -287,10 +278,12 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     continue;
                 }
                 if entry.partial {
-                    eprintln!(
-                        "Warning: skipping index {:?} on table {:?}: partial indexes (WHERE) are not supported",
-                        entry.name,
-                        table_name
+                    failures.push(
+                        format!(
+                            "Index {:?} on table {:?}: partial indexes (WHERE) are not supported",
+                            entry.name,
+                            table_name
+                        ),
                     );
                     continue;
                 }
@@ -320,10 +313,12 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                     out
                 };
                 if col_names.iter().any(|c| c.is_none()) {
-                    eprintln!(
-                        "Warning: skipping index {:?} on table {:?}: expression indexes are not supported",
-                        entry.name,
-                        table_name
+                    failures.push(
+                        format!(
+                            "Index {:?} on table {:?}: expression indexes are not supported",
+                            entry.name,
+                            table_name
+                        ),
                     );
                     continue;
                 }
@@ -331,7 +326,7 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
 
                 // Convert sql column names to field_ids.
                 let field_ids = col_names.iter().map(|col| {
-                    sql_to_field_id
+                    return sql_to_field_id
                         .get(&col.to_lowercase())
                         .cloned()
                         .ok_or_else(
@@ -343,8 +338,15 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                                     table_name
                                 ),
                             ),
-                        )
-                }).collect::<Result<Vec<String>, _>>()?;
+                        );
+                }).collect::<Result<Vec<String>, _>>();
+                let field_ids = match field_ids {
+                    Ok(f) => f,
+                    Err(e) => {
+                        failures.push(e.to_string());
+                        continue;
+                    },
+                };
 
                 // UNIQUE constraints get automatic `sqlite_autoindex_*` names which can't be used
                 // in CREATE INDEX, so give them a synthetic name.
@@ -402,19 +404,17 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         for fk_id in fk_ids {
             let (remote_table, mut pairs) = fk_map.remove(&fk_id).unwrap();
             pairs.sort_by_key(|(seq, _, _)| *seq);
-            let remote =
-                remote_by_table
-                    .get(&remote_table.to_lowercase())
-                    .ok_or_else(
-                        || loga::err(
-                            format!(
-                                "FK {:?} in table {:?} references unknown remote table {:?}",
-                                fk_id,
-                                table_name,
-                                remote_table
-                            ),
-                        ),
-                    )?;
+            let Some(remote) = remote_by_table.get(&remote_table.to_lowercase()) else {
+                failures.push(
+                    format!(
+                        "FK {:?} in table {:?} references unknown remote table {:?}",
+                        fk_id,
+                        table_name,
+                        remote_table
+                    ),
+                );
+                continue;
+            };
             let field_pairs =
                 pairs.into_iter().map(|(seq, local_col, remote_col)| -> Result<(String, String), loga::Error> {
                     let local_fid =
@@ -469,7 +469,14 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
                         },
                     };
                     return Ok((local_fid, remote_fid));
-                }).collect::<Result<Vec<(String, String)>, _>>()?;
+                }).collect::<Result<Vec<(String, String)>, _>>();
+            let field_pairs = match field_pairs {
+                Ok(f) => f,
+                Err(e) => {
+                    failures.push(e.to_string());
+                    continue;
+                },
+            };
             let constraint_name = format!("{}_{}_fkey", table_name, fk_id);
             raw.table.constraints.insert(constraint_name.clone(), Constraint {
                 id: constraint_name,
@@ -482,8 +489,8 @@ pub fn read_schema(conn: &Connection) -> Result<Version, loga::Error> {
         }
         tables.insert(table_name, raw.table);
     }
-    return Ok(Version {
+    return Ok((Version {
         tables: tables,
         custom_types: BTreeMap::new(),
-    });
+    }, failures));
 }

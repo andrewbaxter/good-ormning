@@ -28,13 +28,13 @@ impl NodeIndex_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
         // The old node is looked up through renames, so table renames don't matter.
         // Sqlite can't rename indices so they're recreated.
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.def.id != old.def.id ||
+        return if created.contains(&GraphId::Table(self.table_id.clone())) || self.def.id != old.def.id ||
             self.def.unique != old.def.unique ||
             self.fields_old_ids != old.def.fields {
             Comparison::Recreate
         } else {
             Comparison::DoNothing
-        }
+        };
     }
 }
 
@@ -61,7 +61,7 @@ impl NodeDataDispatch for NodeIndex_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
@@ -69,6 +69,6 @@ impl NodeDataDispatch for NodeIndex_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 }

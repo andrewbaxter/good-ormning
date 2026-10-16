@@ -11,5 +11,5 @@ pub const fn str_eq(a: &str, b: &str) -> bool {
         }
         i += 1;
     }
-    true
+    return true;
 }

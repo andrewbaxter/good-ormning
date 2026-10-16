@@ -47,7 +47,7 @@ pub fn build_returning(
     if !outputs.is_empty() {
         out.s("returning");
     }
-    build_returning_values(ctx, path, scope, out, outputs, res_count)
+    return build_returning_values(ctx, path, scope, out, outputs, res_count);
 }
 
 pub fn build_returning_values(
@@ -293,19 +293,21 @@ pub struct PgFieldInfo {
 }
 
 pub struct PgQueryCtx {
+    pub default_time_library: Option<crate::utils::TimeLibrary>,
     pub errs: Errs,
     pub op_stack: Vec<BinOp>,
     pub outer_scopes: Vec<HashMap<ExprValName, Type>>,
     pub query_args: Vec<TokenStream>,
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
-    pub rust_args: Vec<TokenStream>,
+    pub rust_args: Vec<(String, TokenStream)>,
     pub table_aliases: HashMap<String, TableRef>,
     pub tables: HashMap<TableRef, PgTableInfo>,
 }
 
 impl PgQueryCtx {
     pub fn new(errs: Errs, tables: HashMap<TableRef, PgTableInfo>) -> Self {
-        Self {
+        return Self {
+            default_time_library: None,
             tables: tables,
             table_aliases: Default::default(),
             errs: errs,
@@ -314,7 +316,7 @@ impl PgQueryCtx {
             query_args: Default::default(),
             op_stack: Default::default(),
             outer_scopes: Default::default(),
-        }
+        };
     }
 }
 

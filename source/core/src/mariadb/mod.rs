@@ -1,0 +1,1282 @@
+pub mod graph;
+pub mod query;
+pub mod schema;
+pub mod types;
+
+#[cfg(feature = "chrono")]
+pub use crate::mariadb::types::{
+    type_date_chrono as mariadb_type_date_chrono,
+    type_datetime_chrono as mariadb_type_datetime_chrono,
+    type_time_chrono as mariadb_type_time_chrono,
+};
+#[cfg(feature = "jiff")]
+pub use crate::mariadb::types::{
+    type_date_jiff as mariadb_type_date_jiff,
+    type_datetime_jiff as mariadb_type_datetime_jiff,
+    type_time_jiff as mariadb_type_time_jiff,
+};
+pub use crate::mariadb::{
+    schema::field::FieldTypeBuilder as MariadbFieldTypeBuilder,
+    types::{
+        type_bool as mariadb_type_bool,
+        type_bytes as mariadb_type_bytes,
+        type_f32 as mariadb_type_f32,
+        type_f64 as mariadb_type_f64,
+        type_i8 as mariadb_type_i8,
+        type_i16 as mariadb_type_i16,
+        type_i32 as mariadb_type_i32,
+        type_i64 as mariadb_type_i64,
+        type_str as mariadb_type_str,
+        type_u8 as mariadb_type_u8,
+        type_u16 as mariadb_type_u16,
+        type_u32 as mariadb_type_u32,
+        type_u64 as mariadb_type_u64,
+        Type as MariadbType,
+    },
+};
+use {
+    crate::{
+        QueryResCount,
+        mariadb::{
+            graph::{
+                GraphId,
+                Node,
+                constraint::NodeConstraint_,
+                field::NodeField_,
+                index::NodeIndex_,
+                table::NodeTable_,
+                utils::MigrateNode,
+            },
+            query::{
+                delete::Delete,
+                expr::Expr,
+                insert::{
+                    Insert,
+                    InsertConflict,
+                    InsertSource,
+                },
+                select::{
+                    Join,
+                    JoinSource,
+                    NamedSelectSource,
+                    Order,
+                    Select,
+                },
+                select_body::SelectBody,
+                update::Update,
+                utils::{
+                    MariadbFieldInfo,
+                    MariadbQueryCtx,
+                    MariadbTableInfo,
+                    QueryBody,
+                    Returning,
+                },
+            },
+            schema::{
+                constraint::{
+                    Constraint,
+                    ConstraintType,
+                    ForeignKeyAction,
+                    ForeignKeyDef,
+                    PrimaryKeyDef,
+                },
+                custom_type::CustomType,
+                field::{
+                    Field,
+                    FieldRef,
+                    FieldType,
+                },
+                index::Index,
+                table::{
+                    Table,
+                    TableRef,
+                },
+            },
+            types::{
+                Type,
+                to_sql_type,
+            },
+        },
+        utils::Errs,
+    },
+    serde::{
+        Deserialize,
+        Serialize,
+    },
+    std::{
+        cell::RefCell,
+        collections::{
+            BTreeMap,
+            BTreeSet,
+            HashMap,
+            HashSet,
+        },
+        rc::Rc,
+    },
+};
+
+pub struct ConstraintHandle {
+    pub id: String,
+    pub table: TableHandle,
+}
+
+impl ConstraintHandle {
+    pub fn on_delete(self, action: ForeignKeyAction) -> Self {
+        self.table.version.with(|v| {
+            if let ConstraintType::ForeignKey(x) =
+                &mut v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().type_ {
+                x.on_delete = Some(action);
+            }
+        });
+        return self;
+    }
+
+    pub fn on_update(self, action: ForeignKeyAction) -> Self {
+        self.table.version.with(|v| {
+            if let ConstraintType::ForeignKey(x) =
+                &mut v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().type_ {
+                x.on_update = Some(action);
+            }
+        });
+        return self;
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        return self;
+    }
+}
+
+pub struct CustomTypeBuilder {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl CustomTypeBuilder {
+    pub fn rust_type(self, rust_type: &str) -> CustomTypeRustBuilder {
+        return CustomTypeRustBuilder {
+            version: self.version,
+            id: self.id,
+            rust_type: rust_type.into(),
+        };
+    }
+}
+
+#[derive(Clone)]
+pub struct CustomTypeHandle {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl CustomTypeHandle {
+    pub fn field_type(&self) -> FieldType {
+        let (rust_type, base_type) = self.version.with(|v| {
+            let ct = v.custom_types.get(&self.id).expect("Custom type missing");
+            return (ct.rust_type.clone(), ct.base_type.clone());
+        });
+        return FieldType {
+            type_: Type {
+                type_: crate::mariadb::types::SimpleType {
+                    type_: base_type.type_.type_,
+                    custom: Some(rust_type),
+                },
+                opt: base_type.opt,
+            },
+            auto_increment: false,
+            default: None,
+            max_len: None,
+            precision: None,
+            scale: None,
+            variant: None,
+        };
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.version.with(|v| {
+            v.custom_types.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
+        });
+        return self;
+    }
+}
+
+pub struct CustomTypeRustBuilder {
+    pub id: String,
+    pub rust_type: String,
+    pub version: VersionHandle,
+}
+
+impl CustomTypeRustBuilder {
+    pub fn base_type(self, base_type: Type) -> CustomTypeHandle {
+        self.version.with(|v| {
+            v.custom_types.insert(self.id.clone(), CustomType {
+                id: self.id.clone(),
+                renamed_from: None,
+                rust_type: self.rust_type.clone(),
+                base_type: base_type,
+            });
+        });
+        return CustomTypeHandle {
+            version: self.version,
+            id: self.id,
+        };
+    }
+}
+
+pub struct DeleteBuilder {
+    pub q: Delete,
+}
+
+impl DeleteBuilder {
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        };
+    }
+
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        };
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        return self;
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        return self;
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        return self;
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        return self;
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        return self;
+    }
+
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        return self;
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        return self;
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        return self;
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        return self;
+    }
+}
+
+impl DeleteBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup: HashMap<TableRef, MariadbTableInfo> = HashMap::new();
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+            let mut fields: HashMap<FieldRef, MariadbFieldInfo> = HashMap::new();
+            for (field_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
+                }, MariadbFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                    has_default: field.type_.auto_increment || field.type_.default.is_some(),
+                });
+            }
+            field_lookup.insert(TableRef(table_id.clone()), MariadbTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = MariadbQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
+#[derive(Clone)]
+pub struct FieldHandle {
+    pub id: String,
+    pub table: TableHandle,
+}
+
+impl FieldHandle {
+    pub fn r#type(&self) -> FieldType {
+        return self.table.version.with(|v| {
+            return v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone();
+        });
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().fields.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        return self;
+    }
+
+    pub fn to_ref(&self) -> FieldRef {
+        return FieldRef {
+            table_id: self.table.id.clone(),
+            field_id: self.id.clone(),
+        };
+    }
+}
+
+pub struct IndexHandle {
+    pub id: String,
+    pub table: TableHandle,
+}
+
+impl IndexHandle {
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.table.version.with(|v| {
+            v.tables.get_mut(&self.table.id).unwrap().indices.get_mut(&self.id).unwrap().renamed_from =
+                Some(old_name.into());
+        });
+        return self;
+    }
+}
+
+pub struct InsertBuilder {
+    pub q: Insert,
+}
+
+impl InsertBuilder {
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        };
+    }
+
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        };
+    }
+
+    pub fn ignore(mut self) -> Self {
+        self.q.ignore = true;
+        return self;
+    }
+
+    pub fn on_duplicate_key_update(mut self, v: Vec<(FieldHandle, Expr)>) -> Self {
+        self.q.on_conflict =
+            Some(InsertConflict::DuplicateKeyUpdate(v.into_iter().map(|(f, e)| (f.to_ref(), e)).collect()));
+        return self;
+    }
+
+    pub fn replace(mut self) -> Self {
+        self.q.on_conflict = Some(InsertConflict::Replace);
+        return self;
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        return self;
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        return self;
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        return self;
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        return self;
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        return self;
+    }
+}
+
+impl InsertBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup: HashMap<TableRef, MariadbTableInfo> = HashMap::new();
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+            let mut fields: HashMap<FieldRef, MariadbFieldInfo> = HashMap::new();
+            for (field_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
+                }, MariadbFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                    has_default: field.type_.auto_increment || field.type_.default.is_some(),
+                });
+            }
+            field_lookup.insert(TableRef(table_id.clone()), MariadbTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = MariadbQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
+pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
+    return DeleteBuilder { q: Delete {
+        targets: vec![],
+        alias: None,
+        join: vec![],
+        limit: None,
+        order: vec![],
+        table: table.to_ref(),
+        returning: vec![],
+        where_: None,
+    } };
+}
+
+pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> InsertBuilder {
+    let mut unique = HashSet::new();
+    for v in &values {
+        if !unique.insert(v.0.id.clone()) {
+            panic!("Duplicate field {:?} in insert", v.0.id);
+        }
+    }
+    return InsertBuilder { q: Insert {
+        ignore: false,
+        table: table.to_ref(),
+        source: InsertSource::Values(values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect()),
+        on_conflict: None,
+        returning: vec![],
+    } };
+}
+
+pub fn new_select(table: &TableHandle) -> SelectBuilder {
+    return SelectBuilder { q: Select {
+        windows: vec![],
+        fetch: None,
+        first: None,
+        lock: None,
+        with: None,
+        table: NamedSelectSource {
+            source: JoinSource::Table(table.to_ref()),
+            alias: Some(table.id.clone()),
+        },
+        returning: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        having: None,
+        order: vec![],
+        limit: None,
+        offset: None,
+        distinct: false,
+        junctions: vec![],
+    } };
+}
+
+pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
+    return SelectBodyBuilder { q: SelectBody {
+        table: NamedSelectSource {
+            source: JoinSource::Table(table.to_ref()),
+            alias: Some(table.id.clone()),
+        },
+        returning: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        having: None,
+        order: vec![],
+        limit: None,
+        offset: None,
+        distinct: false,
+        junctions: vec![],
+    } };
+}
+
+pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
+    return SelectBuilder { q: Select {
+        windows: vec![],
+        fetch: None,
+        first: None,
+        lock: None,
+        with: None,
+        table: source,
+        returning: vec![],
+        join: vec![],
+        where_: None,
+        group: vec![],
+        having: None,
+        order: vec![],
+        limit: None,
+        offset: None,
+        distinct: false,
+        junctions: vec![],
+    } };
+}
+
+pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> UpdateBuilder {
+    let mut unique = HashSet::new();
+    for v in &values {
+        if !unique.insert(v.0.id.clone()) {
+            panic!("Duplicate field {:?} in update", v.0.id);
+        }
+    }
+    return UpdateBuilder { q: Update {
+        alias: None,
+        join: vec![],
+        limit: None,
+        order: vec![],
+        table: table.to_ref(),
+        values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
+        where_: None,
+    } };
+}
+
+pub struct Query {
+    pub body: Box<dyn QueryBody>,
+    pub name: String,
+    pub res_count: QueryResCount,
+    pub res_name: Option<String>,
+}
+
+pub struct SelectBodyBuilder {
+    pub q: SelectBody,
+}
+
+impl SelectBodyBuilder {
+    pub fn build(self) -> SelectBody {
+        return self.q;
+    }
+
+    pub fn distinct(mut self) -> Self {
+        self.q.distinct = true;
+        return self;
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
+        return self;
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        return self;
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        return self;
+    }
+
+    pub fn offset(mut self, v: Expr) -> Self {
+        self.q.offset = Some(v);
+        return self;
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        return self;
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
+        return self;
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        return self;
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        return self;
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        return self;
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        return self;
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        return self;
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
+        return self;
+    }
+}
+
+pub struct SelectBuilder {
+    pub q: Select,
+}
+
+impl SelectBuilder {
+    pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: None,
+        };
+    }
+
+    pub fn build_query_named_res(
+        self,
+        name: impl ToString,
+        res_count: QueryResCount,
+        res_name: impl ToString,
+    ) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: res_count,
+            res_name: Some(res_name.to_string()),
+        };
+    }
+
+    pub fn group(mut self, clauses: Vec<Expr>) -> Self {
+        self.q.group = clauses;
+        return self;
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        return self;
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        return self;
+    }
+
+    pub fn offset(mut self, v: Expr) -> Self {
+        self.q.offset = Some(v);
+        return self;
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        return self;
+    }
+
+    pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
+        self.q.order.extend(clauses);
+        return self;
+    }
+
+    pub fn return_(mut self, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: None,
+        });
+        return self;
+    }
+
+    pub fn return_field(mut self, f: &FieldHandle) -> Self {
+        let sql_name =
+            f
+                .table
+                .version
+                .0
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tables
+                .get(&f.table.id)
+                .unwrap()
+                .fields
+                .get(&f.id)
+                .unwrap()
+                .id
+                .clone();
+        self.q.returning.push(Returning {
+            e: Expr::Field(f.to_ref()),
+            rename: Some(sql_name),
+        });
+        return self;
+    }
+
+    pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
+        for f in f {
+            let sql_name =
+                f
+                    .table
+                    .version
+                    .0
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .tables
+                    .get(&f.table.id)
+                    .unwrap()
+                    .fields
+                    .get(&f.id)
+                    .unwrap()
+                    .id
+                    .clone();
+            self.q.returning.push(Returning {
+                e: Expr::Field(f.to_ref()),
+                rename: Some(sql_name),
+            });
+        }
+        return self;
+    }
+
+    pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
+        self.q.returning.push(Returning {
+            e: v,
+            rename: Some(name.to_string()),
+        });
+        return self;
+    }
+
+    pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
+        self.q.returning.extend(f);
+        return self;
+    }
+
+    pub fn where_(mut self, predicate: Expr) -> Self {
+        self.q.where_ = Some(predicate);
+        return self;
+    }
+
+    pub fn with(mut self, with: self::query::utils::With) -> Self {
+        self.q.with = Some(with);
+        return self;
+    }
+}
+
+#[derive(Clone)]
+pub struct TableHandle {
+    pub id: String,
+    pub version: VersionHandle,
+}
+
+impl TableHandle {
+    pub fn field(&self, id: &str, type_: FieldType) -> FieldHandle {
+        self.version.with(|v| {
+            let table = v.tables.get_mut(&self.id).unwrap();
+            if table.fields.contains_key(id) {
+                panic!("Field {} already exists on table {}", id, self.id);
+            }
+            table.fields.insert(id.into(), Field {
+                id: id.into(),
+                renamed_from: None,
+                type_: type_,
+            });
+        });
+        return FieldHandle {
+            table: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
+        let remote_table = fields.first().unwrap().1.table.id.clone();
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
+                id: id.into(),
+                renamed_from: None,
+                type_: ConstraintType::ForeignKey(ForeignKeyDef {
+                    remote_table: remote_table,
+                    fields: fields.iter().map(|(l, r)| (l.id.clone(), r.id.clone())).collect(),
+                    on_delete: None,
+                    on_update: None,
+                }),
+            });
+        });
+        return ConstraintHandle {
+            table: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    pub fn index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
+                id: id.into(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
+                unique: false,
+            });
+        });
+        return IndexHandle {
+            table: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    pub fn primary_key(&self, fields: &[&FieldHandle]) -> ConstraintHandle {
+        let id = "PRIMARY";
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().constraints.insert(id.into(), Constraint {
+                id: id.into(),
+                renamed_from: None,
+                type_: ConstraintType::PrimaryKey(
+                    PrimaryKeyDef { fields: fields.iter().map(|f| f.id.clone()).collect() },
+                ),
+            });
+        });
+        return ConstraintHandle {
+            table: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    pub fn renamed_from(self, old_name: &str) -> Self {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
+        });
+        return self;
+    }
+
+    pub fn to_ref(&self) -> TableRef {
+        return TableRef(self.id.clone());
+    }
+
+    pub fn unique_index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
+        self.version.with(|v| {
+            v.tables.get_mut(&self.id).unwrap().indices.insert(id.into(), Index {
+                id: id.into(),
+                renamed_from: None,
+                fields: fields.iter().map(|f| f.id.clone()).collect(),
+                unique: true,
+            });
+        });
+        return IndexHandle {
+            table: self.clone(),
+            id: id.into(),
+        };
+    }
+}
+
+pub struct UpdateBuilder {
+    pub q: Update,
+}
+
+impl UpdateBuilder {
+    pub fn build_query(self, name: impl ToString) -> Query {
+        return Query {
+            name: name.to_string(),
+            body: Box::new(self.q),
+            res_count: QueryResCount::None,
+            res_name: None,
+        };
+    }
+
+    pub fn join(mut self, join: Join) -> Self {
+        self.q.join.push(join);
+        return self;
+    }
+
+    pub fn limit(mut self, v: Expr) -> Self {
+        self.q.limit = Some(v);
+        return self;
+    }
+
+    pub fn order(mut self, expr: Expr, order: Order) -> Self {
+        self.q.order.push((expr, order));
+        return self;
+    }
+
+    pub fn where_(mut self, v: Expr) -> Self {
+        self.q.where_ = Some(v);
+        return self;
+    }
+}
+
+impl UpdateBuilder {
+    pub fn build_migration(self, version: &VersionHandle) -> String {
+        let mut field_lookup: HashMap<TableRef, MariadbTableInfo> = HashMap::new();
+        for (table_id, table) in &version.0.borrow().as_ref().unwrap().tables {
+            let mut fields: HashMap<FieldRef, MariadbFieldInfo> = HashMap::new();
+            for (field_id, field) in &table.fields {
+                fields.insert(FieldRef {
+                    table_id: table_id.clone(),
+                    field_id: field_id.clone(),
+                }, MariadbFieldInfo {
+                    sql_name: field.id.clone(),
+                    type_: field.type_.type_.clone(),
+                    has_default: field.type_.auto_increment || field.type_.default.is_some(),
+                });
+            }
+            field_lookup.insert(TableRef(table_id.clone()), MariadbTableInfo {
+                sql_name: table.id.clone(),
+                fields: fields,
+            });
+        }
+        let mut ctx = MariadbQueryCtx::new(Errs::new(), field_lookup);
+        let res = QueryBody::build(&self.q, &mut ctx, &rpds::vector![], QueryResCount::None);
+        return res.1.to_string();
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub struct Version {
+    pub custom_types: BTreeMap<String, CustomType>,
+    pub tables: BTreeMap<String, Table>,
+}
+
+impl Version {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> VersionHandle {
+        return VersionHandle(
+            Rc::new(RefCell::new(Some(Version::default()))),
+            Rc::new(std::cell::Cell::new(false)),
+        );
+    }
+}
+
+impl Version {
+    pub fn to_migrate_nodes(&self) -> BTreeMap<GraphId, MigrateNode> {
+        let mut out = BTreeMap::new();
+        for (table_id, table) in &self.tables {
+            let table_graph_id = GraphId::Table(table_id.clone());
+            let table_renamed_from = table.renamed_from.clone();
+            out.insert(table_graph_id.clone(), MigrateNode::new(vec![], Node::Table(NodeTable_ {
+                table_id: table_id.clone(),
+                def: table.clone(),
+            })));
+            for (field_id, field) in &table.fields {
+                let field_graph_id = GraphId::Field(table_id.clone(), field_id.clone());
+                out.insert(field_graph_id, MigrateNode::new(vec![table_graph_id.clone()], Node::Field(NodeField_ {
+                    table_id: table_id.clone(),
+                    table_renamed_from: table_renamed_from.clone(),
+                    def: field.clone(),
+                })));
+            }
+            let old_field_id =
+                |t: &Table, f: &String| t.fields.get(f).unwrap().renamed_from.clone().unwrap_or_else(|| f.clone());
+            for (index_id, index) in &table.indices {
+                let mut deps = vec![table_graph_id.clone()];
+                for f in &index.fields {
+                    deps.push(GraphId::Field(table_id.clone(), f.clone()));
+                }
+                out.insert(
+                    GraphId::Index(table_id.clone(), index_id.clone()),
+                    MigrateNode::new(deps, Node::Index(NodeIndex_ {
+                        table_id: table_id.clone(),
+                        table_renamed_from: table_renamed_from.clone(),
+                        def: index.clone(),
+                        fields_old_ids: index.fields.iter().map(|f| old_field_id(table, f)).collect(),
+                    })),
+                );
+            }
+            let column_type = |t: &Table, f: &String| {
+                let mut type_ = t.fields.get(f).unwrap().type_.clone();
+                type_.auto_increment = false;
+                return to_sql_type(&type_);
+            };
+            for (constraint_id, constraint) in &table.constraints {
+                let mut deps = vec![table_graph_id.clone()];
+                let type_old_ids;
+                let mut remote_keys = vec![];
+                let mut column_types = vec![];
+                match &constraint.type_ {
+                    ConstraintType::PrimaryKey(x) => {
+                        for f in &x.fields {
+                            deps.push(GraphId::Field(table_id.clone(), f.clone()));
+                        }
+                        type_old_ids =
+                            ConstraintType::PrimaryKey(
+                                PrimaryKeyDef { fields: x.fields.iter().map(|f| old_field_id(table, f)).collect() },
+                            );
+                    },
+                    ConstraintType::ForeignKey(x) => {
+                        deps.push(GraphId::Table(x.remote_table.clone()));
+                        for (l, r) in &x.fields {
+                            deps.push(GraphId::Field(table_id.clone(), l.clone()));
+                            deps.push(GraphId::Field(x.remote_table.clone(), r.clone()));
+                        }
+                        let remote_table = self.tables.get(&x.remote_table).unwrap();
+                        let remote_fields = x.fields.iter().map(|(_, r)| r).collect::<BTreeSet<_>>();
+                        for (remote_constraint_id, remote_constraint) in &remote_table.constraints {
+                            if let ConstraintType::PrimaryKey(pk) = &remote_constraint.type_ {
+                                if pk.fields.iter().collect::<BTreeSet<_>>() == remote_fields {
+                                    remote_keys.push(
+                                        GraphId::Constraint(x.remote_table.clone(), remote_constraint_id.clone()),
+                                    );
+                                }
+                            }
+                        }
+                        for (remote_index_id, remote_index) in &remote_table.indices {
+                            if remote_index.unique &&
+                                remote_index.fields.iter().collect::<BTreeSet<_>>() == remote_fields {
+                                remote_keys.push(GraphId::Index(x.remote_table.clone(), remote_index_id.clone()));
+                            }
+                        }
+                        deps.extend(remote_keys.iter().cloned());
+                        for (l, r) in &x.fields {
+                            column_types.push(column_type(table, l));
+                            column_types.push(column_type(remote_table, r));
+                        }
+                        type_old_ids = ConstraintType::ForeignKey(ForeignKeyDef {
+                            fields: x
+                                .fields
+                                .iter()
+                                .map(|(l, r)| (old_field_id(table, l), old_field_id(remote_table, r)))
+                                .collect(),
+                            remote_table: remote_table.renamed_from.clone().unwrap_or_else(|| x.remote_table.clone()),
+                            on_delete: x.on_delete.clone(),
+                            on_update: x.on_update.clone(),
+                        });
+                    },
+                }
+                out.insert(
+                    GraphId::Constraint(table_id.clone(), constraint_id.clone()),
+                    MigrateNode::new(deps, Node::Constraint(NodeConstraint_ {
+                        table_id: table_id.clone(),
+                        table_renamed_from: table_renamed_from.clone(),
+                        def: constraint.clone(),
+                        type_old_ids: type_old_ids,
+                        remote_keys: remote_keys,
+                        column_types: column_types,
+                        table_columns: match &constraint.type_ {
+                            ConstraintType::PrimaryKey(_) => table
+                                .fields
+                                .values()
+                                .map(|f| (f.id.clone(), f.type_.auto_increment))
+                                .collect(),
+                            ConstraintType::ForeignKey(_) => vec![],
+                        },
+                    })),
+                );
+            }
+        }
+        return out;
+    }
+}
+
+#[derive(Clone)]
+pub struct VersionHandle(pub Rc<RefCell<Option<Version>>>, pub Rc<std::cell::Cell<bool>>);
+
+impl VersionHandle {
+    pub fn build(&self) -> Version {
+        self.1.set(true);
+        return self.0.borrow().as_ref().expect("Version already built").clone();
+    }
+
+    pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
+        return CustomTypeBuilder {
+            version: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    pub fn table(&self, id: &str) -> TableHandle {
+        self.with(|v| {
+            if v.tables.contains_key(id) {
+                panic!("Table {} already exists", id);
+            }
+            v.tables.insert(id.into(), Table {
+                id: id.into(),
+                renamed_from: None,
+                fields: BTreeMap::new(),
+                indices: BTreeMap::new(),
+                constraints: BTreeMap::new(),
+            });
+        });
+        return TableHandle {
+            version: self.clone(),
+            id: id.into(),
+        };
+    }
+
+    fn with<R>(&self, f: impl FnOnce(&mut Version) -> R) -> R {
+        if self.1.get() {
+            panic!("Version already built");
+        }
+        let mut v = self.0.borrow_mut();
+        return f(v.as_mut().expect("Version already built"));
+    }
+}

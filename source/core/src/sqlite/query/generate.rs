@@ -40,6 +40,7 @@ pub fn generate_query_functions(
     queries: Vec<Query>,
     _mod_name: &str,
     db_type: TokenStream,
+    arg_order: Option<&[String]>,
 ) -> Vec<TokenStream> {
     let mut db_others: Vec<TokenStream> = Vec::new();
     let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
@@ -49,7 +50,11 @@ pub fn generate_query_functions(
         let res = q.body.build(&mut ctx, &path, q.res_count.clone());
         let ident = format_ident!("{}", q.name);
         let q_text = res.1.to_string();
-        let args = ctx.rust_args.split_off(0);
+        let mut args = ctx.rust_args.split_off(0);
+        if let Some(arg_order) = arg_order {
+            args.sort_by_key(|(name, _)| arg_order.iter().position(|n| n == name));
+        }
+        let args = args.into_iter().map(|(_, a)| a).collect::<Vec<_>>();
         let args_forward = ctx.query_args.split_off(0);
         *errs = ctx.errs.clone();
         drop(ctx);

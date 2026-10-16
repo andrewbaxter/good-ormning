@@ -17,6 +17,7 @@ use {
         },
         utils::{
             Errs,
+            TimeLibrary,
             sanitize_ident,
         },
     },
@@ -38,16 +39,23 @@ pub fn generate_query_functions(
     queries: Vec<Query>,
     _mod_name: &str,
     db_type: TokenStream,
+    arg_order: Option<&[String]>,
+    default_time_library: Option<TimeLibrary>,
 ) -> Vec<TokenStream> {
     let mut db_others = Vec::new();
     let mut res_type_idents: HashMap<String, Ident> = HashMap::new();
     for q in queries {
         let path = rpds::vector![format!("Query {}", q.name)];
         let mut ctx = PgQueryCtx::new(errs.clone(), field_lookup.clone());
+        ctx.default_time_library = default_time_library;
         let res = q.body.build(&mut ctx, &path, q.res_count.clone());
         let ident = format_ident!("{}", q.name);
         let q_text = res.1.to_string();
-        let args = ctx.rust_args.split_off(0);
+        let mut args = ctx.rust_args.split_off(0);
+        if let Some(arg_order) = arg_order {
+            args.sort_by_key(|(name, _)| arg_order.iter().position(|n| n == name));
+        }
+        let args = args.into_iter().map(|(_, a)| a).collect::<Vec<_>>();
         let args_forward = ctx.query_args.split_off(0);
         *errs = ctx.errs.clone();
         drop(ctx);
@@ -58,6 +66,7 @@ pub fn generate_query_functions(
                 i: usize,
                 k: &ExprValName,
                 v: &Type,
+                default_time_library: Option<TimeLibrary>,
             ) -> Option<(Ident, TokenStream, TokenStream)> {
                 if k.id.is_empty() {
                     errs.err(
@@ -66,7 +75,7 @@ pub fn generate_query_functions(
                     );
                     return None;
                 }
-                let rust_types = to_rust_types(&v.type_.type_);
+                let rust_types = to_rust_types(errs, path, &v.type_.type_, default_time_library);
                 let custom_trait_ident = rust_types.custom_trait;
                 let mut ident = rust_types.ret_type;
                 if v.opt {
@@ -146,22 +155,24 @@ pub fn generate_query_functions(
 
             if res.0.0.len() == 1 && q.res_name.is_none() {
                 let e = &res.0.0[0];
-                let (_, type_ident, unforward) = match convert_one_res(errs, &path, 0, &e.0, &e.1) {
-                    None => {
-                        continue;
-                    },
-                    Some(x) => x,
-                };
+                let (_, type_ident, unforward) =
+                    match convert_one_res(errs, &path, 0, &e.0, &e.1, default_time_library) {
+                        None => {
+                            continue;
+                        },
+                        Some(x) => x,
+                    };
                 (type_ident, None, unforward)
             } else {
                 let mut fields = vec![];
                 let mut unforward_fields = vec![];
                 let mut seen_names = std::collections::HashSet::new();
                 for (i, (k, v)) in res.0.0.into_iter().enumerate() {
-                    let (k_ident, type_ident, unforward) = match convert_one_res(errs, &path, i, &k, &v) {
-                        Some(x) => x,
-                        None => continue,
-                    };
+                    let (k_ident, type_ident, unforward) =
+                        match convert_one_res(errs, &path, i, &k, &v, default_time_library) {
+                            Some(x) => x,
+                            None => continue,
+                        };
                     if !seen_names.insert(k_ident.to_string()) {
                         errs.err(
                             &path,

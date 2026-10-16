@@ -51,16 +51,12 @@ impl NodeField_ {
         }
         let t = &self.def.type_.type_;
         let old_t = &old.def.type_.type_;
-        if self.def.id != old.def.id || self.table_id != old.table_id || t.opt != old_t.opt ||
+        return if self.def.id != old.def.id || self.table_id != old.table_id || t.opt != old_t.opt ||
             t.type_.type_ != old_t.type_.type_ {
             Comparison::Update
         } else {
             Comparison::DoNothing
-        }
-    }
-
-    fn display_path(&self) -> rpds::Vector<String> {
-        rpds::vector![format!("{}.{}", self.table_id, self.def.id)]
+        };
     }
 }
 
@@ -117,7 +113,7 @@ impl NodeData for NodeField_ {
 
 impl NodeDataDispatch for NodeField_ {
     fn create(&self, ctx: &mut PgMigrateCtx) {
-        let path = self.display_path();
+        let path = rpds::vector![format!("{}.{}", self.table_id, self.def.id)];
         if matches!(self.def.type_.type_.type_.type_, SimpleSimpleType::Auto) {
             ctx.errs.err(&path, "Auto (serial) fields can't be added after table creation".to_string());
         }
@@ -188,7 +184,7 @@ impl NodeDataDispatch for NodeField_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -200,6 +196,6 @@ impl NodeDataDispatch for NodeField_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 }

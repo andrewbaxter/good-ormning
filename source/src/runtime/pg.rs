@@ -22,19 +22,19 @@ pub trait GoodErrorQuery<T> {
 
 impl<T> GoodErrorQuery<T> for Result<T, GoodError> {
     fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
-        match self {
+        return match self {
             Ok(v) => Ok(v),
             Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
-        }
+        };
     }
 }
 
 impl<T> GoodErrorQuery<T> for Result<T, tokio_postgres::Error> {
     fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
-        match self {
+        return match self {
             Ok(v) => Ok(v),
             Err(e) => Err(GoodError(format!("Error executing query [{}]: {}", query, e))),
-        }
+        };
     }
 }
 

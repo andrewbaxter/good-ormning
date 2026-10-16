@@ -2,6 +2,8 @@
 
 #[cfg(feature = "import")]
 pub mod import;
+#[cfg(feature = "mariadb")]
+pub mod mariadb;
 #[cfg(feature = "pg")]
 pub mod pg;
 pub mod runtime;
@@ -25,6 +27,37 @@ pub use crate::pg::{
     pg_type_bytes,
     pg_type_str,
     GenerateArgs as PgGenerateArgs,
+};
+#[cfg(all(feature = "mariadb", feature = "chrono"))]
+pub use crate::mariadb::{
+    mariadb_type_date_chrono,
+    mariadb_type_datetime_chrono,
+    mariadb_type_time_chrono,
+};
+#[cfg(all(feature = "mariadb", feature = "jiff"))]
+pub use crate::mariadb::{
+    mariadb_type_date_jiff,
+    mariadb_type_datetime_jiff,
+    mariadb_type_time_jiff,
+};
+#[cfg(feature = "mariadb")]
+pub use crate::mariadb::{
+    MariadbType,
+    MariadbFieldTypeBuilder,
+    mariadb_type_i8,
+    mariadb_type_i16,
+    mariadb_type_i32,
+    mariadb_type_i64,
+    mariadb_type_u8,
+    mariadb_type_u16,
+    mariadb_type_u32,
+    mariadb_type_u64,
+    mariadb_type_f32,
+    mariadb_type_f64,
+    mariadb_type_bool,
+    mariadb_type_bytes,
+    mariadb_type_str,
+    GenerateArgs as MariadbGenerateArgs,
 };
 #[cfg(all(feature = "sqlite", feature = "chrono"))]
 pub use crate::sqlite::sqlite_type_utctime_s_chrono;

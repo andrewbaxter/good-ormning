@@ -1,0 +1,164 @@
+pub mod constraint;
+pub mod field;
+pub mod index;
+pub mod table;
+pub mod utils;
+#[cfg(test)]
+mod test;
+
+pub use self::utils::MariadbMigrateCtx;
+use {
+    crate::graphmigrate::Comparison,
+    std::collections::HashSet,
+};
+
+pub trait NodeData: NodeDataDispatch {
+    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self);
+}
+
+pub trait NodeDataDispatch {
+    fn create(&self, ctx: &mut MariadbMigrateCtx);
+    fn create_coalesce(&mut self, other: Node) -> Option<Node>;
+    fn delete(&self, ctx: &mut MariadbMigrateCtx);
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node>;
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+pub enum GraphId {
+    Constraint(String, String),
+    Field(String, String),
+    Index(String, String),
+    Table(String),
+}
+
+#[derive(Clone)]
+pub enum Node {
+    Constraint(constraint::NodeConstraint_),
+    Field(field::NodeField_),
+    Index(index::NodeIndex_),
+    Table(table::NodeTable_),
+}
+
+impl crate::graphmigrate::NodeData for Node {
+    type I = GraphId;
+    type O = MariadbMigrateCtx;
+
+    fn compare(&self, other: &Self, created: &HashSet<Self::I>) -> Comparison {
+        return match (self, other) {
+            (Node::Table(a), Node::Table(b)) => a.compare(b, created),
+            (Node::Field(a), Node::Field(b)) => a.compare(b, created),
+            (Node::Constraint(a), Node::Constraint(b)) => a.compare(b, created),
+            (Node::Index(a), Node::Index(b)) => a.compare(b, created),
+            _ => unreachable!(),
+        };
+    }
+
+    fn create(&self, ctx: &mut MariadbMigrateCtx) {
+        <Self as NodeDataDispatch>::create(self, ctx)
+    }
+
+    fn create_coalesce(&mut self, other: Self) -> Option<Self> {
+        return <Self as NodeDataDispatch>::create_coalesce(self, other);
+    }
+
+    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
+        <Self as NodeDataDispatch>::delete(self, ctx)
+    }
+
+    fn delete_coalesce(&mut self, other: Self) -> Option<Self> {
+        return <Self as NodeDataDispatch>::delete_coalesce(self, other);
+    }
+
+    fn renamed_from(&self) -> Option<Self::I> {
+        return match self {
+            Node::Table(x) => x.def.renamed_from.as_ref().map(|s| GraphId::Table(s.clone())),
+            Node::Field(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(
+                        GraphId::Field(
+                            old_table_id.clone(),
+                            x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                        ),
+                    )
+                } else {
+                    None
+                }
+            },
+            Node::Constraint(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(
+                        GraphId::Constraint(
+                            old_table_id.clone(),
+                            x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                        ),
+                    )
+                } else {
+                    None
+                }
+            },
+            Node::Index(x) => {
+                let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
+                if x.table_renamed_from.is_some() || x.def.renamed_from.is_some() {
+                    Some(
+                        GraphId::Index(
+                            old_table_id.clone(),
+                            x.def.renamed_from.clone().unwrap_or_else(|| x.def.id.clone()),
+                        ),
+                    )
+                } else {
+                    None
+                }
+            },
+        };
+    }
+
+    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
+        match (self, old) {
+            (Node::Table(a), Node::Table(b)) => a.update(ctx, b),
+            (Node::Field(a), Node::Field(b)) => a.update(ctx, b),
+            (Node::Constraint(a), Node::Constraint(b)) => a.update(ctx, b),
+            (Node::Index(a), Node::Index(b)) => a.update(ctx, b),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl NodeDataDispatch for Node {
+    fn create(&self, ctx: &mut MariadbMigrateCtx) {
+        match self {
+            Node::Table(x) => x.create(ctx),
+            Node::Field(x) => x.create(ctx),
+            Node::Constraint(x) => x.create(ctx),
+            Node::Index(x) => x.create(ctx),
+        }
+    }
+
+    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+        return match self {
+            Node::Table(x) => x.create_coalesce(other),
+            Node::Field(x) => x.create_coalesce(other),
+            Node::Constraint(x) => x.create_coalesce(other),
+            Node::Index(x) => x.create_coalesce(other),
+        };
+    }
+
+    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
+        match self {
+            Node::Table(x) => x.delete(ctx),
+            Node::Field(x) => x.delete(ctx),
+            Node::Constraint(x) => x.delete(ctx),
+            Node::Index(x) => x.delete(ctx),
+        }
+    }
+
+    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+        return match self {
+            Node::Table(x) => x.delete_coalesce(other),
+            Node::Field(x) => x.delete_coalesce(other),
+            Node::Constraint(x) => x.delete_coalesce(other),
+            Node::Index(x) => x.delete_coalesce(other),
+        };
+    }
+}

@@ -28,11 +28,11 @@ pub struct NodeTable_ {
 
 impl NodeTable_ {
     pub fn compare(&self, old: &Self, _created: &HashSet<GraphId>) -> Comparison {
-        if old.def.id != self.def.id {
+        return if old.def.id != self.def.id {
             Comparison::Update
         } else {
             Comparison::DoNothing
-        }
+        };
     }
 }
 
@@ -125,7 +125,7 @@ impl NodeDataDispatch for NodeTable_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        match other {
+        return match other {
             Node::Field(f) if f.table_id == self.table_id => {
                 None
             },
@@ -143,7 +143,7 @@ impl NodeDataDispatch for NodeTable_ {
                 None
             },
             other => Some(other),
-        }
+        };
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -151,7 +151,7 @@ impl NodeDataDispatch for NodeTable_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        match other {
+        return match other {
             Node::Field(f) if f.table_id == self.table_id => None,
             // Foreign keys to other tables are dropped separately, before the remote table is
             // dropped
@@ -161,6 +161,6 @@ impl NodeDataDispatch for NodeTable_ {
             } => None,
             Node::Index(e) if e.table_id == self.table_id => None,
             other => Some(other),
-        }
+        };
     }
 }

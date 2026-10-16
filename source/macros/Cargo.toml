@@ -12,7 +12,8 @@ readme.workspace = true
 proc-macro = true
 
 [features]
-default = ["pg", "sqlite"]
+default = ["mariadb", "pg", "sqlite"]
+mariadb = []
 pg = []
 sqlite = []
 chrono = ["good-ormning-core/chrono"]

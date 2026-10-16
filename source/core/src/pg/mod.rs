@@ -109,7 +109,7 @@ impl ConstraintHandle {
             v.tables.get_mut(&self.table.id).unwrap().constraints.get_mut(&self.id).unwrap().renamed_from =
                 Some(old_name.into());
         });
-        self
+        return self;
     }
 }
 
@@ -120,11 +120,11 @@ pub struct CustomTypeBuilder {
 
 impl CustomTypeBuilder {
     pub fn rust_type(self, rust_type: &str) -> CustomTypeRustBuilder {
-        CustomTypeRustBuilder {
+        return CustomTypeRustBuilder {
             version: self.version,
             id: self.id,
             rust_type: rust_type.into(),
-        }
+        };
     }
 }
 
@@ -138,9 +138,9 @@ impl CustomTypeHandle {
     pub fn field_type(&self) -> FieldType {
         let (rust_type, base_type) = self.version.with(|v| {
             let ct = v.custom_types.get(&self.id).expect("Custom type missing");
-            (ct.rust_type.clone(), ct.base_type.clone())
+            return (ct.rust_type.clone(), ct.base_type.clone());
         });
-        FieldType {
+        return FieldType {
             type_: Type {
                 type_: crate::pg::types::SimpleType {
                     type_: base_type.type_.type_,
@@ -150,14 +150,14 @@ impl CustomTypeHandle {
                 arr: base_type.arr,
             },
             migration_default: None,
-        }
+        };
     }
 
     pub fn renamed_from(self, old_name: &str) -> Self {
         self.version.with(|v| {
             v.custom_types.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
         });
-        self
+        return self;
     }
 }
 
@@ -177,10 +177,10 @@ impl CustomTypeRustBuilder {
                 base_type: base_type,
             });
         });
-        CustomTypeHandle {
+        return CustomTypeHandle {
             version: self.version,
             id: self.id,
-        }
+        };
     }
 }
 
@@ -190,12 +190,12 @@ pub struct DeleteBuilder {
 
 impl DeleteBuilder {
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: None,
-        }
+        };
     }
 
     pub fn build_query_named_res(
@@ -204,12 +204,12 @@ impl DeleteBuilder {
         res_count: QueryResCount,
         res_name: impl ToString,
     ) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: Some(res_name.to_string()),
-        }
+        };
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
@@ -217,7 +217,7 @@ impl DeleteBuilder {
             e: v,
             rename: None,
         });
-        self
+        return self;
     }
 
     pub fn return_field(mut self, f: &FieldHandle) -> Self {
@@ -241,7 +241,7 @@ impl DeleteBuilder {
             e: Expr::Field(f.to_ref()),
             rename: Some(sql_name),
         });
-        self
+        return self;
     }
 
     pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
@@ -267,7 +267,7 @@ impl DeleteBuilder {
                 rename: Some(sql_name),
             });
         }
-        self
+        return self;
     }
 
     pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
@@ -275,22 +275,22 @@ impl DeleteBuilder {
             e: v,
             rename: Some(name.to_string()),
         });
-        self
+        return self;
     }
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
-        self
+        return self;
     }
 
     pub fn where_(mut self, v: Expr) -> Self {
         self.q.where_ = Some(v);
-        self
+        return self;
     }
 
     pub fn with(mut self, w: crate::pg::query::utils::With) -> Self {
         self.q.with = Some(w);
-        self
+        return self;
     }
 }
 
@@ -327,9 +327,9 @@ pub struct FieldHandle {
 
 impl FieldHandle {
     pub fn r#type(&self) -> FieldType {
-        self.table.version.with(|v| {
-            v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone()
-        })
+        return self.table.version.with(|v| {
+            return v.tables.get(&self.table.id).unwrap().fields.get(&self.id).unwrap().type_.clone();
+        });
     }
 
     pub fn renamed_from(self, old_name: &str) -> Self {
@@ -337,14 +337,14 @@ impl FieldHandle {
             v.tables.get_mut(&self.table.id).unwrap().fields.get_mut(&self.id).unwrap().renamed_from =
                 Some(old_name.into());
         });
-        self
+        return self;
     }
 
     pub fn to_ref(&self) -> FieldRef {
-        FieldRef {
+        return FieldRef {
             table_id: self.table.id.clone(),
             field_id: self.id.clone(),
-        }
+        };
     }
 }
 
@@ -359,7 +359,7 @@ impl IndexHandle {
             v.tables.get_mut(&self.table.id).unwrap().indices.get_mut(&self.id).unwrap().renamed_from =
                 Some(old_name.into());
         });
-        self
+        return self;
     }
 }
 
@@ -369,12 +369,12 @@ pub struct InsertBuilder {
 
 impl InsertBuilder {
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: None,
-        }
+        };
     }
 
     pub fn build_query_named_res(
@@ -383,17 +383,17 @@ impl InsertBuilder {
         res_count: QueryResCount,
         res_name: impl ToString,
     ) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: Some(res_name.to_string()),
-        }
+        };
     }
 
     pub fn on_conflict_do_nothing(mut self) -> Self {
         self.q.on_conflict = Some(InsertConflict::DoNothing);
-        self
+        return self;
     }
 
     pub fn on_conflict_do_update(mut self, f: &[&FieldHandle], v: Vec<(FieldHandle, Expr)>) -> Self {
@@ -401,7 +401,7 @@ impl InsertBuilder {
             conflict: f.iter().map(|f| f.to_ref()).collect(),
             set: v.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
         });
-        self
+        return self;
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
@@ -409,7 +409,7 @@ impl InsertBuilder {
             e: v,
             rename: None,
         });
-        self
+        return self;
     }
 
     pub fn return_field(mut self, f: &FieldHandle) -> Self {
@@ -433,7 +433,7 @@ impl InsertBuilder {
             e: Expr::Field(f.to_ref()),
             rename: Some(sql_name),
         });
-        self
+        return self;
     }
 
     pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
@@ -459,7 +459,7 @@ impl InsertBuilder {
                 rename: Some(sql_name),
             });
         }
-        self
+        return self;
     }
 
     pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
@@ -467,12 +467,12 @@ impl InsertBuilder {
             e: v,
             rename: Some(name.to_string()),
         });
-        self
+        return self;
     }
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
-        self
+        return self;
     }
 }
 
@@ -502,14 +502,14 @@ impl InsertBuilder {
 }
 
 pub fn new_delete(table: &TableHandle) -> DeleteBuilder {
-    DeleteBuilder { q: Delete {
+    return DeleteBuilder { q: Delete {
         with: None,
         alias: None,
         using: vec![],
         table: table.to_ref(),
         returning: vec![],
         where_: None,
-    } }
+    } };
 }
 
 pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> InsertBuilder {
@@ -519,16 +519,16 @@ pub fn new_insert(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Inse
             panic!("Duplicate field {:?} in insert", v.0.id);
         }
     }
-    InsertBuilder { q: Insert {
+    return InsertBuilder { q: Insert {
         table: table.to_ref(),
         source: InsertSource::Values(values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect()),
         on_conflict: None,
         returning: vec![],
-    } }
+    } };
 }
 
 pub fn new_select(table: &TableHandle) -> SelectBuilder {
-    SelectBuilder { q: Select {
+    return SelectBuilder { q: Select {
         with: None,
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
@@ -545,11 +545,11 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         distinct: false,
         distinct_on: vec![],
         junctions: vec![],
-    } }
+    } };
 }
 
 pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
-    SelectBodyBuilder { q: SelectBody {
+    return SelectBodyBuilder { q: SelectBody {
         table: NamedSelectSource {
             source: JoinSource::Table(table.to_ref()),
             alias: Some(table.id.clone()),
@@ -564,11 +564,11 @@ pub fn new_select_body(table: &TableHandle) -> SelectBodyBuilder {
         offset: None,
         distinct: false,
         junctions: vec![],
-    } }
+    } };
 }
 
 pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
-    SelectBuilder { q: Select {
+    return SelectBuilder { q: Select {
         with: None,
         table: source,
         returning: vec![],
@@ -582,7 +582,7 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         distinct: false,
         distinct_on: vec![],
         junctions: vec![],
-    } }
+    } };
 }
 
 pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> UpdateBuilder {
@@ -592,14 +592,14 @@ pub fn new_update(table: &TableHandle, values: Vec<(FieldHandle, Expr)>) -> Upda
             panic!("Duplicate field {:?} in update", v.0.id);
         }
     }
-    UpdateBuilder { q: Update {
+    return UpdateBuilder { q: Update {
         alias: None,
         from: vec![],
         table: table.to_ref(),
         values: values.into_iter().map(|(f, e)| (f.to_ref(), e)).collect(),
         where_: None,
         returning: vec![],
-    } }
+    } };
 }
 
 pub struct Query {
@@ -615,42 +615,42 @@ pub struct SelectBodyBuilder {
 
 impl SelectBodyBuilder {
     pub fn build(self) -> SelectBody {
-        self.q
+        return self.q;
     }
 
     pub fn distinct(mut self) -> Self {
         self.q.distinct = true;
-        self
+        return self;
     }
 
     pub fn group(mut self, clauses: Vec<Expr>) -> Self {
         self.q.group = clauses;
-        self
+        return self;
     }
 
     pub fn join(mut self, join: Join) -> Self {
         self.q.join.push(join);
-        self
+        return self;
     }
 
     pub fn limit(mut self, v: Expr) -> Self {
         self.q.limit = Some(v);
-        self
+        return self;
     }
 
     pub fn offset(mut self, v: Expr) -> Self {
         self.q.offset = Some(v);
-        self
+        return self;
     }
 
     pub fn order(mut self, expr: Expr, order: Order) -> Self {
         self.q.order.push((expr, order));
-        self
+        return self;
     }
 
     pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
         self.q.order.extend(clauses);
-        self
+        return self;
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
@@ -658,7 +658,7 @@ impl SelectBodyBuilder {
             e: v,
             rename: None,
         });
-        self
+        return self;
     }
 
     pub fn return_field(mut self, f: &FieldHandle) -> Self {
@@ -682,7 +682,7 @@ impl SelectBodyBuilder {
             e: Expr::Field(f.to_ref()),
             rename: Some(sql_name),
         });
-        self
+        return self;
     }
 
     pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
@@ -708,7 +708,7 @@ impl SelectBodyBuilder {
                 rename: Some(sql_name),
             });
         }
-        self
+        return self;
     }
 
     pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
@@ -716,17 +716,17 @@ impl SelectBodyBuilder {
             e: v,
             rename: Some(name.to_string()),
         });
-        self
+        return self;
     }
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
-        self
+        return self;
     }
 
     pub fn where_(mut self, predicate: Expr) -> Self {
         self.q.where_ = Some(predicate);
-        self
+        return self;
     }
 }
 
@@ -736,12 +736,12 @@ pub struct SelectBuilder {
 
 impl SelectBuilder {
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: None,
-        }
+        };
     }
 
     pub fn build_query_named_res(
@@ -750,42 +750,42 @@ impl SelectBuilder {
         res_count: QueryResCount,
         res_name: impl ToString,
     ) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: Some(res_name.to_string()),
-        }
+        };
     }
 
     pub fn group(mut self, clauses: Vec<Expr>) -> Self {
         self.q.group = clauses;
-        self
+        return self;
     }
 
     pub fn join(mut self, join: Join) -> Self {
         self.q.join.push(join);
-        self
+        return self;
     }
 
     pub fn limit(mut self, v: Expr) -> Self {
         self.q.limit = Some(v);
-        self
+        return self;
     }
 
     pub fn offset(mut self, v: Expr) -> Self {
         self.q.offset = Some(v);
-        self
+        return self;
     }
 
     pub fn order(mut self, expr: Expr, order: Order) -> Self {
         self.q.order.push((expr, order));
-        self
+        return self;
     }
 
     pub fn order_from_iter(mut self, clauses: impl Iterator<Item = (Expr, Order)>) -> Self {
         self.q.order.extend(clauses);
-        self
+        return self;
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
@@ -793,7 +793,7 @@ impl SelectBuilder {
             e: v,
             rename: None,
         });
-        self
+        return self;
     }
 
     pub fn return_field(mut self, f: &FieldHandle) -> Self {
@@ -817,7 +817,7 @@ impl SelectBuilder {
             e: Expr::Field(f.to_ref()),
             rename: Some(sql_name),
         });
-        self
+        return self;
     }
 
     pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
@@ -843,7 +843,7 @@ impl SelectBuilder {
                 rename: Some(sql_name),
             });
         }
-        self
+        return self;
     }
 
     pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
@@ -851,22 +851,22 @@ impl SelectBuilder {
             e: v,
             rename: Some(name.to_string()),
         });
-        self
+        return self;
     }
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
-        self
+        return self;
     }
 
     pub fn where_(mut self, predicate: Expr) -> Self {
         self.q.where_ = Some(predicate);
-        self
+        return self;
     }
 
     pub fn with(mut self, with: self::query::utils::With) -> Self {
         self.q.with = Some(with);
-        self
+        return self;
     }
 }
 
@@ -889,10 +889,10 @@ impl TableHandle {
                 type_: type_,
             });
         });
-        FieldHandle {
+        return FieldHandle {
             table: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     pub fn foreign_key(&self, id: &str, fields: &[(&FieldHandle, &FieldHandle)]) -> ConstraintHandle {
@@ -907,10 +907,10 @@ impl TableHandle {
                 }),
             });
         });
-        ConstraintHandle {
+        return ConstraintHandle {
             table: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     pub fn index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
@@ -922,10 +922,10 @@ impl TableHandle {
                 unique: false,
             });
         });
-        IndexHandle {
+        return IndexHandle {
             table: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     pub fn primary_key(&self, id: &str, fields: &[&FieldHandle]) -> ConstraintHandle {
@@ -938,21 +938,21 @@ impl TableHandle {
                 ),
             });
         });
-        ConstraintHandle {
+        return ConstraintHandle {
             table: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     pub fn renamed_from(self, old_name: &str) -> Self {
         self.version.with(|v| {
             v.tables.get_mut(&self.id).unwrap().renamed_from = Some(old_name.into());
         });
-        self
+        return self;
     }
 
     pub fn to_ref(&self) -> TableRef {
-        TableRef(self.id.clone())
+        return TableRef(self.id.clone());
     }
 
     pub fn unique_index(&self, id: &str, fields: &[&FieldHandle]) -> IndexHandle {
@@ -964,10 +964,10 @@ impl TableHandle {
                 unique: true,
             });
         });
-        IndexHandle {
+        return IndexHandle {
             table: self.clone(),
             id: id.into(),
-        }
+        };
     }
 }
 
@@ -977,12 +977,12 @@ pub struct UpdateBuilder {
 
 impl UpdateBuilder {
     pub fn build_query(self, name: impl ToString, res_count: QueryResCount) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: None,
-        }
+        };
     }
 
     pub fn build_query_named_res(
@@ -991,12 +991,12 @@ impl UpdateBuilder {
         res_count: QueryResCount,
         res_name: impl ToString,
     ) -> Query {
-        Query {
+        return Query {
             name: name.to_string(),
             body: Box::new(self.q),
             res_count: res_count,
             res_name: Some(res_name.to_string()),
-        }
+        };
     }
 
     pub fn return_(mut self, v: Expr) -> Self {
@@ -1004,7 +1004,7 @@ impl UpdateBuilder {
             e: v,
             rename: None,
         });
-        self
+        return self;
     }
 
     pub fn return_field(mut self, f: &FieldHandle) -> Self {
@@ -1028,7 +1028,7 @@ impl UpdateBuilder {
             e: Expr::Field(f.to_ref()),
             rename: Some(sql_name),
         });
-        self
+        return self;
     }
 
     pub fn return_fields(mut self, f: &[&FieldHandle]) -> Self {
@@ -1054,7 +1054,7 @@ impl UpdateBuilder {
                 rename: Some(sql_name),
             });
         }
-        self
+        return self;
     }
 
     pub fn return_named(mut self, name: impl ToString, v: Expr) -> Self {
@@ -1062,17 +1062,17 @@ impl UpdateBuilder {
             e: v,
             rename: Some(name.to_string()),
         });
-        self
+        return self;
     }
 
     pub fn returns_from_iter(mut self, f: impl Iterator<Item = Returning>) -> Self {
         self.q.returning.extend(f);
-        self
+        return self;
     }
 
     pub fn where_(mut self, v: Expr) -> Self {
         self.q.where_ = Some(v);
-        self
+        return self;
     }
 }
 
@@ -1110,7 +1110,10 @@ pub struct Version {
 impl Version {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> VersionHandle {
-        VersionHandle(Rc::new(RefCell::new(Some(Version::default()))), Rc::new(std::cell::Cell::new(false)))
+        return VersionHandle(
+            Rc::new(RefCell::new(Some(Version::default()))),
+            Rc::new(std::cell::Cell::new(false)),
+        );
     }
 }
 
@@ -1120,13 +1123,13 @@ impl Version {
         for (table_id, table) in &self.tables {
             let table_graph_id = GraphId::Table(table_id.clone());
             let table_renamed_from = table.renamed_from.clone();
-            out.insert(table_graph_id.clone(), MigrateNode::new(vec![], Node::table(NodeTable_ {
+            out.insert(table_graph_id.clone(), MigrateNode::new(vec![], Node::Table(NodeTable_ {
                 table_id: table_id.clone(),
                 def: table.clone(),
             })));
             for (field_id, field) in &table.fields {
                 let field_graph_id = GraphId::Field(table_id.clone(), field_id.clone());
-                out.insert(field_graph_id, MigrateNode::new(vec![table_graph_id.clone()], Node::field(NodeField_ {
+                out.insert(field_graph_id, MigrateNode::new(vec![table_graph_id.clone()], Node::Field(NodeField_ {
                     table_id: table_id.clone(),
                     table_renamed_from: table_renamed_from.clone(),
                     def: field.clone(),
@@ -1141,7 +1144,7 @@ impl Version {
                 }
                 out.insert(
                     GraphId::Index(table_id.clone(), index_id.clone()),
-                    MigrateNode::new(deps, Node::table_index(NodeIndex_ {
+                    MigrateNode::new(deps, Node::Index(NodeIndex_ {
                         table_id: table_id.clone(),
                         table_renamed_from: table_renamed_from.clone(),
                         def: index.clone(),
@@ -1204,7 +1207,7 @@ impl Version {
                 }
                 out.insert(
                     GraphId::Constraint(table_id.clone(), constraint_id.clone()),
-                    MigrateNode::new(deps, Node::table_constraint(NodeConstraint_ {
+                    MigrateNode::new(deps, Node::Constraint(NodeConstraint_ {
                         table_id: table_id.clone(),
                         table_renamed_from: table_renamed_from.clone(),
                         def: constraint.clone(),
@@ -1224,14 +1227,14 @@ pub struct VersionHandle(pub Rc<RefCell<Option<Version>>>, pub Rc<std::cell::Cel
 impl VersionHandle {
     pub fn build(&self) -> Version {
         self.1.set(true);
-        self.0.borrow().as_ref().expect("Version already built").clone()
+        return self.0.borrow().as_ref().expect("Version already built").clone();
     }
 
     pub fn custom_type(&self, id: &str) -> CustomTypeBuilder {
-        CustomTypeBuilder {
+        return CustomTypeBuilder {
             version: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     pub fn table(&self, id: &str) -> TableHandle {
@@ -1247,10 +1250,10 @@ impl VersionHandle {
                 constraints: BTreeMap::new(),
             });
         });
-        TableHandle {
+        return TableHandle {
             version: self.clone(),
             id: id.into(),
-        }
+        };
     }
 
     fn with<R>(&self, f: impl FnOnce(&mut Version) -> R) -> R {
@@ -1258,6 +1261,6 @@ impl VersionHandle {
             panic!("Version already built");
         }
         let mut v = self.0.borrow_mut();
-        f(v.as_mut().expect("Version already built"))
+        return f(v.as_mut().expect("Version already built"));
     }
 }

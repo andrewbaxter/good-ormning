@@ -65,7 +65,7 @@ pub fn migrate<T: NodeData>(output: &mut T::O, prev_version: Option<Version<T>>,
     }
 
     // Create the create/update graph with the new version
-    let mut create_graph = Graph::new();
+    let mut create_graph: Graph<(T::I, Option<DiffNode<T>>)> = Graph::new();
     let mut create_graph_lookup = HashMap::new();
     for k in version.keys() {
         let id = create_graph.add((k.clone(), None));
@@ -220,10 +220,10 @@ pub struct Node<T: NodeData> {
 
 impl<T: NodeData> Node<T> {
     pub fn new(deps: Vec<T::I>, body: T) -> Self {
-        Self {
+        return Self {
             deps: deps,
             body: body,
-        }
+        };
     }
 }
 

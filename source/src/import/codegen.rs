@@ -67,6 +67,217 @@ fn allocate_var_names<'a>(tables: impl Iterator<Item = (&'a String, Vec<&'a Stri
     };
 }
 
+pub fn generate_mariadb(version: &good_ormning_core::mariadb::Version, db_name: &str) -> Result<String, loga::Error> {
+    use good_ormning_core::mariadb::schema::constraint::ConstraintType;
+
+    let mut stmts: Vec<TokenStream> = vec![];
+    stmts.push(quote!{
+        println!("cargo:rerun-if-changed=build.rs");
+    });
+    stmts.push(quote!{
+        let v = good_ormning::mariadb::Version::new();
+    });
+    let var_names =
+        allocate_var_names(
+            version.tables.iter().map(|(table_key, table)| (table_key, table.fields.keys().collect())),
+        );
+    let mut fk_stmts: Vec<TokenStream> = vec![];
+    for (table_key, table) in &version.tables {
+        let tvar = format_ident!("{}", var_names.table_vars.get(table_key).unwrap());
+        let table_id = &table.id;
+        stmts.push(quote!{
+            let #tvar = v.table(#table_id);
+        });
+        for (field_id, field) in &table.fields {
+            let fvar = format_ident!("{}", var_names.field_vars.get(&(table_key.clone(), field_id.clone())).unwrap());
+            let fn_ident = format_ident!("{}", {
+                use {
+                    good_ormning_core::mariadb::{
+                        schema::field::TypeVariant as V,
+                        types::SimpleSimpleType as S,
+                    },
+                };
+
+                match (&field.type_.variant, &field.type_.type_.type_.type_) {
+                    (Some(V::Mediumint), S::U32) => "field_mediumint_unsigned",
+                    (Some(V::Mediumint), _) => "field_mediumint",
+                    (Some(V::Char), _) => "field_char",
+                    (Some(V::TinyText), _) => "field_tinytext",
+                    (Some(V::Text), _) => "field_text",
+                    (Some(V::MediumText), _) => "field_mediumtext",
+                    (Some(V::Binary), _) => "field_binary",
+                    (Some(V::TinyBlob), _) => "field_tinyblob",
+                    (Some(V::Blob), _) => "field_blob",
+                    (Some(V::MediumBlob), _) => "field_mediumblob",
+                    (Some(V::Year), _) => "field_year",
+                    (Some(V::Timestamp), S::DatetimeChrono) => "field_timestamp_chrono",
+                    (Some(V::Timestamp), _) => "field_timestamp_jiff",
+                    (
+                        None,
+                        S::AnyNull |
+                        S::AnyInt |
+                        S::AnyFloat |
+                        S::AnyDecimal |
+                        S::AnyDatetime |
+                        S::AnyDate |
+                        S::AnyTime,
+                    ) => unreachable!(
+                        "Literal-only types are never read from a schema"
+                    ),
+                    (None, S::Decimal) => "field_decimal",
+                    (None, S::I8) => "field_i8",
+                    (None, S::I16) => "field_i16",
+                    (None, S::I32) => "field_i32",
+                    (None, S::I64) => "field_i64",
+                    (None, S::U8) => "field_u8",
+                    (None, S::U16) => "field_u16",
+                    (None, S::U32) => "field_u32",
+                    (None, S::U64) => "field_u64",
+                    (None, S::F32) => "field_f32",
+                    (None, S::F64) => "field_f64",
+                    (None, S::Bool) => "field_bool",
+                    (None, S::String) => "field_str",
+                    (None, S::Bytes) => "field_bytes",
+                    #[cfg(feature = "chrono")]
+                    (None, S::DatetimeChrono) => "field_datetime_chrono",
+                    #[cfg(feature = "jiff")]
+                    (None, S::DatetimeJiff) => "field_datetime_jiff",
+                    (None, S::DateChrono) => "field_date_chrono",
+                    (None, S::DateJiff) => "field_date_jiff",
+                    (None, S::TimeChrono) => "field_time_chrono",
+                    (None, S::TimeJiff) => "field_time_jiff",
+                }
+            });
+            let field_id_str = &field.id;
+            let mut type_ = quote!(good_ormning:: mariadb:: schema:: field::#fn_ident());
+            if let Some(max_len) = field.type_.max_len {
+                type_ = quote!(#type_.max_len(#max_len));
+            }
+            if let Some(precision) = field.type_.precision {
+                type_ = quote!(#type_.precision(#precision));
+            }
+            if let Some(scale) = field.type_.scale {
+                type_ = quote!(#type_.scale(#scale));
+            }
+            if field.type_.type_.opt {
+                type_ = quote!(#type_.opt());
+            }
+            if field.type_.auto_increment {
+                type_ = quote!(#type_.auto_increment());
+            }
+            if let Some(default) = &field.type_.default {
+                use good_ormning_core::mariadb::query::expr::SerialExpr;
+
+                let default = match default {
+                    SerialExpr::LitAnyInt(v) => quote!(LitAnyInt(#v)),
+                    SerialExpr::LitAnyDecimal(v) => quote!(LitAnyDecimal(#v.to_string())),
+                    SerialExpr::LitBool(v) => quote!(LitBool(#v)),
+                    SerialExpr::LitString(v) => quote!(LitString(#v.to_string())),
+                    SerialExpr::LitBytes(v) => quote!(LitBytes(vec![#(#v), *])),
+                    SerialExpr::LitDate(v) => quote!(LitDate(#v.to_string())),
+                    SerialExpr::LitTime(v) => quote!(LitTime(#v.to_string())),
+                    SerialExpr::LitTimestamp(v) => quote!(LitTimestamp(#v.to_string())),
+                    _ => unreachable!("Imported defaults are always literals"),
+                };
+                type_ = quote!(#type_.default(good_ormning:: mariadb:: query:: expr:: SerialExpr::#default));
+            }
+            stmts.push(quote!{
+                let #fvar = #tvar.field(#field_id_str, #type_.build());
+            });
+        }
+        for constraint in table.constraints.values() {
+            let constraint_id = &constraint.id;
+            match &constraint.type_ {
+                ConstraintType::PrimaryKey(pk) => {
+                    let refs =
+                        pk
+                            .fields
+                            .iter()
+                            .map(|fid| -> Result<TokenStream, loga::Error> {
+                                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
+                                return Ok(quote!{
+                                    &#fvar
+                                });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating primary key constraint {:?}", constraint_id))?;
+                    stmts.push(quote!{
+                        #tvar.primary_key(&[#(#refs), *]);
+                    });
+                },
+                ConstraintType::ForeignKey(fk_def) => {
+                    let pairs =
+                        fk_def
+                            .fields
+                            .iter()
+                            .map(|(lf, rf)| -> Result<TokenStream, loga::Error> {
+                                let lvar = lookup_field(&var_names.field_vars, table_key, lf)?;
+                                let rvar = lookup_field(&var_names.field_vars, &fk_def.remote_table, rf)?;
+                                return Ok(quote!{
+                                    (&#lvar, &#rvar)
+                                });
+                            })
+                            .collect::<Result<Vec<TokenStream>, _>>()
+                            .context(format!("Generating foreign key constraint {:?}", constraint_id))?;
+                    let mut fk = quote!(#tvar.foreign_key(#constraint_id, &[#(#pairs), *]));
+                    for (method, action) in [("on_delete", &fk_def.on_delete), ("on_update", &fk_def.on_update)] {
+                        use good_ormning_core::mariadb::schema::constraint::ForeignKeyAction as A;
+
+                        let Some(action) = action else {
+                            continue;
+                        };
+                        let method = format_ident!("{}", method);
+                        let action = format_ident!("{}", match action {
+                            A::Cascade => "Cascade",
+                            A::NoAction => "NoAction",
+                            A::Restrict => "Restrict",
+                            A::SetNull => "SetNull",
+                        });
+                        fk =
+                            quote!(
+                                #fk.#method(good_ormning:: mariadb:: schema:: constraint:: ForeignKeyAction::#action)
+                            );
+                    }
+                    fk_stmts.push(quote!{
+                        #fk;
+                    });
+                },
+            }
+        }
+        for index in table.indices.values() {
+            let index_id = &index.id;
+            let refs = index.fields.iter().map(|fid| -> Result<TokenStream, loga::Error> {
+                let fvar = lookup_field(&var_names.field_vars, table_key, fid)?;
+                return Ok(quote!{
+                    &#fvar
+                });
+            }).collect::<Result<Vec<TokenStream>, _>>().context(format!("Generating index {:?}", index_id))?;
+            if index.unique {
+                stmts.push(quote!{
+                    #tvar.unique_index(#index_id, &[#(#refs), *]);
+                });
+            } else {
+                stmts.push(quote!{
+                    #tvar.index(#index_id, &[#(#refs), *]);
+                });
+            }
+        }
+    }
+    stmts.extend(fk_stmts);
+    stmts.push(quote!{
+        good_ormning:: mariadb:: generate(good_ormning:: mariadb:: GenerateArgs {
+            db_name: Some(#db_name.to_string()),
+            versions: vec ![(1usize, v.build())],
+            ..Default::default()
+        }).unwrap();
+    });
+    return Ok(format_tokens(quote!{
+        fn main() {
+            #(#stmts) *
+        }
+    }));
+}
+
 /// Generate a `build.rs` `main()` body for the given PostgreSQL `Version`.
 pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> Result<String, loga::Error> {
     use good_ormning_core::pg::schema::constraint::ConstraintType;
@@ -94,7 +305,35 @@ pub fn generate_pg(version: &good_ormning_core::pg::Version, db_name: &str) -> R
         });
         for (field_id, field) in &table.fields {
             let fvar = format_ident!("{}", var_names.field_vars.get(&(table_key.clone(), field_id.clone())).unwrap());
-            let fn_ident = format_ident!("{}", pg_field_fn(&field.type_.type_.type_.type_));
+            let fn_ident = format_ident!("{}", {
+                use good_ormning_core::pg::types::SimpleSimpleType as S;
+
+                match &field.type_.type_.type_.type_ {
+                    S::AnyNull | S::AnyInt | S::AnyFloat | S::AnyTime => unreachable!(
+                        "Literal-only types are never read from a schema"
+                    ),
+                    S::Auto => "field_auto",
+                    S::I16 => "field_i16",
+                    S::I32 => "field_i32",
+                    S::I64 => "field_i64",
+                    S::U32 => "field_u32",
+                    S::F32 => "field_f32",
+                    S::F64 => "field_f64",
+                    S::Bool => "field_bool",
+                    S::String => "field_str",
+                    S::Bytes => "field_bytes",
+                    #[cfg(feature = "chrono")]
+                    S::UtcTimeSChrono => "field_utctime_s_chrono",
+                    #[cfg(feature = "chrono")]
+                    S::UtcTimeMsChrono => "field_utctime_ms_chrono",
+                    #[cfg(feature = "chrono")]
+                    S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
+                    #[cfg(feature = "jiff")]
+                    S::UtcTimeSJiff => "field_utctime_s_jiff",
+                    #[cfg(feature = "jiff")]
+                    S::UtcTimeMsJiff => "field_utctime_ms_jiff",
+                }
+            });
             let field_id_str = &field.id;
             if field.type_.type_.opt {
                 stmts.push(quote!{
@@ -222,7 +461,35 @@ pub fn generate_sqlite(version: &good_ormning_core::sqlite::Version, db_name: &s
                     });
                 }
             } else {
-                let fn_ident = format_ident!("{}", sqlite_field_fn(&field.type_.type_.type_.type_));
+                let fn_ident = format_ident!("{}", {
+                    use good_ormning_core::sqlite::types::SimpleSimpleType as S;
+
+                    match &field.type_.type_.type_.type_ {
+                        S::AnyNull | S::AnyInt | S::AnyFloat => unreachable!(
+                            "Literal-only types are never read from a schema"
+                        ),
+                        S::Auto => "field_auto",
+                        S::I16 => "field_i16",
+                        S::I32 => "field_i32",
+                        S::I64 => "field_i64",
+                        S::U32 => "field_u32",
+                        S::F32 => "field_f32",
+                        S::F64 => "field_f64",
+                        S::Bool => "field_bool",
+                        S::String => "field_str",
+                        S::Bytes => "field_bytes",
+                        #[cfg(feature = "chrono")]
+                        S::UtcTimeSChrono => "field_utctime_s_chrono",
+                        #[cfg(feature = "chrono")]
+                        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
+                        #[cfg(feature = "chrono")]
+                        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
+                        #[cfg(feature = "jiff")]
+                        S::UtcTimeSJiff => "field_utctime_s_jiff",
+                        #[cfg(feature = "jiff")]
+                        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
+                    }
+                });
                 let field_id_str = &field.id;
                 if field.type_.type_.opt {
                     stmts.push(quote!{
@@ -326,62 +593,4 @@ fn lookup_field(
             .cloned()
             .ok_or_else(|| loga::err(format!("Field {:?} not found in table {:?}", field_id, table_key)))?;
     return Ok(format_ident!("{}", name));
-}
-
-fn pg_field_fn(sst: &good_ormning_core::pg::types::SimpleSimpleType) -> &'static str {
-    use good_ormning_core::pg::types::SimpleSimpleType as S;
-
-    match sst {
-        S::AnyNull | S::AnyInt | S::AnyFloat | S::AnyTime => unreachable!(
-            "Literal-only types are never read from a schema"
-        ),
-        S::Auto => "field_auto",
-        S::I16 => "field_i16",
-        S::I32 => "field_i32",
-        S::I64 => "field_i64",
-        S::U32 => "field_u32",
-        S::F32 => "field_f32",
-        S::F64 => "field_f64",
-        S::Bool => "field_bool",
-        S::String => "field_str",
-        S::Bytes => "field_bytes",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeSChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
-        #[cfg(feature = "chrono")]
-        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeSJiff => "field_utctime_s_jiff",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
-    }
-}
-
-fn sqlite_field_fn(sst: &good_ormning_core::sqlite::types::SimpleSimpleType) -> &'static str {
-    use good_ormning_core::sqlite::types::SimpleSimpleType as S;
-
-    match sst {
-        S::AnyNull | S::AnyInt | S::AnyFloat => unreachable!("Literal-only types are never read from a schema"),
-        S::Auto => "field_auto",
-        S::I16 => "field_i16",
-        S::I32 => "field_i32",
-        S::I64 => "field_i64",
-        S::U32 => "field_u32",
-        S::F32 => "field_f32",
-        S::F64 => "field_f64",
-        S::Bool => "field_bool",
-        S::String => "field_str",
-        S::Bytes => "field_bytes",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeSChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "chrono")]
-        S::UtcTimeMsChrono => "field_utctime_ms_chrono",
-        #[cfg(feature = "chrono")]
-        S::FixedOffsetTimeChrono => "field_utctime_s_chrono",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeSJiff => "field_utctime_s_jiff",
-        #[cfg(feature = "jiff")]
-        S::UtcTimeMsJiff => "field_utctime_ms_jiff",
-    }
 }

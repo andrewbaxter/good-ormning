@@ -39,36 +39,18 @@ pub enum Node {
     Table(table::NodeTable_),
 }
 
-impl Node {
-    pub(crate) fn field(t: field::NodeField_) -> Self {
-        Node::Field(t)
-    }
-
-    pub(crate) fn table(t: table::NodeTable_) -> Self {
-        Node::Table(t)
-    }
-
-    pub(crate) fn table_constraint(t: constraint::NodeConstraint_) -> Self {
-        Node::Constraint(t)
-    }
-
-    pub(crate) fn table_index(t: index::NodeIndex_) -> Self {
-        Node::Index(t)
-    }
-}
-
 impl crate::graphmigrate::NodeData for Node {
     type I = GraphId;
     type O = PgMigrateCtx;
 
     fn compare(&self, other: &Self, created: &HashSet<Self::I>) -> Comparison {
-        match (self, other) {
+        return match (self, other) {
             (Node::Table(a), Node::Table(b)) => a.compare(b, created),
             (Node::Field(a), Node::Field(b)) => a.compare(b, created),
             (Node::Constraint(a), Node::Constraint(b)) => a.compare(b, created),
             (Node::Index(a), Node::Index(b)) => a.compare(b, created),
             _ => unreachable!(),
-        }
+        };
     }
 
     fn create(&self, ctx: &mut PgMigrateCtx) {
@@ -76,7 +58,7 @@ impl crate::graphmigrate::NodeData for Node {
     }
 
     fn create_coalesce(&mut self, other: Self) -> Option<Self> {
-        <Self as NodeDataDispatch>::create_coalesce(self, other)
+        return <Self as NodeDataDispatch>::create_coalesce(self, other);
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -84,11 +66,11 @@ impl crate::graphmigrate::NodeData for Node {
     }
 
     fn delete_coalesce(&mut self, other: Self) -> Option<Self> {
-        <Self as NodeDataDispatch>::delete_coalesce(self, other)
+        return <Self as NodeDataDispatch>::delete_coalesce(self, other);
     }
 
     fn renamed_from(&self) -> Option<Self::I> {
-        match self {
+        return match self {
             Node::Table(x) => x.def.renamed_from.as_ref().map(|s| GraphId::Table(s.clone())),
             Node::Field(x) => {
                 let old_table_id = x.table_renamed_from.as_ref().unwrap_or(&x.table_id);
@@ -129,7 +111,7 @@ impl crate::graphmigrate::NodeData for Node {
                     None
                 }
             },
-        }
+        };
     }
 
     fn update(&self, ctx: &mut PgMigrateCtx, old: &Self) {
@@ -154,12 +136,12 @@ impl NodeDataDispatch for Node {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        match self {
+        return match self {
             Node::Table(x) => x.create_coalesce(other),
             Node::Field(x) => x.create_coalesce(other),
             Node::Constraint(x) => x.create_coalesce(other),
             Node::Index(x) => x.create_coalesce(other),
-        }
+        };
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -172,11 +154,11 @@ impl NodeDataDispatch for Node {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        match self {
+        return match self {
             Node::Table(x) => x.delete_coalesce(other),
             Node::Field(x) => x.delete_coalesce(other),
             Node::Constraint(x) => x.delete_coalesce(other),
             Node::Index(x) => x.delete_coalesce(other),
-        }
+        };
     }
 }

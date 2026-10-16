@@ -1,5 +1,10 @@
 use {
-    crate::utils::RustTypes,
+    crate::utils::{
+        Errs,
+        RustTypes,
+        TimeLibrary,
+        time_library,
+    },
     quote::quote,
     serde::{
         Deserialize,
@@ -44,8 +49,13 @@ pub struct SimpleType {
     pub type_: SimpleSimpleType,
 }
 
-pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
-    match t {
+pub fn to_rust_types(
+    errs: &Errs,
+    path: &rpds::Vector<String>,
+    t: &SimpleSimpleType,
+    time: Option<TimeLibrary>,
+) -> RustTypes {
+    return match t {
         SimpleSimpleType::Auto => RustTypes {
             custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomAuto),
             ret_type: quote!(i64),
@@ -67,29 +77,31 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             arg_type: quote!(i64),
         },
         SimpleSimpleType::AnyTime => {
-            #[cfg(feature = "chrono")]
-            {
-                RustTypes {
-                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomUtcTimeChrono),
-                    ret_type: quote!(chrono:: DateTime < chrono:: Utc >),
-                    arg_type: quote!(chrono:: DateTime < chrono:: Utc >),
-                }
-            }
-            #[cfg(all(not(feature = "chrono"), feature = "jiff"))]
-            {
-                RustTypes {
-                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomUtcTimeJiff),
-                    ret_type: quote!(jiff::Timestamp),
-                    arg_type: quote!(jiff::Timestamp),
-                }
-            }
-            #[cfg(not(any(feature = "chrono", feature = "jiff")))]
-            {
-                RustTypes {
-                    custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomString),
-                    ret_type: quote!(String),
-                    arg_type: quote!(&str),
-                }
+            let library = match time_library(time) {
+                Ok(l) => l,
+                Err(e) => {
+                    errs.err(path, e);
+                    None
+                },
+            };
+            match library {
+                None => {
+                    return RustTypes {
+                        custom_trait: quote!(good_ormning::runtime::pg::GoodOrmningCustomString),
+                        ret_type: quote!(String),
+                        arg_type: quote!(&str),
+                    };
+                },
+                #[cfg(any(feature = "chrono", feature = "jiff"))]
+                Some(library) => {
+                    let concrete = match library {
+                        #[cfg(feature = "chrono")]
+                        TimeLibrary::Chrono => SimpleSimpleType::UtcTimeSChrono,
+                        #[cfg(feature = "jiff")]
+                        TimeLibrary::Jiff => SimpleSimpleType::UtcTimeSJiff,
+                    };
+                    return to_rust_types(errs, path, &concrete, time);
+                },
             }
         },
         SimpleSimpleType::U32 => RustTypes {
@@ -152,11 +164,11 @@ pub fn to_rust_types(t: &SimpleSimpleType) -> RustTypes {
             ret_type: quote!(jiff::Timestamp),
             arg_type: quote!(jiff::Timestamp),
         },
-    }
+    };
 }
 
 pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
-    match t {
+    return match t {
         SimpleSimpleType::Auto => "bigserial",
         SimpleSimpleType::I16 => "smallint",
         SimpleSimpleType::AnyNull | SimpleSimpleType::AnyInt | SimpleSimpleType::I32 => "int",
@@ -178,7 +190,7 @@ pub fn to_sql_type(t: &SimpleSimpleType) -> &'static str {
         SimpleSimpleType::UtcTimeSJiff => "timestamp with time zone",
         #[cfg(feature = "jiff")]
         SimpleSimpleType::UtcTimeMsJiff => "timestamp with time zone",
-    }
+    };
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

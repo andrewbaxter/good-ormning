@@ -324,7 +324,7 @@ impl Expr {
         path: &rpds::Vector<String>,
         scope: &HashMap<ExprValName, Type>,
     ) -> (ExprType, Tokens) {
-        match self {
+        return match self {
             Expr::LitArray(v) => {
                 let mut out = Tokens::new();
                 let mut res_types = vec![];
@@ -594,7 +594,8 @@ impl Expr {
                     std::collections::hash_map::Entry::Vacant(e) => {
                         let i = ctx.rust_args.len() + 1;
                         e.insert((i, type_.clone()));
-                        let rust_types = to_rust_types(&type_.type_.type_);
+                        let rust_types =
+                            to_rust_types(&ctx.errs, &path, &type_.type_.type_, ctx.default_time_library);
                         let custom_trait_ident = rust_types.custom_trait;
                         let rust_type = rust_types.arg_type;
                         let ident = format_ident!("{}", sanitize_ident(name).1);
@@ -625,7 +626,7 @@ impl Expr {
                             rust_forward =
                                 quote!(#ident.into_iter().map(| #ident | #rust_forward).collect::< Vec < _ >>());
                         }
-                        ctx.rust_args.push(quote!(#ident: #rust_type));
+                        ctx.rust_args.push((name.clone(), quote!(#ident: #rust_type)));
                         ctx.query_args.push(quote!(#rust_forward));
                         i
                     },
@@ -1313,13 +1314,13 @@ impl Expr {
                 out.s("(").s(&tokens.to_string()).s(")");
                 return (t, out);
             },
-        }
+        };
     }
 }
 
 impl From<SerialExpr> for Expr {
     fn from(s: SerialExpr) -> Self {
-        match s {
+        return match s {
             SerialExpr::LitArray(v) => Expr::LitArray(v.into_iter().map(Expr::from).collect()),
             SerialExpr::LitNull(t) => Expr::LitNull(t),
             SerialExpr::LitBool(b) => Expr::LitBool(b),
@@ -1357,15 +1358,15 @@ impl From<SerialExpr> for Expr {
                 expr: Box::new(Expr::from(*expr)),
                 pattern: Box::new(Expr::from(*pattern)),
                 escape: escape.map(|e| Box::new(Expr::from(*e))),
-                ilike,
+                ilike: ilike,
             },
             SerialExpr::Between { e, negated, low, high } => Expr::Between {
                 e: Box::new(Expr::from(*e)),
-                negated,
+                negated: negated,
                 low: Box::new(Expr::from(*low)),
                 high: Box::new(Expr::from(*high)),
             },
-        }
+        };
     }
 }
 
@@ -1381,7 +1382,7 @@ impl ExprType {
             );
             return None;
         }
-        Some(self.0[0].1.clone())
+        return Some(self.0[0].1.clone());
     }
 }
 
@@ -1393,31 +1394,31 @@ pub struct ExprValName {
 
 impl ExprValName {
     pub fn empty() -> Self {
-        ExprValName {
+        return ExprValName {
             table_id: "".into(),
             id: "".into(),
-        }
+        };
     }
 
     pub fn field(f: &FieldRef) -> Self {
-        ExprValName {
+        return ExprValName {
             table_id: f.table_id.clone(),
             id: f.field_id.clone(),
-        }
+        };
     }
 
     pub fn local(name: String) -> Self {
-        ExprValName {
+        return ExprValName {
             table_id: "".into(),
             id: name,
-        }
+        };
     }
 
     pub fn with_alias(&self, s: &str) -> ExprValName {
-        ExprValName {
+        return ExprValName {
             table_id: s.into(),
             id: self.id.clone(),
-        }
+        };
     }
 }
 
@@ -1586,18 +1587,18 @@ impl WindowFrame {
                 },
             }
         }
-        out
+        return out;
     }
 }
 
 impl From<SerialWindowFrame> for WindowFrame {
     fn from(s: SerialWindowFrame) -> Self {
-        WindowFrame {
+        return WindowFrame {
             type_: WindowFrameType::from(s.type_),
             start: WindowFrameBound::from(s.start),
             end: s.end.map(WindowFrameBound::from),
             exclude: s.exclude.map(WindowFrameExclude::from),
-        }
+        };
     }
 }
 
@@ -1637,19 +1638,19 @@ impl WindowFrameBound {
                 out.s("unbounded following");
             },
         }
-        out
+        return out;
     }
 }
 
 impl From<SerialWindowFrameBound> for WindowFrameBound {
     fn from(s: SerialWindowFrameBound) -> Self {
-        match s {
+        return match s {
             SerialWindowFrameBound::UnboundedPreceding => WindowFrameBound::UnboundedPreceding,
             SerialWindowFrameBound::Preceding(e) => WindowFrameBound::Preceding(Box::new(Expr::from(*e))),
             SerialWindowFrameBound::CurrentRow => WindowFrameBound::CurrentRow,
             SerialWindowFrameBound::Following(e) => WindowFrameBound::Following(Box::new(Expr::from(*e))),
             SerialWindowFrameBound::UnboundedFollowing => WindowFrameBound::UnboundedFollowing,
-        }
+        };
     }
 }
 
@@ -1663,12 +1664,12 @@ pub enum WindowFrameExclude {
 
 impl From<SerialWindowFrameExclude> for WindowFrameExclude {
     fn from(s: SerialWindowFrameExclude) -> Self {
-        match s {
+        return match s {
             SerialWindowFrameExclude::CurrentRow => WindowFrameExclude::CurrentRow,
             SerialWindowFrameExclude::Group => WindowFrameExclude::Group,
             SerialWindowFrameExclude::Ties => WindowFrameExclude::Ties,
             SerialWindowFrameExclude::NoOthers => WindowFrameExclude::NoOthers,
-        }
+        };
     }
 }
 
@@ -1681,10 +1682,10 @@ pub enum WindowFrameType {
 
 impl From<SerialWindowFrameType> for WindowFrameType {
     fn from(s: SerialWindowFrameType) -> Self {
-        match s {
+        return match s {
             SerialWindowFrameType::Rows => WindowFrameType::Rows,
             SerialWindowFrameType::Range => WindowFrameType::Range,
             SerialWindowFrameType::Groups => WindowFrameType::Groups,
-        }
+        };
     }
 }

@@ -174,11 +174,14 @@ fn test_rename_index_parts_good() {
         banana.index("banana_hizat2", &[&hizat2]).renamed_from("bananna_hizat");
         v.build()
     }]);
-    assert_eq!(statements, vec![
-        "alter table \"bananna\" rename to \"banana\"".to_string(),
-        "alter table \"banana\" rename column \"hizat\" to \"hizat2\"".to_string(),
-        "alter index \"bananna_hizat\" rename to \"banana_hizat2\"".to_string(),
-    ]);
+    assert_eq!(
+        statements,
+        vec![
+            "alter table \"bananna\" rename to \"banana\"".to_string(),
+            "alter table \"banana\" rename column \"hizat\" to \"hizat2\"".to_string(),
+            "alter index \"bananna_hizat\" rename to \"banana_hizat2\"".to_string(),
+        ]
+    );
 }
 
 #[test]
@@ -196,8 +199,11 @@ fn test_change_index_unique_good() {
         bananna.unique_index("bananna_hizat", &[&hizat]);
         v.build()
     }]);
-    assert_eq!(statements, vec![
-        "drop index \"bananna_hizat\"".to_string(),
-        "create unique index \"bananna_hizat\" on \"bananna\" ( \"hizat\" )".to_string(),
-    ]);
+    assert_eq!(
+        statements,
+        vec![
+            "drop index \"bananna_hizat\"".to_string(),
+            "create unique index \"bananna_hizat\" on \"bananna\" ( \"hizat\" )".to_string(),
+        ]
+    );
 }

@@ -32,14 +32,14 @@ pub struct NodeConstraint_ {
 
 impl NodeConstraint_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.type_old_ids != old.def.type_ ||
+        return if created.contains(&GraphId::Table(self.table_id.clone())) || self.type_old_ids != old.def.type_ ||
             self.remote_keys.iter().any(|k| created.contains(k)) {
             Comparison::Recreate
         } else if self.def.id != old.def.id {
             Comparison::Update
         } else {
             Comparison::DoNothing
-        }
+        };
     }
 }
 
@@ -96,7 +96,7 @@ impl NodeDataDispatch for NodeConstraint_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 
     fn delete(&self, ctx: &mut PgMigrateCtx) {
@@ -108,6 +108,6 @@ impl NodeDataDispatch for NodeConstraint_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 }

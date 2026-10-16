@@ -34,60 +34,13 @@ use {
     std::collections::{
         BTreeMap,
         HashMap,
+        HashSet,
     },
     tokio_postgres::Client,
 };
 
-fn make_field_type(sst: SimpleSimpleType, opt: bool) -> FieldType {
-    return FieldType {
-        type_: Type {
-            type_: SimpleType {
-                type_: sst,
-                custom: None,
-            },
-            opt: opt,
-            arr: false,
-        },
-        migration_default: None,
-    };
-}
-
-fn map_type(typname: &str) -> Option<SimpleSimpleType> {
-    match typname {
-        "int2" => return Some(SimpleSimpleType::I16),
-        "int4" => return Some(SimpleSimpleType::I32),
-        "int8" => return Some(SimpleSimpleType::I64),
-        "float4" => return Some(SimpleSimpleType::F32),
-        "float8" => return Some(SimpleSimpleType::F64),
-        "bool" => return Some(SimpleSimpleType::Bool),
-        "bytea" => return Some(SimpleSimpleType::Bytes),
-        "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => return Some(SimpleSimpleType::String),
-        _ => return None,
-    }
-}
-
-fn parse_index_columns(indexdef: &str) -> Result<Vec<String>, loga::Error> {
-    let dialect = PostgreSqlDialect {};
-    let mut stmts = Parser::parse_sql(&dialect, indexdef).map_err(loga::err).context("Failed to parse index DDL")?;
-    let stmt = stmts.pop().ok_or_else(|| loga::err("Empty index DDL"))?;
-    match stmt {
-        Statement::CreateIndex(CreateIndex { columns, .. }) => {
-            let mut names = vec![];
-            for c in columns {
-                match c.column.expr {
-                    Expr::Identifier(id) => names.push(id.value),
-                    other => {
-                        return Err(loga::err(format!("Unexpected index column expression: {:?}", other)));
-                    },
-                }
-            }
-            return Ok(names);
-        },
-        other => return Err(loga::err(format!("Unexpected statement in index DDL: {:?}", other))),
-    }
-}
-
-pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
+pub async fn read_schema(client: &Client, prefer_chrono: bool) -> Result<(Version, Vec<String>), loga::Error> {
+    let mut failures = vec![];
     let table_rows = client.query(
         //# genemichaels-external: sql-formatter-pg
         r#"SELECT
@@ -160,38 +113,49 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
                 }
                 SimpleSimpleType::Auto
             } else {
-                match map_type(&typname) {
-                    Some(sst) => sst,
-                    None => {
-                        if typname == "timestamp" || typname == "timestamptz" {
-                            return Err(
-                                loga::err(
-                                    format!(
-                                        "Column {:?} of table {:?} has SQL type {:?}; timestamp columns can't be imported automatically because the Rust type (chrono/jiff) and precision can't be determined from the schema, so this field must be added manually",
-                                        col_name,
-                                        table_name,
-                                        typname
-                                    ),
-                                ),
-                            );
+                match typname.as_str() {
+                    "int2" => SimpleSimpleType::I16,
+                    "int4" => SimpleSimpleType::I32,
+                    "int8" => SimpleSimpleType::I64,
+                    "float4" => SimpleSimpleType::F32,
+                    "float8" => SimpleSimpleType::F64,
+                    "bool" => SimpleSimpleType::Bool,
+                    "bytea" => SimpleSimpleType::Bytes,
+                    "text" | "varchar" | "bpchar" | "name" | "uuid" | "json" | "jsonb" => SimpleSimpleType::String,
+                    "timestamptz" => {
+                        if prefer_chrono {
+                            SimpleSimpleType::UtcTimeMsChrono
+                        } else {
+                            SimpleSimpleType::UtcTimeMsJiff
                         }
-                        return Err(
-                            loga::err(
-                                format!(
-                                    "Column {:?} of table {:?} has unsupported SQL type {:?}",
-                                    col_name,
-                                    table_name,
-                                    typname
-                                ),
+                    },
+                    _ => {
+                        failures.push(
+                            format!(
+                                "Column {:?} of table {:?} has unsupported SQL type {:?}",
+                                col_name,
+                                table_name,
+                                typname
                             ),
                         );
+                        continue;
                     },
                 }
             };
             fields.insert(col_name.clone(), Field {
                 id: col_name.clone(),
                 renamed_from: None,
-                type_: make_field_type(sst, is_nullable),
+                type_: FieldType {
+                    type_: Type {
+                        type_: SimpleType {
+                            type_: sst,
+                            custom: None,
+                        },
+                        opt: is_nullable,
+                        arr: false,
+                    },
+                    migration_default: None,
+                },
             });
         }
 
@@ -322,33 +286,53 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             let is_expression: bool = row.get(4);
             let is_exclusion: bool = row.get(5);
             if is_partial {
-                eprintln!(
-                    "Warning: skipping index {:?} on table {:?}: partial indexes (WHERE) are not supported",
-                    index_name,
-                    table_name
+                failures.push(
+                    format!(
+                        "Index {:?} on table {:?}: partial indexes (WHERE) are not supported",
+                        index_name,
+                        table_name
+                    ),
                 );
                 continue;
             }
             if is_expression {
-                eprintln!(
-                    "Warning: skipping index {:?} on table {:?}: expression indexes are not supported",
-                    index_name,
-                    table_name
+                failures.push(
+                    format!("Index {:?} on table {:?}: expression indexes are not supported", index_name, table_name),
                 );
                 continue;
             }
             if is_exclusion {
-                eprintln!(
-                    "Warning: skipping index {:?} on table {:?}: exclusion constraints are not supported",
-                    index_name,
-                    table_name
+                failures.push(
+                    format!(
+                        "Index {:?} on table {:?}: exclusion constraints are not supported",
+                        index_name,
+                        table_name
+                    ),
                 );
                 continue;
             }
-            let cols =
-                parse_index_columns(
-                    &indexdef,
-                ).context(format!("Parsing columns for index {:?} on table {:?}", index_name, table_name))?;
+            let cols = (|| -> Result<Vec<String>, loga::Error> {
+                let dialect = PostgreSqlDialect {};
+                let mut stmts =
+                    Parser::parse_sql(&dialect, &indexdef)
+                        .map_err(loga::err)
+                        .context("Failed to parse index DDL")?;
+                let stmt = stmts.pop().ok_or_else(|| loga::err("Empty index DDL"))?;
+                let columns = match stmt {
+                    Statement::CreateIndex(CreateIndex { columns, .. }) => columns,
+                    other => return Err(loga::err(format!("Unexpected statement in index DDL: {:?}", other))),
+                };
+                let mut names = vec![];
+                for c in columns {
+                    match c.column.expr {
+                        Expr::Identifier(id) => names.push(id.value),
+                        other => {
+                            return Err(loga::err(format!("Unexpected index column expression: {:?}", other)));
+                        },
+                    }
+                }
+                return Ok(names);
+            })().context(format!("Parsing columns for index {:?} on table {:?}", index_name, table_name))?;
             indices.insert(index_name.clone(), Index {
                 id: index_name,
                 renamed_from: None,
@@ -364,8 +348,41 @@ pub async fn read_schema(client: &Client) -> Result<Version, loga::Error> {
             constraints: constraints,
         });
     }
-    return Ok(Version {
+    let field_ids =
+        tables
+            .iter()
+            .map(|(t_id, t)| (t_id.clone(), t.fields.keys().cloned().collect::<HashSet<_>>()))
+            .collect::<HashMap<_, _>>();
+    let has_field =
+        |table: &String, field: &String| field_ids.get(table).map(|f| f.contains(field)).unwrap_or(false);
+    for (table_id, table) in &mut tables {
+        table.constraints.retain(|c_id, c| {
+            let complete = match &c.type_ {
+                ConstraintType::PrimaryKey(x) => x.fields.iter().all(|f| has_field(table_id, f)),
+                ConstraintType::ForeignKey(x) => x
+                    .fields
+                    .iter()
+                    .all(|(l, r)| has_field(table_id, l) && has_field(&x.remote_table, r)),
+            };
+            if !complete {
+                failures.push(
+                    format!("Constraint {:?} on table {:?} uses a column that wasn't imported", c_id, table_id),
+                );
+            }
+            return complete;
+        });
+        table.indices.retain(|i_id, i| {
+            let complete = i.fields.iter().all(|f| has_field(table_id, f));
+            if !complete {
+                failures.push(
+                    format!("Index {:?} on table {:?} uses a column that wasn't imported", i_id, table_id),
+                );
+            }
+            return complete;
+        });
+    }
+    return Ok((Version {
         tables: tables,
         custom_types: BTreeMap::new(),
-    });
+    }, failures));
 }

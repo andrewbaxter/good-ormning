@@ -224,7 +224,7 @@ impl SelectBody {
             check_general_same(ctx, &path, &out_type, &j_body_type);
             out.s(&j_body_tokens.to_string());
         }
-        (out_type, out)
+        return (out_type, out);
     }
 }
 

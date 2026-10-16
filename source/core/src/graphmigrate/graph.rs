@@ -14,7 +14,7 @@ impl<T> Graph<T> {
     pub fn add(&mut self, v: T) -> usize {
         let id = self.data.len();
         self.data.push(v);
-        id
+        return id;
     }
 
     pub fn edge(&mut self, a: usize, b: usize) {
@@ -29,10 +29,10 @@ impl<T> Graph<T> {
     }
 
     pub fn new() -> Self {
-        Graph {
+        return Graph {
             data: Default::default(),
             edges: Default::default(),
-        }
+        };
     }
 
     pub fn reverse_edges(&mut self) {
@@ -88,10 +88,10 @@ impl TopoWalker {
                 *dep_counts.entry(*dest).or_insert(0usize) += 1;
             }
         }
-        TopoWalker {
+        return TopoWalker {
             dep_counts: dep_counts,
             stack: vec![n],
-        }
+        };
     }
 
     pub fn new_whole_graph<T>(g: &Graph<T>) -> TopoWalker {
@@ -107,10 +107,10 @@ impl TopoWalker {
                 stack.push(n);
             }
         }
-        TopoWalker {
+        return TopoWalker {
             dep_counts: dep_counts,
             stack: stack,
-        }
+        };
     }
 
     pub fn skip<T>(&mut self, g: &Graph<T>) {

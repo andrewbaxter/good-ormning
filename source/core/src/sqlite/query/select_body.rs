@@ -164,7 +164,7 @@ impl NamedSelectSource {
             }
             new_fields = new_fields2;
         }
-        (new_fields, out)
+        return (new_fields, out);
     }
 }
 
@@ -341,7 +341,7 @@ impl SelectBody {
             let junction_tokens = build_select_junction(ctx, path, &out_type, &self.junctions);
             out.s(&junction_tokens.to_string());
         }
-        (out_type, out)
+        return (out_type, out);
     }
 }
 

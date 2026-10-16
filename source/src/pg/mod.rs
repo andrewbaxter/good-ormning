@@ -103,6 +103,7 @@ mod test {
         let hizat = bananna.field("hizat", field_str().build());
         assert_generate_err(GenerateArgs {
             db_name: Some("test_res_count_none_bad".to_string()),
+            default_time_library: None,
             versions: vec![(0usize, v.build())],
             queries: vec![new_select(&bananna).return_field(&hizat).build_query("x", QueryResCount::None)],
         }, "Query has returning values but result count is None");
@@ -115,6 +116,7 @@ mod test {
         let hizat = bananna.field("hizat", field_str().build());
         assert_generate_err(GenerateArgs {
             db_name: Some("test_returning_none_bad".to_string()),
+            default_time_library: None,
             versions: vec![(0usize, v.build())],
             queries: vec![
                 new_insert(&bananna, vec![(hizat.clone(), Expr::LitString("hoy".into()))])
@@ -131,6 +133,7 @@ mod test {
         bananna.field("hizat", field_str().build());
         assert_generate_err(GenerateArgs {
             db_name: Some("test_select_nothing_bad".to_string()),
+            default_time_library: None,
             versions: vec![(0usize, v.build())],
             queries: vec![new_select(&bananna).build_query("x", QueryResCount::None)],
         }, "Select must have at least one output");
@@ -205,7 +208,11 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
                 return Err(vec![format!("Version {} was provided multiple times", version_i)]);
             }
         }
-        if let Err(e) = fs::write(&json_path, serde_json::to_string(&versions_map).unwrap()) {
+        let schema_file = good_ormning_core::utils::SchemaFile {
+            default_time_library: args.default_time_library,
+            versions: versions_map,
+        };
+        if let Err(e) = fs::write(&json_path, serde_json::to_string(&schema_file).unwrap()) {
             return Err(vec![format!("Error writing schema file {:?}: {:?}", json_path, e)]);
         }
     }
@@ -326,6 +333,8 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
             args.queries,
             "",
             quote!(#latest_newtype_name < impl good_ormning:: runtime:: pg:: PgConnection >),
+            None,
+            args.default_time_library,
         );
     let tokens = quote!{
         pub const DB_NAME: & str = #db_name;
@@ -455,7 +464,7 @@ pub fn generate(args: GenerateArgs) -> Result<(), Vec<String>> {
         },
     };
     errs.raise()?;
-    Ok(())
+    return Ok(());
 }
 
 pub struct GenerateArgs {
@@ -472,14 +481,16 @@ pub struct GenerateArgs {
     ///
     /// These will be turned into migrations as part of the `migrate` function.
     pub versions: Vec<(usize, Version)>,
+    pub default_time_library: Option<good_ormning_core::utils::TimeLibrary>,
 }
 
 impl Default for GenerateArgs {
     fn default() -> Self {
-        Self {
+        return Self {
             db_name: None,
+            default_time_library: None,
             versions: vec![],
             queries: vec![],
-        }
+        };
     }
 }

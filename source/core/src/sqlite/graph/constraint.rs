@@ -30,11 +30,11 @@ impl NodeConstraint_ {
     pub fn compare(&self, old: &Self, created: &HashSet<GraphId>) -> Comparison {
         // Sqlite constraints are unnamed and the old node is looked up through renames,
         // so only the constraint's (rename-normalized) content matters.
-        if created.contains(&GraphId::Table(self.table_id.clone())) || self.type_old_ids != old.def.type_ {
+        return if created.contains(&GraphId::Table(self.table_id.clone())) || self.type_old_ids != old.def.type_ {
             Comparison::Recreate
         } else {
             Comparison::DoNothing
-        }
+        };
     }
 }
 
@@ -55,7 +55,7 @@ impl NodeDataDispatch for NodeConstraint_ {
     }
 
     fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 
     fn delete(&self, ctx: &mut SqliteMigrateCtx) {
@@ -70,6 +70,6 @@ impl NodeDataDispatch for NodeConstraint_ {
     }
 
     fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        Some(other)
+        return Some(other);
     }
 }

@@ -67,7 +67,10 @@ fn test_import_sqlite() {
            CREATE INDEX idx_posts_expr ON posts (lower(title));
            "#,
     ).unwrap();
-    let version = sqlite::read_schema(&conn).unwrap();
+    let (version, failures) = sqlite::read_schema(&conn).unwrap();
+    assert_eq!(failures.len(), 2, "{:?}", failures);
+    assert!(failures.iter().any(|f| f.contains("idx_posts_expr")), "{:?}", failures);
+    assert!(failures.iter().any(|f| f.contains("idx_posts_partial")), "{:?}", failures);
 
     // Verify tables
     assert!(version.tables.contains_key("users"), "missing users table");
@@ -143,8 +146,14 @@ fn test_import_sqlite_errors() {
     // Unknown column type
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch("CREATE TABLE t (x WEIRDTYPE)").unwrap();
-    let err = sqlite::read_schema(&conn).err().expect("unknown type should fail").to_string();
-    assert!(err.contains("\"x\"") && err.contains("\"t\"") && err.contains("WEIRDTYPE"), "{}", err);
+    let (version, failures) = sqlite::read_schema(&conn).unwrap();
+    assert!(version.tables["t"].fields.is_empty());
+    assert_eq!(failures.len(), 1);
+    assert!(
+        failures[0].contains("\"x\"") && failures[0].contains("\"t\"") && failures[0].contains("WEIRDTYPE"),
+        "{}",
+        failures[0]
+    );
 
     // Real column named rowid alongside a rowid alias
     let conn = rusqlite::Connection::open_in_memory().unwrap();
@@ -175,7 +184,8 @@ fn test_codegen_sqlite_ident_collisions() {
            );
            "#,
     ).unwrap();
-    let version = sqlite::read_schema(&conn).unwrap();
+    let (version, failures) = sqlite::read_schema(&conn).unwrap();
+    assert_eq!(failures, Vec::<String>::new());
     let code = codegen::generate_sqlite(&version, "testdb").unwrap();
     check_generated(&code);
     let file = syn::parse_file(&code).unwrap();

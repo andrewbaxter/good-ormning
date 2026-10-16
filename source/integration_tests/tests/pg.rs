@@ -17,7 +17,7 @@ async fn db<'a>() -> Result<(tokio_postgres::Client, PgliteServer), loga::Error>
             eprintln!("connection error: {}", e);
         }
     });
-    Ok((client, server))
+    return Ok((client, server));
 }
 
 #[tokio::test]
@@ -504,7 +504,7 @@ async fn test_migrate_add_field() -> Result<(), loga::Error> {
             },
             _ => { },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     match good_ormning::pg::good_query_opt!(
         dbm,
@@ -575,7 +575,7 @@ async fn test_migrate_constraints() -> Result<(), loga::Error> {
             },
             _ => { },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     good_ormning::pg::good_query!(
         dbm,
@@ -697,7 +697,7 @@ async fn test_migrate_pre_migration() -> Result<(), loga::Error> {
             },
             _ => { },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     Ok(())
 }
@@ -771,7 +771,7 @@ async fn test_migrate_rename_table() -> Result<(), loga::Error> {
             },
             _ => { },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     assert_eq!(good_ormning::pg::good_query_opt!(
         dbm,
@@ -2023,7 +2023,7 @@ async fn test_select_join() -> Result<(), loga::Error> {
                 ).await?;
             },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     let res = good_ormning::pg::good_query_one!(
         dbm,
@@ -2096,7 +2096,7 @@ async fn test_select_join_cross() -> Result<(), loga::Error> {
                 ).await?;
             },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     let res = good_ormning::pg::good_query_many!(
         dbm,
@@ -2168,7 +2168,7 @@ async fn test_select_join_full() -> Result<(), loga::Error> {
                 ).await?;
             },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     let res = good_ormning::pg::good_query_many!(
         dbm,
@@ -2229,7 +2229,7 @@ async fn test_select_join_inner() -> Result<(), loga::Error> {
                 ).await?;
             },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     let res = good_ormning::pg::good_query_many!(
         dbm,
@@ -2292,7 +2292,7 @@ async fn test_select_join_right() -> Result<(), loga::Error> {
                 ).await?;
             },
         }
-        Ok(())
+        return Ok(());
     }))).await?;
     let res = good_ormning::pg::good_query_many!(
         dbm,
@@ -2815,6 +2815,22 @@ async fn test_fixes_pg() -> Result<(), loga::Error> {
         r#"insert into "t" ("name", "n", "f", "u") values ('a', 1, 1.5, 4000000000), ('b', 2, 2.5, 1), ('c', 2, 3.5, 2)"#;
         &mut db
     ).await?;
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."n" >= $2 and "t"."n" <= $1 order by "t"."name""#;
+        &mut db,
+        p1: i32 = 1,
+        p2: i32 = 0
+    ).await?, vec!["a".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."n" = $2 and "t"."name" <> $1 order by "t"."name""#;
+        &mut db,
+        p1: string = "b",
+        p2: i32 = 2
+    ).await?, vec!["c".to_string()]);
 
     // On conflict with target does nothing
     good_ormning::pg::good_query!(

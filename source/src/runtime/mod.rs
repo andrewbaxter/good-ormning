@@ -1,3 +1,5 @@
+#[cfg(feature = "mariadb")]
+pub mod mariadb;
 #[cfg(feature = "pg")]
 pub mod pg;
 #[cfg(feature = "sqlite")]
@@ -13,10 +15,10 @@ pub trait ToGoodError<T> {
 
 impl<T, E: Display> ToGoodError<T> for Result<T, E> {
     fn to_good_error<F: FnOnce() -> String>(self, context: F) -> Result<T, GoodError> {
-        match self {
+        return match self {
             Ok(x) => Ok(x),
             Err(e) => Err(GoodError(format!("{}: {}", context(), e))),
-        }
+        };
     }
 
     fn to_good_error_query(self, query: &str) -> Result<T, GoodError> {
@@ -31,6 +33,6 @@ impl std::error::Error for GoodError { }
 
 impl std::fmt::Display for GoodError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        return self.0.fmt(f);
     }
 }

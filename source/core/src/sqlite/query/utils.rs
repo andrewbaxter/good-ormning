@@ -47,7 +47,7 @@ pub fn build_returning(
     if !outputs.is_empty() {
         out.s("returning");
     }
-    build_returning_values(ctx, path, scope, out, outputs, res_count)
+    return build_returning_values(ctx, path, scope, out, outputs, res_count);
 }
 
 pub fn build_returning_values(
@@ -343,14 +343,14 @@ pub struct SqliteQueryCtx {
     pub outer_scopes: Vec<HashMap<Binding, Type>>,
     pub query_args: Vec<TokenStream>,
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
-    pub rust_args: Vec<TokenStream>,
+    pub rust_args: Vec<(String, TokenStream)>,
     pub table_aliases: HashMap<String, TableRef>,
     pub tables: HashMap<TableRef, SqliteTableInfo>,
 }
 
 impl SqliteQueryCtx {
     pub fn new(errs: Errs, tables: HashMap<TableRef, SqliteTableInfo>) -> Self {
-        Self {
+        return Self {
             tables: tables,
             table_aliases: Default::default(),
             errs: errs,
@@ -359,7 +359,7 @@ impl SqliteQueryCtx {
             query_args: Default::default(),
             op_stack: Default::default(),
             outer_scopes: Default::default(),
-        }
+        };
     }
 }
 
