@@ -1,6 +1,6 @@
 [package]
 name = "integration_tests"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 publish = false
 
@@ -24,7 +24,7 @@ tokio-postgres = { version = ">=0", features = [
     "with-jiff-0_2",
 ] }
 loga = ">=0"
-good-ormning-core = { version = "0.6.0", path = "../core" }
+good-ormning-core = { version = "0.7.0", path = "../core" }
 flowcontrol = ">=0"
 tempfile = "3.27.0"
 pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide", rev = "f5cb76cfbf8a513307fe6b343556b58c81e599cf" }
