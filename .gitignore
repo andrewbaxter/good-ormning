@@ -3,3 +3,4 @@
 /source/integration_tests/tests/pg_gen_*
 /source/integration_tests/tests/sqlite_gen_*
 /target
+.githooks
