@@ -12,9 +12,6 @@ use {
     std::collections::HashSet,
     super::{
         GraphId,
-        Node,
-        NodeData,
-        NodeDataDispatch,
         utils::MariadbMigrateCtx,
     },
 };
@@ -27,7 +24,6 @@ pub struct NodeConstraint_ {
     pub type_old_ids: ConstraintType,
     pub remote_keys: Vec<GraphId>,
     pub column_types: Vec<String>,
-    pub table_columns: Vec<(String, bool)>,
 }
 
 impl NodeConstraint_ {
@@ -43,141 +39,88 @@ impl NodeConstraint_ {
         };
     }
 
-    fn delete_statement(&self, table_id: &str) -> String {
-        let mut stmt = Tokens::new_mariadb();
-        stmt.s("alter table").id(table_id);
-        match &self.def.type_ {
-            ConstraintType::PrimaryKey(_) => {
-                stmt.s("drop index if exists").id("PRIMARY");
-            },
-            ConstraintType::ForeignKey(_) => {
-                stmt
-                    .s("drop foreign key if exists")
-                    .id(&self.def.id)
-                    .s(", drop index if exists")
-                    .id(&self.def.id);
-            },
-        }
-        return stmt.to_string();
-    }
-}
-
-impl NodeData for NodeConstraint_ {
-    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
-        if self.def.id != old.def.id {
-            match &self.def.type_ {
-                ConstraintType::PrimaryKey(_) => { },
-                ConstraintType::ForeignKey(_) => {
-                    ctx.statements.push(old.delete_statement(&self.table_id));
-                    self.create(ctx);
-                },
-            }
-        }
-    }
-}
-
-impl NodeDataDispatch for NodeConstraint_ {
-    fn create(&self, ctx: &mut MariadbMigrateCtx) {
-        let mut stmt = Tokens::new_mariadb();
-        stmt.s("alter table").id(&self.table_id);
-        if let ConstraintType::PrimaryKey(_) = &self.def.type_ {
-            stmt.s("drop index if exists").id("PRIMARY").s(",");
-        }
-        stmt.s("add");
+    pub fn create_clauses(&self, ctx: &MariadbMigrateCtx, merged: bool) -> Vec<Vec<String>> {
+        let table = ctx.version.tables.get(&self.table_id).unwrap();
+        let mut out = vec![];
+        let mut clause = Tokens::new_mariadb();
         match &self.def.type_ {
             ConstraintType::PrimaryKey(x) => {
-                stmt.s("primary key (");
+                let mut drop = Tokens::new_mariadb();
+                drop.s("drop index if exists").id("PRIMARY");
+                out.push(drop.to_string());
+                clause.s("add primary key (");
                 for (i, f_id) in x.fields.iter().enumerate() {
                     if i > 0 {
-                        stmt.s(",");
+                        clause.s(",");
                     }
-                    stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
+                    clause.id(&table.fields.get(f_id).unwrap().id);
                 }
-                stmt.s(")");
+                clause.s(")");
             },
             ConstraintType::ForeignKey(x) => {
-                stmt.s("constraint").id(&self.def.id).s("foreign key if not exists (");
+                if merged {
+                    let mut drop = Tokens::new_mariadb();
+                    drop.s("drop foreign key if exists").id(&self.def.id);
+                    out.push(drop.to_string());
+                }
+                clause.s("add constraint").id(&self.def.id).s("foreign key");
+                if !merged {
+                    clause.s("if not exists");
+                }
+                clause.s("(");
                 for (i, (l_id, _)) in x.fields.iter().enumerate() {
                     if i > 0 {
-                        stmt.s(",");
+                        clause.s(",");
                     }
-                    stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(l_id).unwrap().id);
+                    clause.id(&table.fields.get(l_id).unwrap().id);
                 }
-                stmt.s(") references").id(ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
+                clause.s(") references").id(ctx.table_sql_names.get(&x.remote_table).unwrap()).s("(");
                 for (i, (_, r_id)) in x.fields.iter().enumerate() {
                     if i > 0 {
-                        stmt.s(",");
+                        clause.s(",");
                     }
-                    stmt.id(&ctx.version.tables.get(&x.remote_table).unwrap().fields.get(r_id).unwrap().id);
+                    clause.id(&ctx.version.tables.get(&x.remote_table).unwrap().fields.get(r_id).unwrap().id);
                 }
-                stmt.s(")");
-                foreign_key_actions(&mut stmt, x);
+                clause.s(")");
+                foreign_key_actions(&mut clause, x);
             },
         }
-        ctx.statements.push(stmt.to_string());
+        out.push(clause.to_string());
+        return vec![out];
     }
 
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
-    }
-
-    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
-        if let ConstraintType::PrimaryKey(_) = &self.def.type_ {
-            let new_table =
-                ctx
-                    .version
-                    .tables
-                    .iter()
-                    .find(|(table_id, table)| table.renamed_from.as_ref().unwrap_or(table_id) == &self.table_id)
-                    .map(|(_, table)| table);
-            if let Some(new_table) = new_table {
-                if new_table.constraints.values().any(|c| matches!(c.type_, ConstraintType::PrimaryKey(_))) {
-                    return;
-                }
-                let old_name = |f: &String| {
-                    let field = new_table.fields.get(f).unwrap();
-                    return field.renamed_from.clone().unwrap_or_else(|| field.id.clone());
-                };
-                for (field_id, field) in &new_table.fields {
-                    if !field.type_.auto_increment || !self.table_columns.contains(&(old_name(field_id), true)) {
-                        continue;
-                    }
-                    let Some(index) =
-                        new_table
-                            .indices
-                            .values()
-                            .find(
-                                |i| i.renamed_from.is_none() && i.fields.first() == Some(field_id) &&
-                                    i
-                                        .fields
-                                        .iter()
-                                        .all(|f| self.table_columns.iter().any(|(c, _)| *c == old_name(f))),
-                            ) else {
-                            continue;
-                        };
-                    let mut stmt = Tokens::new_mariadb();
-                    stmt.s("alter table").id(&self.table_id).s(if index.unique {
-                        "add unique index if not exists"
-                    } else {
-                        "add index if not exists"
-                    }).id(&index.id).s("(");
-                    for (i, f) in index.fields.iter().enumerate() {
-                        if i > 0 {
-                            stmt.s(",");
-                        }
-                        stmt.id(&old_name(f));
-                    }
-                    stmt.s("), drop index if exists").id("PRIMARY");
-                    ctx.statements.push(stmt.to_string());
-                    return;
-                }
-            }
+    pub fn delete_clauses(&self) -> Vec<Vec<String>> {
+        let mut out = vec![];
+        match &self.def.type_ {
+            ConstraintType::PrimaryKey(_) => {
+                let mut clause = Tokens::new_mariadb();
+                clause.s("drop index if exists").id("PRIMARY");
+                out.push(clause.to_string());
+            },
+            ConstraintType::ForeignKey(_) => {
+                let mut clause = Tokens::new_mariadb();
+                clause.s("drop foreign key if exists").id(&self.def.id);
+                out.push(clause.to_string());
+                let mut clause = Tokens::new_mariadb();
+                clause.s("drop index if exists").id(&self.def.id);
+                out.push(clause.to_string());
+            },
         }
-        ctx.statements.push(self.delete_statement(&self.table_id));
+        return vec![out];
     }
 
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
+    pub fn update_clauses(&self, ctx: &MariadbMigrateCtx, old: &Self, merged: bool) -> Vec<Vec<String>> {
+        if self.def.id == old.def.id {
+            return vec![];
+        }
+        return match &self.def.type_ {
+            ConstraintType::PrimaryKey(_) => vec![],
+            ConstraintType::ForeignKey(_) => old
+                .delete_clauses()
+                .into_iter()
+                .chain(self.create_clauses(ctx, merged).into_iter())
+                .collect(),
+        };
     }
 }
 

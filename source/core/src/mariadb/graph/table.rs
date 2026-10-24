@@ -13,8 +13,6 @@ use {
     super::{
         GraphId,
         Node,
-        NodeData,
-        NodeDataDispatch,
         constraint::foreign_key_actions,
         field::column_definition,
         utils::MariadbMigrateCtx,
@@ -35,20 +33,16 @@ impl NodeTable_ {
             Comparison::DoNothing
         };
     }
-}
 
-impl NodeData for NodeTable_ {
-    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
+    pub fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
         if old.def.id != self.def.id {
             let mut stmt = Tokens::new_mariadb();
             stmt.s("rename table if exists").id(&old.def.id).s("to").id(&self.def.id);
             ctx.statements.push(stmt.to_string());
         }
     }
-}
 
-impl NodeDataDispatch for NodeTable_ {
-    fn create(&self, ctx: &mut MariadbMigrateCtx) {
+    pub fn create(&self, ctx: &mut MariadbMigrateCtx) {
         let mut stmt = Tokens::new_mariadb();
         stmt.s("create table if not exists").id(&self.def.id).s("(");
         let mut first = true;
@@ -121,7 +115,7 @@ impl NodeDataDispatch for NodeTable_ {
         ctx.statements.push(stmt.to_string());
     }
 
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
+    pub fn create_coalesce(&mut self, other: Node) -> Option<Node> {
         return match other {
             Node::Field(f) if f.table_id == self.table_id => {
                 None
@@ -141,11 +135,11 @@ impl NodeDataDispatch for NodeTable_ {
         };
     }
 
-    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
+    pub fn delete(&self, ctx: &mut MariadbMigrateCtx) {
         ctx.statements.push(Tokens::new_mariadb().s("drop table if exists").id(&self.def.id).to_string());
     }
 
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
+    pub fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
         return match other {
             Node::Field(f) if f.table_id == self.table_id => None,
             Node::Constraint(e) if e.table_id == self.table_id && match &e.def.type_ {

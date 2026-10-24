@@ -58,7 +58,7 @@ pub fn in_field(param_name: impl Into<String>, f: &FieldHandle) -> Expr {
         op: BinOp::In,
         right: Box::new(Expr::ParamList {
             name: name,
-            type_: type_,
+            types: vec![type_],
         }),
     };
 }

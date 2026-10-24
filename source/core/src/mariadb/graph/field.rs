@@ -16,7 +16,6 @@ use {
                 },
                 table::TableRef,
             },
-            schema::constraint::ConstraintType,
             types::to_sql_type,
         },
         utils::Tokens,
@@ -27,9 +26,6 @@ use {
     },
     super::{
         GraphId,
-        Node,
-        NodeData,
-        NodeDataDispatch,
         utils::MariadbMigrateCtx,
     },
 };
@@ -112,98 +108,42 @@ pub fn column_definition(ctx: &mut MariadbMigrateCtx, table_id: &str, f: &Field)
     return out.to_string();
 }
 
-fn add_auto_increment_key(ctx: &MariadbMigrateCtx, stmt: &mut Tokens, table_id: &str, sql_name: &str) {
-    let table = ctx.version.tables.get(table_id).unwrap();
-    let field_key = table.fields.iter().find(|(_, f)| f.id == sql_name).map(|(k, _)| k.clone()).unwrap();
-    let mut key = None;
-    for c in table.constraints.values() {
-        if let ConstraintType::PrimaryKey(x) = &c.type_ {
-            if x.fields.first() == Some(&field_key) {
-                key = Some(&x.fields);
-                stmt.s(", drop index if exists").id("PRIMARY").s(", add primary key");
-            }
-        }
-    }
-    if key.is_none() {
-        for i in table.indices.values() {
-            if i.fields.first() == Some(&field_key) {
-                key = Some(&i.fields);
-                stmt.s(if i.unique {
-                    ", add unique index if not exists"
-                } else {
-                    ", add index if not exists"
-                }).id(&i.id);
-                break;
-            }
-        }
-    }
-    let Some(fields) = key else {
-        return;
-    };
-    stmt.s("(");
-    for (i, f) in fields.iter().enumerate() {
-        if i > 0 {
-            stmt.s(",");
-        }
-        stmt.id(&table.fields.get(f).unwrap().id);
-    }
-    stmt.s(")");
-}
-
-impl NodeData for NodeField_ {
-    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
-        if self.def.id != old.def.id {
-            let mut stmt = Tokens::new_mariadb();
-            stmt
-                .s("alter table")
-                .id(&self.table_id)
-                .s("rename column if exists")
-                .id(&old.def.id)
-                .s("to")
-                .id(&self.def.id);
-            ctx.statements.push(stmt.to_string());
-        }
-        if self.column_changed(old) {
-            let definition = column_definition(ctx, &self.table_id, &self.def);
-            let mut stmt = Tokens::new_mariadb();
-            stmt.s("alter table").id(&self.table_id).s("modify column if exists").id(&self.def.id).s(&definition);
-            if self.def.type_.auto_increment && !old.def.type_.auto_increment {
-                add_auto_increment_key(ctx, &mut stmt, &self.table_id, &self.def.id);
-            }
-            ctx.statements.push(stmt.to_string());
-        }
-    }
-}
-
-impl NodeDataDispatch for NodeField_ {
-    fn create(&self, ctx: &mut MariadbMigrateCtx) {
+impl NodeField_ {
+    pub fn create_clauses(&self, ctx: &mut MariadbMigrateCtx) -> Vec<Vec<String>> {
         let definition = column_definition(ctx, &self.table_id, &self.def);
-        let mut stmt = Tokens::new_mariadb();
-        stmt.s("alter table").id(&self.table_id).s("add column if not exists").id(&self.def.id).s(&definition);
-        if self.def.type_.auto_increment {
-            add_auto_increment_key(ctx, &mut stmt, &self.table_id, &self.def.id);
+        let mut clause = Tokens::new_mariadb();
+        clause.s("add column if not exists").id(&self.def.id).s(&definition);
+        return vec![vec![clause.to_string()]];
+    }
+
+    pub fn delete_clauses(&self) -> Vec<Vec<String>> {
+        let mut clause = Tokens::new_mariadb();
+        clause.s("drop column if exists").id(&self.def.id);
+        return vec![vec![clause.to_string()]];
+    }
+
+    pub fn update_clauses(&self, ctx: &mut MariadbMigrateCtx, old: &Self, merged: bool) -> Vec<Vec<String>> {
+        let renamed = self.def.id != old.def.id;
+        let changed = self.column_changed(old);
+        let mut out = vec![];
+        if merged && renamed && changed {
+            let definition = column_definition(ctx, &self.table_id, &self.def);
+            let mut clause = Tokens::new_mariadb();
+            clause.s("change column if exists").id(&old.def.id).id(&self.def.id).s(&definition);
+            out.push(vec![clause.to_string()]);
+            return out;
         }
-        ctx.statements.push(stmt.to_string());
-    }
-
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
-    }
-
-    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
-        ctx
-            .statements
-            .push(
-                Tokens::new_mariadb()
-                    .s("alter table")
-                    .id(&self.table_id)
-                    .s("drop column if exists")
-                    .id(&self.def.id)
-                    .to_string(),
-            );
-    }
-
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
+        if renamed {
+            let mut clause = Tokens::new_mariadb();
+            clause.s("rename column if exists").id(&old.def.id).s("to").id(&self.def.id);
+            out.push(vec![clause.to_string()]);
+        }
+        if changed {
+            let definition = column_definition(ctx, &self.table_id, &self.def);
+            let mut clause = Tokens::new_mariadb();
+            clause.s("modify column if exists").id(&self.def.id).s(&definition);
+            out.push(vec![clause.to_string()]);
+        }
+        return out;
     }
 }

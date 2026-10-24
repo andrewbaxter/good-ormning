@@ -8,7 +8,10 @@ mod test;
 
 pub use self::utils::SqliteMigrateCtx;
 use {
-    crate::graphmigrate::Comparison,
+    crate::graphmigrate::{
+        Comparison,
+        Op,
+    },
     std::collections::HashSet,
 };
 
@@ -31,6 +34,13 @@ pub enum GraphId {
     Table(String),
 }
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub enum SqlName {
+    Column(String, String),
+    Index(String),
+    Table(String),
+}
+
 #[derive(Clone)]
 pub enum Node {
     Constraint(constraint::NodeConstraint_),
@@ -41,7 +51,43 @@ pub enum Node {
 
 impl crate::graphmigrate::NodeData for Node {
     type I = GraphId;
+    type N = SqlName;
     type O = SqliteMigrateCtx;
+
+    fn apply(ctx: &mut SqliteMigrateCtx, ops: &[Op<'_, Self>]) {
+        match ops {
+            [Op::Create(n)] => n.create(ctx),
+            [Op::Delete(n)] => n.delete(ctx),
+            [Op::Update(u)] => match (u.new, u.old) {
+                (Node::Table(a), Node::Table(b)) => a.update(ctx, b),
+                (Node::Field(a), Node::Field(b)) => a.update(ctx, b),
+                (Node::Constraint(a), Node::Constraint(b)) => a.update(ctx, b),
+                (Node::Index(a), Node::Index(b)) => a.update(ctx, b),
+                _ => unreachable!(),
+            },
+            ops => {
+                let describe = |n: &Node| match n {
+                    Node::Table(x) => format!("table {}", x.def.id),
+                    Node::Field(x) => format!("field {}.{}", x.table_id, x.def.id),
+                    Node::Constraint(x) => format!("constraint {}.{}", x.table_id, x.def.id),
+                    Node::Index(x) => format!("index {}.{}", x.table_id, x.def.id),
+                };
+                ctx
+                    .errs
+                    .err(
+                        &rpds::vector![],
+                        format!(
+                            "These schema changes depend on each other and can't be ordered, split them across versions: {}",
+                            ops.iter().map(|op| match op {
+                                Op::Create(n) => format!("create {}", describe(n)),
+                                Op::Delete(n) => format!("delete {}", describe(n)),
+                                Op::Update(u) => format!("update {}", describe(u.new)),
+                            }).collect::<Vec<_>>().join(", ")
+                        ),
+                    );
+            },
+        }
+    }
 
     fn compare(&self, other: &Self, created: &HashSet<Self::I>) -> Comparison {
         return match (self, other) {
@@ -53,20 +99,28 @@ impl crate::graphmigrate::NodeData for Node {
         };
     }
 
-    fn create(&self, ctx: &mut SqliteMigrateCtx) {
-        <Self as NodeDataDispatch>::create(self, ctx)
-    }
-
     fn create_coalesce(&mut self, other: Self) -> Option<Self> {
         return <Self as NodeDataDispatch>::create_coalesce(self, other);
     }
 
-    fn delete(&self, ctx: &mut SqliteMigrateCtx) {
-        <Self as NodeDataDispatch>::delete(self, ctx)
-    }
-
     fn delete_coalesce(&mut self, other: Self) -> Option<Self> {
         return <Self as NodeDataDispatch>::delete_coalesce(self, other);
+    }
+
+    fn names(&self, old: bool) -> Vec<SqlName> {
+        let scope = |table_id: &String, table_renamed_from: &Option<String>| {
+            return if old {
+                table_id.clone()
+            } else {
+                table_renamed_from.clone().unwrap_or_else(|| table_id.clone())
+            };
+        };
+        return match self {
+            Node::Table(x) => vec![SqlName::Table(x.def.id.clone())],
+            Node::Field(x) => vec![SqlName::Column(scope(&x.table_id, &x.table_renamed_from), x.def.id.clone())],
+            Node::Constraint(_) => vec![],
+            Node::Index(x) => vec![SqlName::Index(x.def.id.clone())],
+        };
     }
 
     fn renamed_from(&self) -> Option<Self::I> {
@@ -112,16 +166,6 @@ impl crate::graphmigrate::NodeData for Node {
                 }
             },
         };
-    }
-
-    fn update(&self, ctx: &mut SqliteMigrateCtx, old: &Self) {
-        match (self, old) {
-            (Node::Table(a), Node::Table(b)) => a.update(ctx, b),
-            (Node::Field(a), Node::Field(b)) => a.update(ctx, b),
-            (Node::Constraint(a), Node::Constraint(b)) => a.update(ctx, b),
-            (Node::Index(a), Node::Index(b)) => a.update(ctx, b),
-            _ => unreachable!(),
-        }
     }
 }
 

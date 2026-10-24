@@ -45,6 +45,74 @@ use good_ormning::{
 
 pub fn build() {
     {
+        let versions = (0 .. 2).map(|step| {
+            let v = MariadbVersion::new();
+            let t = v.table("index_to_pk");
+            let id = t.field("id", field_i64().auto_increment().build());
+            let other = t.field("other", field_i32().build());
+            if step == 0 {
+                t.primary_key(&[&other]);
+                t.index("index_to_pk_id", &[&id]);
+            } else {
+                t.primary_key(&[&id]);
+            }
+            let t = v.table("pk_to_index");
+            let id = t.field("id", field_i64().auto_increment().build());
+            let other = t.field("other", field_i32().build());
+            if step == 0 {
+                t.primary_key(&[&id]);
+            } else {
+                t.unique_index("pk_to_index_id", &[&id, &other]);
+            }
+            let t = v.table("same_name");
+            let id = t.field("id", field_i64().auto_increment().build());
+            let other = t.field("other", field_i32().build());
+            if step == 0 {
+                t.index("same_name_key", &[&id]);
+            } else {
+                t.index("same_name_key", &[&id, &other]);
+            }
+            let t = v.table("drop_column");
+            t.field("other", field_i32().build());
+            if step == 0 {
+                let id = t.field("id", field_i64().auto_increment().build());
+                t.index("drop_column_id", &[&id]);
+            }
+            let t = v.table("drop_auto");
+            let id = t.field("id", if step == 0 {
+                field_i64().auto_increment().build()
+            } else {
+                field_i64().build()
+            });
+            t.field("other", field_i32().build());
+            if step == 0 {
+                t.index("drop_auto_id", &[&id]);
+            }
+            let t = v.table("add_auto");
+            let id = t.field("id", if step == 0 {
+                field_i64().build()
+            } else {
+                field_i64().auto_increment().build()
+            });
+            t.field("other", field_i32().build());
+            if step == 1 {
+                t.unique_index("add_auto_id", &[&id]);
+            }
+            let t = v.table("new_column");
+            t.field("other", field_i32().build());
+            if step == 1 {
+                let id = t.field("id", field_i64().auto_increment().build());
+                t.primary_key(&[&id]);
+            }
+            return (step, v.build());
+        }).collect();
+        generate(GenerateArgs {
+            db_name: Some("mariadb_gen_auto_increment_keys".to_string()),
+            versions: versions,
+            ..Default::default()
+        }).unwrap();
+    }
+    {
         use good_ormning::{
             QueryResCount,
             mariadb::{

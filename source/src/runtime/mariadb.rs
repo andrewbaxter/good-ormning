@@ -402,12 +402,21 @@ pub fn get<T: FromMariadbValue>(row: &mut Row, i: usize) -> Result<T, GoodError>
     return T::from_mariadb_value(v).map_err(|e| GoodError(format!("Reading result {}: {}", i, e)));
 }
 
-pub fn push_in_list(query: &mut String, params: &mut Vec<Value>, values: Vec<Value>, element: &str) {
-    let Some(last) = values.last().cloned() else {
-        query.push_str("(select 1 from dual where false)");
+pub fn push_in_list(query: &mut String, params: &mut Vec<Value>, values: Vec<Value>, element: &str, width: usize) {
+    let rows = values.len() / width;
+    if rows == 0 {
+        query.push_str("(select ");
+        for i in 0 .. width {
+            if i > 0 {
+                query.push_str(", ");
+            }
+            query.push('1');
+        }
+        query.push_str(" from dual where false)");
         return;
-    };
-    let count = values.len().next_power_of_two();
+    }
+    let count = rows.next_power_of_two();
+    let last = values[values.len() - width..].to_vec();
     query.push('(');
     for i in 0 .. count {
         if i > 0 {
@@ -416,9 +425,10 @@ pub fn push_in_list(query: &mut String, params: &mut Vec<Value>, values: Vec<Val
         query.push_str(element);
     }
     query.push(')');
-    let padding = count - values.len();
     params.extend(values);
-    params.extend(std::iter::repeat(last).take(padding));
+    for _ in rows .. count {
+        params.extend(last.iter().cloned());
+    }
 }
 
 fn to_params(params: Vec<Value>) -> Params {

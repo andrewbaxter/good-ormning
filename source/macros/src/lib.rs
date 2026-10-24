@@ -241,30 +241,10 @@ impl Parse for GoodQueryInput {
             }
             let name: Ident = input.parse()?;
             input.parse::<Token![:]>()?;
-            let mut arr = false;
-            let mut opt = false;
-            let mut base = String::new();
-            while input.peek(Ident) {
-                let id: Ident = input.parse()?;
-                if id == "arr" {
-                    arr = true;
-                } else if id == "opt" {
-                    opt = true;
-                } else {
-                    base = id.to_string();
-                    break;
-                }
-            }
-            if base.is_empty() {
-                return Err(input.error("Expected parameter type"));
-            }
+            let pt = parse_param_type(input)?;
             input.parse::<Token![=]>()?;
             let val: syn::Expr = input.parse()?;
-            param_types.push((name, ParamType {
-                arr: arr,
-                opt: opt,
-                base: base,
-            }));
+            param_types.push((name, pt));
             params.push(val);
         }
         let mut final_sql = String::new();
@@ -334,38 +314,14 @@ impl Parse for GoodQueryInput {
                             format!("Failed to parse inline parameter type tokens: {}", e),
                         );
                     })?;
-                    let (arr_p, opt_p, base_p) = (|type_input: ParseStream| {
-                        let mut arr = false;
-                        let mut opt = false;
-                        let mut base = String::new();
-                        while type_input.peek(Ident) {
-                            let id: Ident = type_input.parse()?;
-                            if id == "arr" {
-                                arr = true;
-                            } else if id == "opt" {
-                                opt = true;
-                            } else {
-                                base = id.to_string();
-                                break;
-                            }
-                        }
-                        return Ok((arr, opt, base));
-                    }).parse2(type_tokens).map_err(|e| {
+                    let pt = parse_param_type.parse2(type_tokens).map_err(|e| {
                         return syn::Error::new(
                             input.span(),
                             format!("Failed to parse inline parameter type: {}", e),
                         );
                     })?;
-                    if base_p.is_empty() {
-                        return Err(input.error("Expected base type in inline parameter"));
-                    }
                     let param_idx = params.len() + 1;
                     let name = format_ident!("p{}", param_idx);
-                    let pt = ParamType {
-                        arr: arr_p,
-                        opt: opt_p,
-                        base: base_p,
-                    };
                     params.push(val);
                     param_types.push((name.clone(), pt));
                     let start = final_sql.len();
@@ -410,6 +366,52 @@ struct ParamType {
     arr: bool,
     base: String,
     opt: bool,
+    tuple: Vec<ParamType>,
+}
+
+fn parse_param_type(input: ParseStream) -> syn::Result<ParamType> {
+    let mut arr = false;
+    let mut opt = false;
+    loop {
+        if input.peek(syn::token::Paren) {
+            if !arr || opt {
+                return Err(
+                    input.error(
+                        "Tuple parameter types must be lists (`arr (a, b)`), and only their elements can be `opt`",
+                    ),
+                );
+            }
+            let content;
+            syn::parenthesized!(content in input);
+            let elements =
+                syn::punctuated::Punctuated::<ParamType, Token![,]>::parse_terminated_with(
+                    &content,
+                    parse_param_type,
+                )?;
+            if elements.len() < 2 || elements.iter().any(|e| e.arr) {
+                return Err(content.error("Tuple parameter types need at least two non-list elements"));
+            }
+            return Ok(ParamType {
+                arr: arr,
+                opt: false,
+                base: String::new(),
+                tuple: elements.into_iter().collect(),
+            });
+        }
+        let id: Ident = input.parse().map_err(|e| syn::Error::new(e.span(), "Expected parameter type"))?;
+        if id == "arr" && !arr {
+            arr = true;
+        } else if id == "opt" && !opt {
+            opt = true;
+        } else {
+            return Ok(ParamType {
+                arr: arr,
+                opt: opt,
+                base: id.to_string(),
+                tuple: vec![],
+            });
+        }
+    }
 }
 
 fn parse_and_generate_mariadb(

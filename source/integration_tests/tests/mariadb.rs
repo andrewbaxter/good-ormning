@@ -3046,6 +3046,15 @@ async fn test_migrate_key_column_changes() -> Result<(), loga::Error> {
         let later = v.table("later");
         let later_id = later.field("id", field_i32().build());
         later.primary_key(&[&later_id]);
+        let same_name = v.table("same_name");
+        let same_name_id = same_name.field("id", field_i64().auto_increment().build());
+        same_name.field("other", field_i32().build());
+        same_name.index("same_name_key", &[&same_name_id]);
+        let drop_column = v.table("drop_column");
+        let drop_column_id = drop_column.field("id", field_i64().auto_increment().build());
+        drop_column.field("other", field_i32().build());
+        drop_column.index("drop_column_id", &[&drop_column_id]);
+        v.table("grow").field("other", field_i32().build());
         v.build()
     }, {
         let v = Version::new();
@@ -3067,6 +3076,15 @@ async fn test_migrate_key_column_changes() -> Result<(), loga::Error> {
         let later = v.table("later");
         let later_id = later.field("id", field_i32().auto_increment().build());
         later.primary_key(&[&later_id]);
+        let same_name = v.table("same_name");
+        let same_name_id = same_name.field("id", field_i64().auto_increment().build());
+        let same_name_other = same_name.field("other", field_i32().build());
+        same_name.index("same_name_key", &[&same_name_id, &same_name_other]);
+        v.table("drop_column").field("other", field_i32().build());
+        let grow = v.table("grow");
+        let grow_id = grow.field("id", field_i64().auto_increment().build());
+        grow.field("other", field_i32().build());
+        grow.primary_key(&[&grow_id]);
         v.build()
     }, {
         let v = Version::new();
@@ -3099,6 +3117,110 @@ async fn test_migrate_key_column_changes() -> Result<(), loga::Error> {
     conn.query_drop("insert into `later` (`extra`) values (1), (2)").await.map_err(loga::err)?;
     let ids: Vec<i32> = conn.query("select `id` from `later` order by `id`").await.map_err(loga::err)?;
     assert_eq!(ids, vec![1, 2]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_rename_chain() -> Result<(), loga::Error> {
+    use good_ormning::{
+        mariadb::{
+            Version,
+            schema::field::field_i32,
+        },
+        runtime::mariadb::mysql_async::prelude::Queryable,
+    };
+
+    let v0 = {
+        let v = Version::new();
+        let t = v.table("t");
+        let b = t.field("b", field_i32().build());
+        let c = t.field("c", field_i32().build());
+        t.index("ib", &[&b]);
+        t.index("ic", &[&c]);
+        v.table("tb").field("x", field_i32().build());
+        v.table("tc").field("x", field_i32().build());
+        v.build()
+    };
+    let v1 = {
+        let v = Version::new();
+        let t = v.table("t");
+        let a = t.field("a", field_i32().build()).renamed_from("b");
+        let b = t.field("b", field_i32().build()).renamed_from("c");
+        t.index("ia", &[&a]).renamed_from("ib");
+        t.index("ib", &[&b]).renamed_from("ic");
+        v.table("ta").renamed_from("tb").field("x", field_i32().build());
+        v.table("tb").renamed_from("tc").field("x", field_i32().build());
+        v.build()
+    };
+    let mut conn = db().await?;
+    run_graph_migrations(&mut conn, vec![v0.clone()]).await?;
+    conn.query_drop("insert into `t` (`b`, `c`) values (1, 2)").await.map_err(loga::err)?;
+    conn.query_drop("insert into `tb` (`x`) values (3)").await.map_err(loga::err)?;
+    conn.query_drop("insert into `tc` (`x`) values (4)").await.map_err(loga::err)?;
+    let errs = good_ormning::utils::Errs::new();
+    let mut table_sql_names = std::collections::HashMap::new();
+    for (table_id, table) in &v1.tables {
+        table_sql_names.insert(table_id.clone(), table.id.clone());
+    }
+    let mut state =
+        good_ormning::mariadb::graph::utils::MariadbMigrateCtx::new(errs.clone(), table_sql_names, v1.clone());
+    good_ormning::graphmigrate::migrate(&mut state, Some(v0.to_migrate_nodes()), &v1.to_migrate_nodes());
+    errs.raise().map_err(|e| loga::err(e.join("\n")))?;
+    for statement in &state.statements {
+        for _ in 0 .. 2 {
+            conn.query_drop(statement.as_str()).await.map_err(|e| loga::err(format!("[{}]: {}", statement, e)))?;
+        }
+    }
+    let row: Option<(i32, i32)> = conn.query_first("select `a`, `b` from `t`").await.map_err(loga::err)?;
+    assert_eq!(row, Some((1, 2)));
+    let ta: Option<i32> = conn.query_first("select `x` from `ta`").await.map_err(loga::err)?;
+    let tb: Option<i32> = conn.query_first("select `x` from `tb`").await.map_err(loga::err)?;
+    assert_eq!((ta, tb), (Some(3), Some(4)));
+    let indexes: Vec<(String, String)> =
+        conn
+            .query(
+                "select `index_name`, `column_name` from information_schema.statistics where `table_schema` = database() and `table_name` = 't' order by `index_name`",
+            )
+            .await
+            .map_err(loga::err)?;
+    assert_eq!(indexes, vec![("ia".to_string(), "a".to_string()), ("ib".to_string(), "b".to_string())]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_migrate_auto_increment_keys() -> Result<(), loga::Error> {
+    use good_ormning::runtime::mariadb::mysql_async::prelude::Queryable;
+
+    good_module!(dbm, "mariadb_gen_auto_increment_keys");
+    let db = dbm::migrate(db().await?, None).await?;
+    let mut conn = db.0;
+    for table in ["index_to_pk", "pk_to_index", "same_name", "add_auto", "new_column"] {
+        conn.query_drop(format!("insert into `{}` (`other`) values (1), (2)", table)).await.map_err(loga::err)?;
+        let ids: Vec<i64> =
+            conn.query(format!("select `id` from `{}` order by `id`", table)).await.map_err(loga::err)?;
+        assert_eq!(ids, vec![1, 2], "{}", table);
+    }
+    conn.query_drop("insert into `drop_auto` (`id`, `other`) values (7, 1)").await.map_err(loga::err)?;
+    let keys: Vec<(String, String)> =
+        conn
+            .query(
+                "select `table_name`, `index_name` from information_schema.statistics where `table_schema` = database() and `seq_in_index` = 1 and `table_name` <> '__good_version' order by `table_name`, `index_name`",
+            )
+            .await
+            .map_err(loga::err)?;
+    assert_eq!(
+        keys,
+        [
+            ("add_auto", "add_auto_id"),
+            ("index_to_pk", "PRIMARY"),
+            ("new_column", "PRIMARY"),
+            ("pk_to_index", "pk_to_index_id"),
+            ("same_name", "same_name_key"),
+        ]
+            .into_iter()
+            .map(|(t, i)| (t.to_string(), i.to_string()))
+            .collect::<Vec<_>>()
+    );
     Ok(())
 }
 
@@ -3191,6 +3313,33 @@ async fn test_in_list() -> Result<(), loga::Error> {
         &mut db,
         amounts: arr decimal = &["2.5", "4.50"]
     ).await?, vec![Some(2), Some(4)]);
+    for (
+        pairs,
+        want,
+    ) in [(vec![], vec![]), (vec![(1, "ab")], vec![1]), (vec![(1, "b"), (2, "b"), (3, "c")], vec![2, 3])] {
+        let got = good_ormning::mariadb::good_query_many!(
+            dbm,
+            "mariadb_gen_safety",
+            r#"select `ti` from `v` where (`ti`, `s`) in (?) order by `ti`"#;
+            &mut db,
+            pairs: arr(i8, string) = & pairs
+        ).await?;
+        assert_eq!(got, want.into_iter().map(Some).collect::<Vec<_>>());
+    }
+    let pairs = vec![(1, "ab"), (4, "d")];
+    assert_eq!(good_ormning::mariadb::good_query_many!(
+        dbm,
+        "mariadb_gen_safety",
+        r#"select `ti` from `v` where (`ti`, `s`) not in (${arr (i8, string) = &pairs}) and `s` is not null order by `ti`"#;
+        &mut db
+    ).await?, vec![Some(2), Some(3)]);
+    assert_eq!(good_ormning::mariadb::good_query_many!(
+        dbm,
+        "mariadb_gen_safety",
+        r#"select `ti` from `v` where (`ti`, `de`, `s`) in (?) order by `ti`"#;
+        &mut db,
+        rows: arr(i8, decimal, opt string) = &[(2, "2.50", Some("b")), (3, "3.5", None)]
+    ).await?, vec![Some(2)]);
     Ok(())
 }
 

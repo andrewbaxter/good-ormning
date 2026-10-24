@@ -1221,14 +1221,6 @@ impl Version {
                         type_old_ids: type_old_ids,
                         remote_keys: remote_keys,
                         column_types: column_types,
-                        table_columns: match &constraint.type_ {
-                            ConstraintType::PrimaryKey(_) => table
-                                .fields
-                                .values()
-                                .map(|f| (f.id.clone(), f.type_.auto_increment))
-                                .collect(),
-                            ConstraintType::ForeignKey(_) => vec![],
-                        },
                     })),
                 );
             }

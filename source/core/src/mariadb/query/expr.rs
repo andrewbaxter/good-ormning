@@ -11,7 +11,6 @@ use crate::{
         },
         query::utils::{
             PARAM_LIST,
-            PARAM_LIST_DECIMAL,
             PARAM_MARKER,
             MariadbQueryCtx,
             QueryBody,
@@ -509,7 +508,7 @@ pub enum Expr {
     },
     ParamList {
         name: String,
-        type_: Type,
+        types: Vec<Type>,
     },
     Paren(Box<Expr>),
     PrefixOp {
@@ -800,7 +799,7 @@ impl Expr {
             Expr::Param { name, type_ } => {
                 let mut out = Tokens::new_mariadb();
                 let path = path.push_back(format!("Param ({})", name));
-                if ctx.list_params.contains(name) {
+                if ctx.list_params.contains_key(name) {
                     ctx.errs.err(&path, format!("Parameter {} is used both as a list and as a single value", name));
                 }
                 let forward = match ctx.rust_arg_lookup.get(name) {
@@ -839,7 +838,7 @@ impl Expr {
                 }
                 return (ExprType(vec![(ExprValName::local(name.clone()), type_.clone())]), out);
             },
-            Expr::ParamList { name, type_ } => {
+            Expr::ParamList { name, types } => {
                 let mut out = Tokens::new_mariadb();
                 let path = path.push_back(format!("Param list ({})", name));
                 if parent != ExprParent::InList {
@@ -850,17 +849,16 @@ impl Expr {
                             "List parameters can only be used as the list in `in (...)` or `not in (...)`".to_string(),
                         );
                 }
-                let forward = match ctx.rust_arg_lookup.get(name) {
-                    Some((prev_t, forward)) => {
-                        if !ctx.list_params.contains(name) {
-                            ctx
-                                .errs
-                                .err(
-                                    &path,
-                                    format!("Parameter {} is used both as a list and as a single value", name),
-                                );
-                        }
-                        if type_ != prev_t {
+                if types.is_empty() {
+                    ctx.errs.err(&path, "List parameters need at least one element type".to_string());
+                    return (ExprType(vec![]), Tokens::new_mariadb());
+                }
+                if ctx.rust_arg_lookup.contains_key(name) {
+                    ctx.errs.err(&path, format!("Parameter {} is used both as a list and as a single value", name));
+                }
+                let forward = match ctx.list_params.get(name) {
+                    Some((prev_types, forward)) => {
+                        if types != prev_types {
                             ctx
                                 .errs
                                 .err(
@@ -868,38 +866,65 @@ impl Expr {
                                     format!(
                                         "Parameter {} specified with multiple types: {:?}, {:?}",
                                         name,
-                                        type_,
-                                        prev_t
+                                        types,
+                                        prev_types
                                     ),
                                 );
                         }
                         forward.clone()
                     },
                     None => {
-                        let Some((ident, rust_type, rust_forward)) = param_rust(ctx, &path, name, type_) else {
-                            return (ExprType(vec![]), Tokens::new_mariadb());
+                        let mut idents = vec![];
+                        let mut rust_types = vec![];
+                        let mut forwards = vec![];
+                        for (i, type_) in types.iter().enumerate() {
+                            let element_name = if types.len() == 1 {
+                                name.clone()
+                            } else {
+                                format!("{}_{}", name, i)
+                            };
+                            let Some((ident, rust_type, rust_forward)) =
+                                param_rust(ctx, &path, &element_name, type_) else {
+                                    return (ExprType(vec![]), Tokens::new_mariadb());
+                                };
+                            idents.push(ident);
+                            rust_types.push(rust_type);
+                            forwards.push(quote!(good_ormning:: runtime:: mariadb:: to_value(#rust_forward)));
+                        }
+                        let ident = format_ident!("{}", sanitize_ident(name).1);
+                        let template = types.iter().map(|t| if t.type_.type_ == SimpleSimpleType::Decimal {
+                            "cast(? as decimal(65, 30))"
+                        } else {
+                            "?"
+                        }).collect::<Vec<_>>();
+                        let width = types.len();
+                        let (rust_type, template) = if width == 1 {
+                            (quote!(#(#rust_types) *), template.join(""))
+                        } else {
+                            (quote!((#(#rust_types,) *)), format!("({})", template.join(", ")))
                         };
-                        let rust_forward =
+                        let pattern = if width == 1 {
+                            quote!(#(#idents) *)
+                        } else {
+                            quote!((#(#idents,) *))
+                        };
+                        let forward =
                             quote!(
-                                #ident.iter(
-                                ).cloned(
-                                ).map(
-                                    | #ident | good_ormning:: runtime:: mariadb:: to_value(#rust_forward)
-                                ).collect::< Vec < _ >>()
+                                #ident.iter().cloned().flat_map(| #pattern |[#(#forwards), *]).collect::< Vec < _ >>(),
+                                #template,
+                                #width
                             );
                         ctx.rust_args.push((name.clone(), quote!(#ident: &[#rust_type])));
-                        ctx.rust_arg_lookup.insert(name.clone(), (type_.clone(), rust_forward.clone()));
-                        ctx.list_params.insert(name.clone());
-                        rust_forward
+                        ctx.list_params.insert(name.clone(), (types.clone(), forward.clone()));
+                        forward
                     },
                 };
                 ctx.query_args.push(forward);
-                out.s(&format!("{}{}{}{}", PARAM_MARKER, if type_.type_.type_ == SimpleSimpleType::Decimal {
-                    PARAM_LIST_DECIMAL
-                } else {
-                    PARAM_LIST
-                }, ctx.query_args.len() - 1, PARAM_MARKER));
-                return (ExprType(vec![(ExprValName::local(name.clone()), type_.clone())]), out);
+                out.s(&format!("{}{}{}{}", PARAM_MARKER, PARAM_LIST, ctx.query_args.len() - 1, PARAM_MARKER));
+                return (
+                    ExprType(types.iter().map(|t| (ExprValName::local(name.clone()), t.clone())).collect()),
+                    out,
+                );
             },
             Expr::Field(x) => {
                 let name = ExprValName::field(x);
@@ -1004,7 +1029,18 @@ impl Expr {
                         let (left_t, left_tokens) = left.build(ctx, &path.push_back("Operand 0".into()), scope);
                         ctx.expr_parent = ExprParent::InList;
                         let (right_t, right_tokens) = right.build(ctx, &path.push_back("Operand 1".into()), scope);
-                        if !left_t.0.is_empty() && !right_t.0.is_empty() {
+                        if matches!(**right, Expr::ParamList { .. }) && right_t.0.len() != left_t.0.len() {
+                            ctx
+                                .errs
+                                .err(
+                                    path,
+                                    format!(
+                                        "The list parameter has {} values per element but the left side has {}",
+                                        right_t.0.len(),
+                                        left_t.0.len()
+                                    ),
+                                );
+                        } else if !left_t.0.is_empty() && !right_t.0.is_empty() {
                             if right_t.0.len() == left_t.0.len() {
                                 check_general_same(ctx, path, &left_t, &right_t);
                             } else if !left_t.0.is_empty() && right_t.0.len() % left_t.0.len() == 0 {

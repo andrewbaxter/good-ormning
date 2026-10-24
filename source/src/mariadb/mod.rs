@@ -405,7 +405,7 @@ mod test {
                 op: BinOp::Equals,
                 right: Box::new(Expr::ParamList {
                     name: "ids".to_string(),
-                    type_: type_i64().build(),
+                    types: vec![type_i64().build()],
                 }),
             }), "List parameters can only be used"),
             ("list_param_tuple", select(Expr::BinOp {
@@ -413,16 +413,24 @@ mod test {
                 op: BinOp::In,
                 right: Box::new(Expr::ParamList {
                     name: "ids".to_string(),
-                    type_: type_i64().build(),
+                    types: vec![type_i64().build()],
                 }),
-            }), "record type lengths don't match"),
+            }), "values per element"),
+            ("list_param_tuple_types", select(Expr::BinOp {
+                left: Box::new(Expr::LitArray(vec![Expr::Field(n.to_ref()), Expr::Field(s.to_ref())])),
+                op: BinOp::In,
+                right: Box::new(Expr::ParamList {
+                    name: "pairs".to_string(),
+                    types: vec![type_i64().build(), type_i64().build()],
+                }),
+            }), "types don't match"),
             ("list_param_as_scalar", select(Expr::BinOp {
                 left: Box::new(Expr::BinOp {
                     left: field(&n),
                     op: BinOp::In,
                     right: Box::new(Expr::ParamList {
                         name: "ids".to_string(),
-                        type_: type_i64().build(),
+                        types: vec![type_i64().build()],
                     }),
                 }),
                 op: BinOp::And,

@@ -9,7 +9,6 @@ use {
                     MariadbQueryCtx,
                     MariadbTableInfo,
                     PARAM_LIST,
-                    PARAM_LIST_DECIMAL,
                     PARAM_MARKER,
                 },
             },
@@ -71,22 +70,21 @@ pub fn generate_query_functions(
                 text.push_str(part);
                 continue;
             }
-            let (element, index) = match part.chars().next() {
-                Some(PARAM_LIST) => (Some("?"), &part[1..]),
-                Some(PARAM_LIST_DECIMAL) => (Some("cast(? as decimal(65, 30))"), &part[1..]),
-                _ => (None, part),
+            let (list, index) = match part.strip_prefix(PARAM_LIST) {
+                Some(index) => (true, index),
+                None => (false, part),
             };
             let arg = query_args[index.parse::<usize>().unwrap()].clone();
-            match element {
-                Some(element) => {
+            match list {
+                true => {
                     has_list = true;
                     let chunk = std::mem::take(&mut text);
                     dynamic.push(quote!{
                         query.push_str(#chunk);
-                        good_ormning:: runtime:: mariadb:: push_in_list(&mut query, &mut params, #arg, #element);
+                        good_ormning:: runtime:: mariadb:: push_in_list(&mut query, &mut params, #arg);
                     });
                 },
-                None => {
+                false => {
                     text.push('?');
                     let chunk = std::mem::take(&mut text);
                     dynamic.push(quote!{

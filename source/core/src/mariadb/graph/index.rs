@@ -7,9 +7,6 @@ use {
     std::collections::HashSet,
     super::{
         GraphId,
-        Node,
-        NodeData,
-        NodeDataDispatch,
         utils::MariadbMigrateCtx,
     },
 };
@@ -33,63 +30,47 @@ impl NodeIndex_ {
             Comparison::DoNothing
         };
     }
-}
 
-impl NodeData for NodeIndex_ {
-    fn update(&self, ctx: &mut MariadbMigrateCtx, old: &Self) {
-        if self.def.id != old.def.id {
-            ctx
-                .statements
-                .push(
-                    Tokens::new_mariadb()
-                        .s("alter table")
-                        .id(&self.table_id)
-                        .s("rename index if exists")
-                        .id(&old.def.id)
-                        .s("to")
-                        .id(&self.def.id)
-                        .to_string(),
-                );
+    pub fn create_clauses(&self, ctx: &MariadbMigrateCtx, merged: bool) -> Vec<Vec<String>> {
+        let mut out = vec![];
+        let mut clause = Tokens::new_mariadb();
+        if merged {
+            let mut drop = Tokens::new_mariadb();
+            drop.s("drop index if exists").id(&self.def.id);
+            out.push(drop.to_string());
         }
-    }
-}
-
-impl NodeDataDispatch for NodeIndex_ {
-    fn create(&self, ctx: &mut MariadbMigrateCtx) {
-        let mut stmt = Tokens::new_mariadb();
-        stmt.s("create");
+        clause.s("add");
         if self.def.unique {
-            stmt.s("unique");
+            clause.s("unique");
         }
-        stmt.s("index if not exists").id(&self.def.id).s("on").id(&self.table_id).s("(");
+        clause.s("index");
+        if !merged {
+            clause.s("if not exists");
+        }
+        clause.id(&self.def.id).s("(");
         for (i, f_id) in self.def.fields.iter().enumerate() {
             if i > 0 {
-                stmt.s(",");
+                clause.s(",");
             }
-            stmt.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
+            clause.id(&ctx.version.tables.get(&self.table_id).unwrap().fields.get(f_id).unwrap().id);
         }
-        stmt.s(")");
-        ctx.statements.push(stmt.to_string());
+        clause.s(")");
+        out.push(clause.to_string());
+        return vec![out];
     }
 
-    fn create_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
+    pub fn delete_clauses(&self) -> Vec<Vec<String>> {
+        let mut clause = Tokens::new_mariadb();
+        clause.s("drop index if exists").id(&self.def.id);
+        return vec![vec![clause.to_string()]];
     }
 
-    fn delete(&self, ctx: &mut MariadbMigrateCtx) {
-        ctx
-            .statements
-            .push(
-                Tokens::new_mariadb()
-                    .s("drop index if exists")
-                    .id(&self.def.id)
-                    .s("on")
-                    .id(&self.table_id)
-                    .to_string(),
-            );
-    }
-
-    fn delete_coalesce(&mut self, other: Node) -> Option<Node> {
-        return Some(other);
+    pub fn update_clauses(&self, old: &Self) -> Vec<Vec<String>> {
+        if self.def.id == old.def.id {
+            return vec![];
+        }
+        let mut clause = Tokens::new_mariadb();
+        clause.s("rename index if exists").id(&old.def.id).s("to").id(&self.def.id);
+        return vec![vec![clause.to_string()]];
     }
 }

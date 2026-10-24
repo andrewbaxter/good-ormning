@@ -146,6 +146,9 @@ pub fn convert_expr(
                             })
                             .map(|(_, pt)| pt)
                             .unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
+                    if !pt.tuple.is_empty() {
+                        panic!("Parameter {} has a tuple type, which is only supported for MariaDB", param_name);
+                    }
                     return Expr::Param {
                         name: param_name,
                         type_: {

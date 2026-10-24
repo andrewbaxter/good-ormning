@@ -108,8 +108,8 @@ pub fn convert_expr(
                     return Expr::LitBytes(hex::decode(h).expect("Invalid hex string literal"));
                 },
                 sql::Value::Placeholder(_) => {
-                    let (name, type_, arr) = convert_param(input, v, used_params, custom_types);
-                    if arr {
+                    let (name, mut types, arr) = convert_param(input, v, used_params, custom_types);
+                    if arr || types.len() != 1 {
                         panic!(
                             "Parameter {} is a list, which can only be used as the whole list in `in (?)` or `not in (?)`",
                             name
@@ -117,7 +117,7 @@ pub fn convert_expr(
                     }
                     return Expr::Param {
                         name: name,
-                        type_: type_,
+                        type_: types.remove(0),
                     };
                 },
                 sql::Value::Null => return Expr::LitNull(SimpleType {
@@ -433,16 +433,16 @@ pub fn convert_expr(
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r = match list.as_slice() {
                 [sql::Expr::Value(v @ sql::ValueWithSpan { value: sql::Value::Placeholder(_), .. })] => {
-                    let (name, type_, arr) = convert_param(input, v, used_params, custom_types);
+                    let (name, mut types, arr) = convert_param(input, v, used_params, custom_types);
                     if arr {
                         Expr::ParamList {
                             name: name,
-                            type_: type_,
+                            types: types,
                         }
                     } else {
                         Expr::LitArray(vec![Expr::Param {
                             name: name,
-                            type_: type_,
+                            type_: types.remove(0),
                         }])
                     }
                 },
@@ -675,7 +675,7 @@ fn convert_param(
     v: &sql::ValueWithSpan,
     used_params: &mut ConvertState,
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::mariadb::schema::custom_type::CustomType>,
-) -> (String, MariadbType, bool) {
+) -> (String, Vec<MariadbType>, bool) {
     let sql::Value::Placeholder(p) = &v.value else {
         panic!("Expected a parameter: {}", v);
     };
@@ -691,8 +691,8 @@ fn convert_param(
         let s = s.trim_start_matches("r#");
         return s == param_name;
     }).map(|(_, pt)| pt).unwrap_or_else(|| panic!("Parameter {} not found in params section", param_name));
-    let type_ = {
-        let (simple_type, custom) = match pt.base.as_str() {
+    let convert_type = |opt: bool, base: &str| -> MariadbType {
+        let (simple_type, custom) = match base {
             "i8" => (MariadbSimpleSimpleType::I8, None),
             "i16" => (MariadbSimpleSimpleType::I16, None),
             "i32" => (MariadbSimpleSimpleType::I32, None),
@@ -720,25 +720,30 @@ fn convert_param(
             #[cfg(feature = "jiff")]
             "time_jiff" => (MariadbSimpleSimpleType::TimeJiff, None),
             _ => {
-                let Some(ct) = custom_types.get(&pt.base) else {
+                let Some(ct) = custom_types.get(base) else {
                     panic!(
                         "Parameter {} has unknown type {}; use i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, decimal, bool, string, bytes, a date/datetime/time type for an enabled time library, or a custom type from the schema",
                         param_name,
-                        pt.base
+                        base
                     );
                 };
                 (ct.base_type.type_.type_.clone(), Some(ct.rust_type.clone()))
             },
         };
-        MariadbType {
+        return MariadbType {
             type_: MariadbSimpleType {
                 type_: simple_type,
                 custom: custom,
             },
-            opt: pt.opt,
-        }
+            opt: opt,
+        };
     };
-    return (param_name, type_, pt.arr);
+    let types = if pt.tuple.is_empty() {
+        vec![convert_type(pt.opt, &pt.base)]
+    } else {
+        pt.tuple.iter().map(|e| convert_type(e.opt, &e.base)).collect()
+    };
+    return (param_name, types, pt.arr);
 }
 
 fn convert_function(name: &str, mut args: Vec<Expr>, distinct: bool) -> Expr {

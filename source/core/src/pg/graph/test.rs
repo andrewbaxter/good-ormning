@@ -16,7 +16,7 @@ use {
 
 /// Returns the statements for migrating from each version to the next (excluding
 /// creating the first version).
-fn migrate_versions(versions: Vec<Version>) -> Vec<String> {
+fn migrate_versions_result(versions: Vec<Version>) -> Result<Vec<String>, Vec<String>> {
     let errs = Errs::new();
     let mut statements = vec![];
     let mut prev_version: Option<Version> = None;
@@ -33,8 +33,12 @@ fn migrate_versions(versions: Vec<Version>) -> Vec<String> {
         }
         prev_version = Some(version);
     }
-    errs.raise().unwrap();
-    return statements;
+    errs.raise()?;
+    return Ok(statements);
+}
+
+fn migrate_versions(versions: Vec<Version>) -> Vec<String> {
+    return migrate_versions_result(versions).unwrap();
 }
 
 #[test]
@@ -206,4 +210,89 @@ fn test_change_index_unique_good() {
             "create unique index \"bananna_hizat\" on \"bananna\" ( \"hizat\" )".to_string(),
         ]
     );
+}
+
+fn rename_versions(swap: bool, reverse: bool) -> Vec<Version> {
+    let (n0, n1, n2) = if reverse {
+        ("c", "b", "a")
+    } else {
+        ("a", "b", "c")
+    };
+    let v0 = Version::new();
+    {
+        let t = v0.table("t");
+        let a = t.field(n0, field_i32().build());
+        let b = t.field(n1, field_i32().build());
+        t.index(&format!("i{}", n0), &[&a]);
+        t.index(&format!("i{}", n1), &[&b]);
+        v0.table(&format!("t{}", n0)).field("x", field_i32().build());
+        v0.table(&format!("t{}", n1)).field("x", field_i32().build());
+    }
+    let v1 = Version::new();
+    {
+        let t = v1.table("t");
+        if swap {
+            let a = t.field(n0, field_i32().build()).renamed_from(n1);
+            let b = t.field(n1, field_i32().build()).renamed_from(n0);
+            t.index(&format!("i{}", n0), &[&a]).renamed_from(&format!("i{}", n1));
+            t.index(&format!("i{}", n1), &[&b]).renamed_from(&format!("i{}", n0));
+            v1.table(&format!("t{}", n0)).renamed_from(&format!("t{}", n1)).field("x", field_i32().build());
+            v1.table(&format!("t{}", n1)).renamed_from(&format!("t{}", n0)).field("x", field_i32().build());
+        } else {
+            let b = t.field(n1, field_i32().build()).renamed_from(n0);
+            let c = t.field(n2, field_i32().build()).renamed_from(n1);
+            t.index(&format!("i{}", n1), &[&b]).renamed_from(&format!("i{}", n0));
+            t.index(&format!("i{}", n2), &[&c]).renamed_from(&format!("i{}", n1));
+            v1.table(&format!("t{}", n1)).renamed_from(&format!("t{}", n0)).field("x", field_i32().build());
+            v1.table(&format!("t{}", n2)).renamed_from(&format!("t{}", n1)).field("x", field_i32().build());
+        }
+    }
+    return vec![v0.build(), v1.build()];
+}
+
+#[test]
+fn test_rename_chain_good() {
+    for (
+        reverse,
+        expected,
+    ) in [
+        (
+            false,
+            vec![
+                "alter table \"tb\" rename to \"tc\"",
+                "alter table \"ta\" rename to \"tb\"",
+                "alter table \"t\" rename column \"b\" to \"c\"",
+                "alter index \"ib\" rename to \"ic\"",
+                "alter table \"t\" rename column \"a\" to \"b\"",
+                "alter index \"ia\" rename to \"ib\"",
+            ],
+        ),
+        (
+            true,
+            vec![
+                "alter table \"tb\" rename to \"ta\"",
+                "alter table \"tc\" rename to \"tb\"",
+                "alter table \"t\" rename column \"b\" to \"a\"",
+                "alter table \"t\" rename column \"c\" to \"b\"",
+                "alter index \"ib\" rename to \"ia\"",
+                "alter index \"ic\" rename to \"ib\"",
+            ],
+        ),
+    ] {
+        let statements = migrate_versions_result(rename_versions(false, reverse)).unwrap();
+        assert_eq!(&statements[statements.len() - expected.len()..], &expected[..]);
+    }
+}
+
+#[test]
+fn test_rename_swap_bad() {
+    let errs = migrate_versions_result(rename_versions(true, false)).unwrap_err();
+    assert_eq!(errs.len(), 3, "{:?}", errs);
+    for expected in [
+        "update table tb, update table ta",
+        "update field t.b, update field t.a",
+        "update index t.ib, update index t.ia",
+    ] {
+        assert!(errs.iter().any(|e| e.ends_with(expected)), "{} not in {:?}", expected, errs);
+    }
 }

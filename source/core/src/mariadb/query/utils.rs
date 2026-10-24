@@ -378,14 +378,13 @@ pub struct MariadbFieldInfo {
 
 pub const PARAM_MARKER: char = '\u{1}';
 pub const PARAM_LIST: char = 'L';
-pub const PARAM_LIST_DECIMAL: char = 'D';
 
 pub struct MariadbQueryCtx {
     pub default_time_library: Option<crate::utils::TimeLibrary>,
     pub errs: Errs,
     pub expr_parent: ExprParent,
     pub in_duplicate_key_update: bool,
-    pub list_params: std::collections::HashSet<String>,
+    pub list_params: HashMap<String, (Vec<Type>, TokenStream)>,
     pub outer_scopes: Vec<HashMap<ExprValName, Type>>,
     pub query_args: Vec<TokenStream>,
     pub rust_arg_lookup: HashMap<String, (Type, TokenStream)>,
