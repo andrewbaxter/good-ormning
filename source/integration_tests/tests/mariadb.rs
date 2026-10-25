@@ -3340,6 +3340,39 @@ async fn test_in_list() -> Result<(), loga::Error> {
         &mut db,
         rows: arr(i8, decimal, opt string) = &[(2, "2.50", Some("b")), (3, "3.5", None)]
     ).await?, vec![Some(2)]);
+    for (names, want) in [(vec![], vec![]), (vec!["ab", "c", "zz"], vec![1, 3])] {
+        let got = good_ormning::mariadb::good_query_many!(
+            dbm,
+            "mariadb_gen_safety",
+            r#"select `v`.`ti` from `v` join unnest(?) as `u`(`name`) on `v`.`s` = `u`.`name` order by `v`.`ti`"#;
+            &mut db,
+            names: arr string = & names
+        ).await?;
+        assert_eq!(got, want.into_iter().map(Some).collect::<Vec<_>>());
+    }
+    assert_eq!(good_ormning::mariadb::good_query_many!(
+        dbm,
+        "mariadb_gen_safety",
+        r#"select `v`.`ti` from `v` join unnest(?) as `d` on `v`.`de` = `d`.`d` order by `v`.`ti`"#;
+        &mut db,
+        amounts: arr decimal = &["2.50", "3.5"]
+    ).await?, vec![Some(2), Some(3)]);
+    for (
+        pairs,
+        want,
+    ) in [
+        (vec![], vec![]),
+        (vec![(5, Some("x")), (6, None)], vec![(5, Some("x".to_string()), 1), (6, None, 2)]),
+    ] {
+        let got = good_ormning::mariadb::good_query_many!(
+            dbm,
+            "mariadb_gen_safety",
+            r#"select `u`.`a`, `u`.`b`, `u`.`i` from unnest(?) with ordinality as `u`(`a`, `b`, `i`) order by `u`.`i`"#;
+            &mut db,
+            pairs: arr(i8, opt string) = & pairs
+        ).await?;
+        assert_eq!(got.into_iter().map(|r| (r.a, r.b, r.i)).collect::<Vec<_>>(), want);
+    }
     Ok(())
 }
 
@@ -3653,6 +3686,24 @@ async fn test_native() -> Result<(), loga::Error> {
     ).await?;
     names.sort();
     assert_eq!(names, vec!["a".to_string(), "old".to_string()]);
+    good_ormning::mariadb::good_query!(
+        dbm,
+        "mariadb_gen_native",
+        "update t set n = n + 100 order by name limit 1";
+        &mut db
+    ).await?;
+    assert_eq!(good_ormning::mariadb::good_query_many!(
+        dbm,
+        "mariadb_gen_native",
+        "select name from t where n > 100";
+        &mut db
+    ).await?, vec!["a".to_string()]);
+    good_ormning::mariadb::good_query!(
+        dbm,
+        "mariadb_gen_native",
+        "update t set n = n - 100 where n > 100";
+        &mut db
+    ).await?;
     let r = good_ormning::mariadb::good_query_one!(
         dbm,
         "mariadb_gen_native",

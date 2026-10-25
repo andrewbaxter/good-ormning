@@ -72,6 +72,7 @@ pub fn fn_avg(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -91,6 +92,7 @@ pub fn fn_count(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -110,6 +112,7 @@ pub fn fn_dense_rank() -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -130,6 +133,7 @@ pub fn fn_max(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -150,6 +154,7 @@ pub fn fn_min(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -169,6 +174,7 @@ pub fn fn_rank() -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -188,6 +194,7 @@ pub fn fn_row_number() -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -218,6 +225,7 @@ pub fn fn_sum(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -304,6 +312,7 @@ pub fn fn_coalesce(args: Vec<Expr>) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -330,6 +339,7 @@ pub fn fn_nullif(a: Expr, b: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -357,6 +367,7 @@ pub fn fn_str_to_str(func: &str, expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -388,6 +399,7 @@ pub fn fn_length(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -415,6 +427,7 @@ pub fn fn_abs(expr: Expr) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -456,6 +469,7 @@ pub fn fn_fixed(name: &str, args: Vec<Expr>, ret: SimpleSimpleType, opt: FnOpt) 
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }
 
@@ -485,5 +499,6 @@ pub fn fn_same_as_first(name: &str, args: Vec<Expr>) -> Expr {
         })),
         filter: None,
         distinct: false,
+        order_by: vec![],
     }
 }

@@ -60,8 +60,14 @@ pub fn convert_delete(
     if from.len() != 1 || !from[0].joins.is_empty() {
         panic!("Delete must have exactly one table, use a subquery in the `where` for other tables");
     }
+    if !delete.tables.is_empty() || !delete.order_by.is_empty() || delete.limit.is_some() ||
+        !delete.optimizer_hints.is_empty() ||
+        delete.output.is_some() {
+        panic!("Unsupported delete syntax for SQLite: {}", delete);
+    }
     let (table_ref, alias) = match &from[0].relation {
         sql::TableFactor::Table { name, alias, .. } => {
+            crate::convert::check_table_options(&from[0].relation);
             (get_table_ref(name), alias.as_ref().map(|a| a.name.value.clone()))
         },
         _ => panic!("Unsupported: Delete table factor: {:?}", from[0].relation),
@@ -219,6 +225,9 @@ pub fn convert_expr(
                 sql::BinaryOperator::BitwiseXor => BinOp::BitwiseXor,
                 sql::BinaryOperator::PGBitwiseShiftLeft => BinOp::BitwiseShiftLeft,
                 sql::BinaryOperator::PGBitwiseShiftRight => BinOp::BitwiseShiftRight,
+                sql::BinaryOperator::Glob => BinOp::Glob,
+                sql::BinaryOperator::Regexp => BinOp::Regexp,
+                sql::BinaryOperator::Match => BinOp::Match,
                 _ => panic!("Unsupported: BinaryOperator: {:?}", op),
             };
             return Expr::BinOp {
@@ -232,7 +241,7 @@ pub fn convert_expr(
                 sql::UnaryOperator::Plus => return convert_expr(input, expr, used_params, custom_types, field_lookup),
                 sql::UnaryOperator::Minus => PrefixOp::Minus,
                 sql::UnaryOperator::Not => PrefixOp::Not,
-                sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
+                sql::UnaryOperator::BitwiseNot => PrefixOp::BitwiseNot,
                 _ => panic!("Unsupported: UnaryOperator: {:?}", op),
             };
             return Expr::PrefixOp {
@@ -296,7 +305,7 @@ pub fn convert_expr(
                 high: Box::new(convert_expr(input, high, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::Case { operand, conditions, else_result } => {
+        sql::Expr::Case { operand, conditions, else_result, .. } => {
             let results = conditions.iter().map(|c| c.result.clone()).collect::<Vec<_>>();
             let conditions = conditions.iter().map(|c| c.condition.clone()).collect::<Vec<_>>();
             return Expr::Case {
@@ -318,10 +327,16 @@ pub fn convert_expr(
                     .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
             };
         },
-        sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
+        sql::Expr::Like { expr, negated, pattern, escape_char, any } => {
+            if *any {
+                panic!("`like any` is not supported: {}", e);
+            }
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
-            let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
+            let escape =
+                escape_char
+                    .as_ref()
+                    .map(|c| Box::new(convert_expr(input, c, used_params, custom_types, field_lookup)));
             let res = Expr::Like {
                 expr: Box::new(l),
                 pattern: Box::new(r),
@@ -371,11 +386,7 @@ pub fn convert_expr(
                 right: Box::new(convert_expr(input, right, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::Array(sql::Array { elem, .. }) => {
-            return Expr::LitArray(
-                elem.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
-            );
-        },
+        sql::Expr::Array(_) => panic!("SQLite doesn't have arrays: {}", e),
         sql::Expr::Tuple(exprs) => {
             return Expr::LitArray(
                 exprs.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
@@ -384,7 +395,10 @@ pub fn convert_expr(
         sql::Expr::Nested(expr) => {
             return Expr::Paren(Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)));
         },
-        sql::Expr::Cast { expr, data_type, .. } => {
+        sql::Expr::Cast { kind, expr, data_type, format } => {
+            if !matches!(kind, sql::CastKind::Cast | sql::CastKind::DoubleColon) || format.is_some() {
+                panic!("Only `cast(x as type)` and `x::type` are supported: {}", e);
+            }
             let e = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let t = {
                 let (simple_type, custom) = match data_type {
@@ -444,25 +458,12 @@ pub fn convert_expr(
         sql::Expr::Collate { expr, collation } => {
             return Expr::Collate(
                 Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
-                collation.0.iter().map(|i| match i {
-                    sqlparser::ast::ObjectNamePart::Identifier(id) => id.value.clone(),
-                }).collect::<Vec<_>>().join("."),
+                collation.0.iter().map(|i| crate::convert::ident_part(i)).collect::<Vec<_>>().join("."),
             );
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
-            let dummy_q = sqlparser::ast::Query {
-                with: None,
-                body: subquery.clone(),
-                order_by: None,
-                limit_clause: None,
-                fetch: None,
-                locks: vec![],
-                for_clause: None,
-                settings: None,
-                format_clause: None,
-            };
-            let r = convert_select_query(input, &dummy_q, used_params, custom_types, field_lookup);
+            let r = convert_select_query(input, subquery, used_params, custom_types, field_lookup);
             return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -510,7 +511,24 @@ pub fn convert_expr(
             let name = f.name.to_string().to_lowercase();
             let mut args = vec![];
             let mut distinct = false;
+            let mut order_by = vec![];
+            crate::convert::check_function_options(f);
             if let sql::FunctionArguments::List(list) = &f.args {
+                for clause in &list.clauses {
+                    match clause {
+                        sql::FunctionArgumentClause::OrderBy(exprs) => {
+                            for o in exprs {
+                                order_by.push(
+                                    (
+                                        convert_expr(input, &o.expr, used_params, custom_types, field_lookup),
+                                        convert_order_options(&o.options),
+                                    ),
+                                );
+                            }
+                        },
+                        _ => panic!("Unsupported function argument clause in {}: {}", name, clause),
+                    }
+                }
                 distinct = matches!(list.duplicate_treatment, Some(sql::DuplicateTreatment::Distinct));
                 for arg in &list.args {
                     match arg {
@@ -530,6 +548,9 @@ pub fn convert_expr(
                     .as_ref()
                     .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             if let Some(over) = &f.over {
+                if !order_by.is_empty() {
+                    panic!("`order by` inside the arguments of window function {} isn't supported", name);
+                }
                 let mut e = match name.as_str() {
                     "sum" | "count" | "min" | "max" | "avg" => convert_function(&name, args, distinct),
                     "row_number" => fn_row_number(),
@@ -549,10 +570,7 @@ pub fn convert_expr(
                         let mut order_by = vec![];
                         for o in &spec.order_by {
                             let expr = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-                            let dir = match o.options.asc {
-                                Some(true) | None => Order::Asc,
-                                Some(false) => Order::Desc,
-                            };
+                            let dir = convert_order_options(&o.options);
                             order_by.push((expr, dir));
                         }
                         let frame = if let Some(sql_frame) = &spec.window_frame {
@@ -615,9 +633,17 @@ pub fn convert_expr(
                     sql::WindowType::NamedWindow(_) => panic!("Named windows are not supported"),
                 }
             }
+            if !order_by.is_empty() &&
+                !matches!(
+                    name.as_str(),
+                    "sum" | "count" | "min" | "max" | "avg" | "total" | "group_concat" | "string_agg"
+                ) {
+                panic!("`order by` in the arguments is only supported in aggregate functions, not {}", name);
+            }
             let mut e = convert_function(&name, args, distinct);
-            if let Expr::Call { filter: ref mut f_opt, .. } = e {
+            if let Expr::Call { filter: ref mut f_opt, order_by: ref mut o, .. } = e {
                 *f_opt = filter;
+                *o = order_by;
             }
             return e;
         },
@@ -829,7 +855,9 @@ pub fn convert_returning(
                     e: convert_expr(input, expr, used_params, custom_types, field_lookup),
                     rename: Some(alias.value.clone()),
                 }),
-                sql::SelectItem::Wildcard(_) => {
+                sql::SelectItem::ExprWithAliases { .. } => panic!("Multi-alias select items are not supported"),
+                sql::SelectItem::Wildcard(options) => {
+                    crate::convert::check_wildcard_options(options);
                     if tables.is_empty() {
                         panic!("Can't use a wildcard in a select with no tables");
                     }
@@ -837,10 +865,12 @@ pub fn convert_returning(
                         expand(&mut out, alias, table_ref);
                     }
                 },
-                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
-                    let alias = match name.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    };
+                sql::SelectItem::QualifiedWildcard(
+                    sql::SelectItemQualifiedWildcardKind::ObjectName(name),
+                    options,
+                ) => {
+                    crate::convert::check_wildcard_options(options);
+                    let alias = crate::convert::ident_part(name.0.last().unwrap());
                     match tables.iter().find(|(a, _)| *a == alias) {
                         Some((alias, table_ref)) => {
                             expand(&mut out, alias, table_ref);
@@ -875,10 +905,7 @@ fn convert_order_limit(
         };
         for o in exprs {
             let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-            let dir = match o.options.asc {
-                Some(true) | None => Order::Asc,
-                Some(false) => Order::Desc,
-            };
+            let dir = convert_order_options(&o.options);
             order.push((e, dir));
         }
     }
@@ -908,6 +935,11 @@ pub fn convert_select_query(
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::sqlite::schema::custom_type::CustomType>,
     field_lookup: &std::collections::HashMap<TableRef, SqliteTableInfo>,
 ) -> Select {
+    if q.fetch.is_some() || !q.locks.is_empty() || q.for_clause.is_some() || q.settings.is_some() ||
+        q.format_clause.is_some() ||
+        !q.pipe_operators.is_empty() {
+        panic!("Unsupported query syntax for SQLite: {}", q);
+    }
     let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
     if let Some(with) = &q.with {
         sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
@@ -925,6 +957,19 @@ fn convert_select_query_expr(
 ) -> Select {
     match expr {
         sql::SetExpr::Select(s) => {
+            if s.top.is_some() || s.into.is_some() || !s.lateral_views.is_empty() || s.prewhere.is_some() ||
+                !s.cluster_by.is_empty() ||
+                !s.distribute_by.is_empty() ||
+                !s.sort_by.is_empty() ||
+                s.qualify.is_some() ||
+                s.value_table_mode.is_some() ||
+                !s.connect_by.is_empty() ||
+                !s.optimizer_hints.is_empty() ||
+                s.select_modifiers.as_ref().is_some_and(|m| m.is_any_set()) ||
+                s.exclude.is_some() ||
+                !matches!(s.flavor, sql::SelectFlavor::Standard) {
+                panic!("Unsupported select syntax for SQLite: {}", s);
+            }
             let table = if s.from.is_empty() {
                 NamedSelectSource {
                     source: JoinSource::Empty,
@@ -972,6 +1017,9 @@ fn convert_select_query_expr(
             let mut tables: Vec<(String, Option<TableRef>)> = vec![];
             for source in Iterator::chain([&table].into_iter(), join.iter().map(|j| &j.source)) {
                 let Some(alias) = &source.alias else {
+                    if !matches!(source.source, JoinSource::Empty) {
+                        tables.push(("an unaliased subquery or function".to_string(), None));
+                    }
                     continue;
                 };
                 tables.push((alias.clone(), match &source.source {
@@ -999,10 +1047,15 @@ fn convert_select_query_expr(
                     .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                 group: match &s.group_by {
                     sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by SQLite"),
-                    sql::GroupByExpr::Expressions(exprs, _) => exprs
-                        .iter()
-                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                        .collect(),
+                    sql::GroupByExpr::Expressions(exprs, modifiers) => {
+                        if !modifiers.is_empty() {
+                            panic!("Group by modifiers aren't supported by SQLite: {}", s.group_by);
+                        }
+                        exprs
+                            .iter()
+                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                            .collect()
+                    },
                 },
                 having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                 order: order,
@@ -1011,6 +1064,7 @@ fn convert_select_query_expr(
                 distinct: match &s.distinct {
                     None => false,
                     Some(sql::Distinct::Distinct) => true,
+                    Some(sql::Distinct::All) => false,
                     Some(sql::Distinct::On(_)) => panic!("`distinct on` is not supported by SQLite"),
                 },
             };
@@ -1097,9 +1151,7 @@ fn convert_sql_joins_sqlite(
                     };
                     let mut conds = vec![];
                     for c in cols {
-                        let col = match c.0.last().unwrap() {
-                            sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        };
+                        let col = crate::convert::ident_part(c.0.last().unwrap());
                         conds.push(Expr::BinOp {
                             left: Box::new(Expr::Field(FieldRef {
                                 table_id: left_alias.to_string(),
@@ -1141,7 +1193,7 @@ fn convert_sql_joins_sqlite(
             sql::JoinOperator::FullOuter(constraint) => {
                 (JoinType::Full, Some(on(constraint, used_params)))
             },
-            sql::JoinOperator::CrossJoin => (JoinType::Cross, None),
+            sql::JoinOperator::CrossJoin(sql::JoinConstraint::None) => (JoinType::Cross, None),
             _ => {
                 panic!("Join operator is not supported by SQLite: {:?}", j.join_operator)
             },
@@ -1165,6 +1217,7 @@ pub fn convert_table_factor_sqlite(
 ) -> NamedSelectSource {
     return match tf {
         sql::TableFactor::Table { name, alias, args, .. } => {
+            crate::convert::check_table_options(tf);
             if let Some(args) = args {
                 // Table-valued function
                 let name_str = name.to_string().to_lowercase();
@@ -1191,23 +1244,20 @@ pub fn convert_table_factor_sqlite(
                 index_hint: None,
             }
         },
+        sql::TableFactor::Derived { sample: Some(_), .. } => {
+            panic!("Table samples on derived tables aren't supported: {}", tf)
+        },
+        sql::TableFactor::Derived { lateral: true, .. } => {
+            panic!("Lateral subqueries aren't supported by SQLite: {}", tf)
+        },
         sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
             source: JoinSource::Subsel(
                 Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
             ),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            alias: crate::convert::plain_alias(tf, alias),
             index_hint: None,
         },
-        sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-            source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
-                sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
-                    convert_expr(input, e, used_params, custom_types, field_lookup)
-                },
-                _ => panic!("Unsupported: FunctionArg: {:?}", a),
-            }).collect()),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
-            index_hint: None,
-        },
+        sql::TableFactor::Function { .. } => panic!("Lateral table functions are not supported by SQLite: {}", tf),
         sql::TableFactor::NestedJoin { table_with_joins, alias } => {
             let base =
                 convert_table_factor_sqlite(
@@ -1229,6 +1279,8 @@ pub fn convert_table_factor_sqlite(
         sql::TableFactor::JsonTable { .. } => panic!("JSON_TABLE is not supported by SQLite"),
         sql::TableFactor::Pivot { .. } => panic!("PIVOT is not supported by SQLite"),
         sql::TableFactor::Unpivot { .. } => panic!("UNPIVOT is not supported by SQLite"),
+        sql::TableFactor::UnpivotExpr { .. } => panic!("UNPIVOT is not supported by SQLite"),
+        sql::TableFactor::SemanticView { .. } => panic!("SEMANTIC_VIEW is not supported by SQLite"),
         sql::TableFactor::MatchRecognize { .. } => panic!("MATCH_RECOGNIZE is not supported by SQLite"),
         sql::TableFactor::OpenJsonTable { .. } => panic!("OPENJSON is not supported by SQLite"),
         sql::TableFactor::XmlTable { .. } => panic!("XMLTABLE is not supported by SQLite"),
@@ -1309,7 +1361,17 @@ pub fn convert_with(
 }
 
 pub fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
-        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-    });
+    return TableRef(crate::convert::ident_part(name.0.last().expect("ObjectName should not be empty")));
+}
+
+fn convert_order_options(o: &sql::OrderByOptions) -> Order {
+    return match (&o.sort, o.nulls_first) {
+        (Some(sql::OrderBySort::Using(_)), _) => panic!("Unsupported: order by using"),
+        (Some(sql::OrderBySort::Asc) | None, None) => Order::Asc,
+        (Some(sql::OrderBySort::Asc) | None, Some(true)) => Order::AscNullsFirst,
+        (Some(sql::OrderBySort::Asc) | None, Some(false)) => Order::AscNullsLast,
+        (Some(sql::OrderBySort::Desc), None) => Order::Desc,
+        (Some(sql::OrderBySort::Desc), Some(true)) => Order::DescNullsFirst,
+        (Some(sql::OrderBySort::Desc), Some(false)) => Order::DescNullsLast,
+    };
 }

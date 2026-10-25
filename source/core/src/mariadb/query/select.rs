@@ -50,6 +50,12 @@ pub enum JoinSource {
     Empty,
     Subsel(Box<Select>),
     Table(TableRef),
+    Unnest {
+        param: String,
+        types: Vec<Type>,
+        with_ordinality: bool,
+        columns: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -230,6 +236,73 @@ impl NamedSelectSource {
             },
             JoinSource::Empty => {
                 vec![]
+            },
+            JoinSource::Unnest { param, types, with_ordinality, columns } => {
+                let path = path.push_back(format!("Unnest ({})", param));
+                let Some(alias) = &self.alias else {
+                    ctx.errs.err(&path, "MariaDB requires derived tables to have an alias".to_string());
+                    return (ExprType(vec![]), Tokens::new_mariadb());
+                };
+                let Some(values) = super::expr::list_param_values(ctx, &path, param, types) else {
+                    return (ExprType(vec![]), Tokens::new_mariadb());
+                };
+                let mut types = types.clone();
+                let mut names = if types.len() == 1 {
+                    vec![alias.clone()]
+                } else {
+                    vec![
+                        "unnest".to_string();
+                        types.len()
+                    ]
+                };
+                if *with_ordinality {
+                    types.push(Type {
+                        opt: false,
+                        type_: crate::mariadb::types::SimpleType {
+                            custom: None,
+                            type_: crate::mariadb::types::SimpleSimpleType::I64,
+                        },
+                    });
+                    names.push("ordinality".to_string());
+                }
+                if columns.len() > names.len() {
+                    ctx
+                        .errs
+                        .err(
+                            &path,
+                            format!("unnest has {} columns but {} aliases were given", names.len(), columns.len()),
+                        );
+                }
+                for (n, c) in names.iter_mut().zip(columns) {
+                    *n = c.clone();
+                }
+                let mut seen = HashSet::new();
+                for n in &names {
+                    if !seen.insert(n) {
+                        ctx
+                            .errs
+                            .err(
+                                &path,
+                                format!("unnest has multiple columns named {:?}, give them column aliases", n),
+                            );
+                    }
+                }
+                let templates = super::expr::list_param_templates(&types[..types.len() - *with_ordinality as usize]);
+                let with_ordinality = *with_ordinality;
+                ctx.query_args.push(quote::quote!(#values, &[#(#templates), *], &[#(#names), *], #with_ordinality));
+                out.s(
+                    &format!(
+                        "{}{}{}{}",
+                        super::utils::PARAM_MARKER,
+                        super::utils::PARAM_TABLE,
+                        ctx.query_args.len() - 1,
+                        super::utils::PARAM_MARKER
+                    ),
+                );
+                names.into_iter().zip(types).map(|(n, t)| (ExprValName {
+                    table_id: "".to_string(),
+                    id: n,
+                }, t)).collect()
             },
         };
         if let Some(s) = &self.alias {

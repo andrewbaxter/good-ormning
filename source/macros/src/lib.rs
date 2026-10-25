@@ -575,7 +575,13 @@ fn parse_and_generate_mariadb(
                     );
                 }
                 if insert.overwrite || insert.has_table_keyword || insert.settings.is_some() ||
-                    insert.format_clause.is_some() {
+                    insert.format_clause.is_some() ||
+                    !insert.optimizer_hints.is_empty() ||
+                    insert.output.is_some() ||
+                    insert.multi_table_insert_type.is_some() ||
+                    !insert.multi_table_into_clauses.is_empty() ||
+                    !insert.multi_table_when_clauses.is_empty() ||
+                    insert.multi_table_else_clause.is_some() {
                     panic!("Unsupported insert syntax for MariaDB: {}", statement);
                 }
                 if insert.columns.is_empty() && insert.assignments.is_empty() {
@@ -591,15 +597,17 @@ fn parse_and_generate_mariadb(
                 let columns: Vec<good_ormning_core::mariadb::schema::field::FieldRef> =
                     insert.columns.iter().map(|c| good_ormning_core::mariadb::schema::field::FieldRef {
                         table_id: table.0.clone(),
-                        field_id: c.value.clone(),
+                        field_id: match c.0.as_slice() {
+                            [sqlparser::ast::ObjectNamePart::Identifier(i)] => i.value.clone(),
+                            _ => panic!("Insert columns must be unqualified column names: {}", c),
+                        },
                     }).collect();
                 let assignment_target =
                     |a: &sqlparser::ast::Assignment| -> good_ormning_core::mariadb::schema::field::FieldRef {
                         let target_name = match &a.target {
                             sqlparser::ast::AssignmentTarget::ColumnName(name) => {
-                                let parts = name.0.iter().map(|p| match p {
-                                    sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                                }).collect::<Vec<_>>();
+                                let parts =
+                                    name.0.iter().map(|p| crate::convert::ident_part(p)).collect::<Vec<_>>();
                                 match parts.as_slice() {
                                     [column] => column.clone(),
                                     [t, column] if *t == table.0 => column.clone(),
@@ -747,7 +755,21 @@ fn parse_and_generate_mariadb(
                     ),
                 })
             },
-            sqlparser::ast::Statement::Update { table, assignments, from, selection, returning, or } => {
+            sqlparser::ast::Statement::Update(
+                sqlparser::ast::Update {
+                    update_token: _,
+                    optimizer_hints,
+                    table,
+                    assignments,
+                    from,
+                    selection,
+                    returning,
+                    output,
+                    or,
+                    order_by,
+                    limit,
+                },
+            ) => {
                 if let Some(or) = or {
                     panic!("`update or {}` is not supported in MariaDB", or);
                 }
@@ -756,6 +778,9 @@ fn parse_and_generate_mariadb(
                 }
                 if returning.is_some() {
                     panic!("MariaDB doesn't support `returning` in updates");
+                }
+                if !optimizer_hints.is_empty() || output.is_some() {
+                    panic!("Unsupported update syntax for MariaDB: {}", statement);
                 }
                 let used_params = &mut used_params;
                 let (table_ref, alias) = match &table.relation {
@@ -786,15 +811,11 @@ fn parse_and_generate_mariadb(
                         panic!("Tables in other databases aren't supported: {}", target);
                     }
                     let qualifier = if target.0.len() >= 2 {
-                        match &target.0[target.0.len() - 2] {
-                            sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        }
+                        crate::convert::ident_part(&target.0[target.0.len() - 2])
                     } else {
                         alias.clone().unwrap_or_else(|| table_ref.0.clone())
                     };
-                    let target_name = match target.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    };
+                    let target_name = crate::convert::ident_part(target.0.last().unwrap());
                     let field = good_ormning_core::mariadb::schema::field::FieldRef {
                         table_id: qualifier,
                         field_id: target_name,
@@ -812,11 +833,51 @@ fn parse_and_generate_mariadb(
                         ),
                     );
                 }
+                let mut order = vec![];
+                for o in order_by {
+                    let e =
+                        crate::convert::mariadb::convert_expr(
+                            input,
+                            &o.expr,
+                            used_params,
+                            custom_types,
+                            field_lookup,
+                        );
+                    if o.options.nulls_first.is_some() {
+                        panic!("MariaDB doesn't support `nulls first`/`nulls last`");
+                    }
+                    let dir = match o.options.sort {
+                        Some(sqlparser::ast::OrderBySort::Asc) | None => good_ormning_core
+                        ::mariadb
+                        ::query
+                        ::select
+                        ::Order
+                        ::Asc,
+                        Some(sqlparser::ast::OrderBySort::Desc) => good_ormning_core
+                        ::mariadb
+                        ::query
+                        ::select
+                        ::Order
+                        ::Desc,
+                        Some(sqlparser::ast::OrderBySort::Using(_)) => panic!("Unsupported: order by using"),
+                    };
+                    order.push((e, dir));
+                }
                 Box::new(good_ormning_core::mariadb::query::update::Update {
                     alias: alias,
                     join: join,
-                    limit: None,
-                    order: vec![],
+                    limit: limit
+                        .as_ref()
+                        .map(
+                            |e| crate::convert::mariadb::convert_expr(
+                                input,
+                                e,
+                                used_params,
+                                custom_types,
+                                field_lookup,
+                            ),
+                        ),
+                    order: order,
                     table: table_ref,
                     values: sets,
                     where_: selection
@@ -845,6 +906,9 @@ fn parse_and_generate_mariadb(
                     panic!(
                         "`delete ... using` isn't supported, use `delete alias from table as alias join ...` instead"
                     );
+                }
+                if !delete.optimizer_hints.is_empty() || delete.output.is_some() {
+                    panic!("Unsupported delete syntax for MariaDB: {}", statement);
                 }
                 let (table_ref, alias) = match &from[0].relation {
                     sqlparser::ast::TableFactor::Table { name, alias, .. } => {
@@ -883,9 +947,20 @@ fn parse_and_generate_mariadb(
                     if o.options.nulls_first.is_some() {
                         panic!("MariaDB doesn't support `nulls first`/`nulls last`");
                     }
-                    let dir = match o.options.asc {
-                        Some(true) | None => good_ormning_core::mariadb::query::select::Order::Asc,
-                        Some(false) => good_ormning_core::mariadb::query::select::Order::Desc,
+                    let dir = match o.options.sort {
+                        Some(sqlparser::ast::OrderBySort::Asc) | None => good_ormning_core
+                        ::mariadb
+                        ::query
+                        ::select
+                        ::Order
+                        ::Asc,
+                        Some(sqlparser::ast::OrderBySort::Desc) => good_ormning_core
+                        ::mariadb
+                        ::query
+                        ::select
+                        ::Order
+                        ::Desc,
+                        Some(sqlparser::ast::OrderBySort::Using(_)) => panic!("Unsupported: order by using"),
                     };
                     order.push((e, dir));
                 }
@@ -1109,10 +1184,30 @@ fn parse_and_generate_pg(
                     sqlparser::ast::TableObject::TableName(n) => n,
                     _ => panic!("Unsupported insert table object: {:?}", insert.table),
                 });
+                if insert.ignore || insert.overwrite || insert.has_table_keyword || insert.replace_into ||
+                    insert.table_alias.is_some() ||
+                    insert.partitioned.is_some() ||
+                    !insert.after_columns.is_empty() ||
+                    !insert.assignments.is_empty() ||
+                    insert.priority.is_some() ||
+                    insert.insert_alias.is_some() ||
+                    insert.settings.is_some() ||
+                    insert.format_clause.is_some() ||
+                    !insert.optimizer_hints.is_empty() ||
+                    insert.output.is_some() ||
+                    insert.multi_table_insert_type.is_some() ||
+                    !insert.multi_table_into_clauses.is_empty() ||
+                    !insert.multi_table_when_clauses.is_empty() ||
+                    insert.multi_table_else_clause.is_some() {
+                    panic!("Unsupported insert syntax for PostgreSQL: {}", statement);
+                }
                 let columns: Vec<good_ormning_core::pg::schema::field::FieldRef> =
                     insert.columns.iter().map(|c| good_ormning_core::pg::schema::field::FieldRef {
                         table_id: table.0.clone(),
-                        field_id: c.value.clone(),
+                        field_id: match c.0.as_slice() {
+                            [sqlparser::ast::ObjectNamePart::Identifier(i)] => i.value.clone(),
+                            _ => panic!("Insert columns must be unqualified column names: {}", c),
+                        },
                     }).collect();
                 let source = if let Some(q) = &insert.source {
                     match &*q.body {
@@ -1206,12 +1301,11 @@ fn parse_and_generate_pg(
                                     let mut updates = vec![];
                                     for a in &du.assignments {
                                         let target_name = match &a.target {
-                                            sqlparser::ast::AssignmentTarget::ColumnName(name) => match name
-                                                .0
-                                                .last()
-                                                .unwrap() {
-                                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                                            },
+                                            sqlparser::ast::AssignmentTarget::ColumnName(name) => crate
+                                            ::convert
+                                            ::ident_part(
+                                                name.0.last().unwrap(),
+                                            ),
                                             _ => panic!("Unsupported assignment target: {:?}", a.target),
                                         };
                                         let field = good_ormning_core::pg::schema::field::FieldRef {
@@ -1263,9 +1357,26 @@ fn parse_and_generate_pg(
                     ),
                 })
             },
-            sqlparser::ast::Statement::Update { table, assignments, from, selection, returning, or } => {
+            sqlparser::ast::Statement::Update(
+                sqlparser::ast::Update {
+                    update_token: _,
+                    optimizer_hints,
+                    table,
+                    assignments,
+                    from,
+                    selection,
+                    returning,
+                    output,
+                    or,
+                    order_by,
+                    limit,
+                },
+            ) => {
                 if let Some(or) = or {
                     panic!("`update or {}` is not supported in PostgreSQL", or);
+                }
+                if !optimizer_hints.is_empty() || output.is_some() || !order_by.is_empty() || limit.is_some() {
+                    panic!("Unsupported update syntax for PostgreSQL: {}", statement);
                 }
                 let used_params = &mut used_params;
                 if !table.joins.is_empty() {
@@ -1273,6 +1384,7 @@ fn parse_and_generate_pg(
                 }
                 let (table_ref, alias) = match &table.relation {
                     sqlparser::ast::TableFactor::Table { name, alias, .. } => {
+                        crate::convert::check_table_options(&table.relation);
                         (crate::convert::pg::get_table_ref(name), alias.as_ref().map(|a| a.name.value.clone()))
                     },
                     _ => panic!("Unsupported: Update table factor: {:?}", table.relation),
@@ -1303,9 +1415,9 @@ fn parse_and_generate_pg(
                 let mut sets = vec![];
                 for a in assignments {
                     let target_name = match &a.target {
-                        sqlparser::ast::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                            sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        },
+                        sqlparser::ast::AssignmentTarget::ColumnName(name) => crate::convert::ident_part(
+                            name.0.last().unwrap(),
+                        ),
                         _ => panic!("Unsupported: AssignmentTarget: {:?}", a.target),
                     };
                     let field = good_ormning_core::pg::schema::field::FieldRef {
@@ -1532,10 +1644,30 @@ fn parse_and_generate_sqlite(
                     sqlparser::ast::TableObject::TableName(n) => n,
                     _ => panic!("Unsupported insert table object: {:?}", insert.table),
                 });
+                if insert.ignore || insert.overwrite || insert.has_table_keyword || insert.replace_into ||
+                    insert.table_alias.is_some() ||
+                    insert.partitioned.is_some() ||
+                    !insert.after_columns.is_empty() ||
+                    !insert.assignments.is_empty() ||
+                    insert.priority.is_some() ||
+                    insert.insert_alias.is_some() ||
+                    insert.settings.is_some() ||
+                    insert.format_clause.is_some() ||
+                    !insert.optimizer_hints.is_empty() ||
+                    insert.output.is_some() ||
+                    insert.multi_table_insert_type.is_some() ||
+                    !insert.multi_table_into_clauses.is_empty() ||
+                    !insert.multi_table_when_clauses.is_empty() ||
+                    insert.multi_table_else_clause.is_some() {
+                    panic!("Unsupported insert syntax for SQLite: {}", statement);
+                }
                 let columns: Vec<good_ormning_core::sqlite::schema::field::FieldRef> =
                     insert.columns.iter().map(|c| good_ormning_core::sqlite::schema::field::FieldRef {
                         table_id: table.0.clone(),
-                        field_id: c.value.clone(),
+                        field_id: match c.0.as_slice() {
+                            [sqlparser::ast::ObjectNamePart::Identifier(i)] => i.value.clone(),
+                            _ => panic!("Insert columns must be unqualified column names: {}", c),
+                        },
                     }).collect();
                 let source = if let Some(q) = &insert.source {
                     match &*q.body {
@@ -1629,12 +1761,11 @@ fn parse_and_generate_sqlite(
                                     let mut updates = vec![];
                                     for a in &du.assignments {
                                         let target_name = match &a.target {
-                                            sqlparser::ast::AssignmentTarget::ColumnName(name) => match name
-                                                .0
-                                                .last()
-                                                .unwrap() {
-                                                sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                                            },
+                                            sqlparser::ast::AssignmentTarget::ColumnName(name) => crate
+                                            ::convert
+                                            ::ident_part(
+                                                name.0.last().unwrap(),
+                                            ),
                                             _ => panic!("Unsupported assignment target: {:?}", a.target),
                                         };
                                         let field = good_ormning_core::sqlite::schema::field::FieldRef {
@@ -1700,9 +1831,26 @@ fn parse_and_generate_sqlite(
                     ),
                 })
             },
-            sqlparser::ast::Statement::Update { table, assignments, from, selection, returning, or } => {
+            sqlparser::ast::Statement::Update(
+                sqlparser::ast::Update {
+                    update_token: _,
+                    optimizer_hints,
+                    table,
+                    assignments,
+                    from,
+                    selection,
+                    returning,
+                    output,
+                    or,
+                    order_by,
+                    limit,
+                },
+            ) => {
                 if let Some(or) = or {
                     panic!("`update or {}` is not supported", or);
+                }
+                if !optimizer_hints.is_empty() || output.is_some() || !order_by.is_empty() || limit.is_some() {
+                    panic!("Unsupported update syntax for SQLite: {}", statement);
                 }
                 let used_params = &mut used_params;
                 if !table.joins.is_empty() {
@@ -1710,10 +1858,8 @@ fn parse_and_generate_sqlite(
                 }
                 let (table_ref, alias) = match &table.relation {
                     sqlparser::ast::TableFactor::Table { name, alias, .. } => {
-                        (
-                            crate::convert::sqlite::get_table_ref(name),
-                            alias.as_ref().map(|a| a.name.value.clone()),
-                        )
+                        crate::convert::check_table_options(&table.relation);
+                        (crate::convert::sqlite::get_table_ref(name), alias.as_ref().map(|a| a.name.value.clone()))
                     },
                     _ => panic!("Unsupported: Update table factor: {:?}", table.relation),
                 };
@@ -1743,9 +1889,9 @@ fn parse_and_generate_sqlite(
                 let mut values = vec![];
                 for a in assignments {
                     let target_name = match &a.target {
-                        sqlparser::ast::AssignmentTarget::ColumnName(name) => match name.0.last().unwrap() {
-                            sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        },
+                        sqlparser::ast::AssignmentTarget::ColumnName(name) => crate::convert::ident_part(
+                            name.0.last().unwrap(),
+                        ),
                         _ => panic!("Unsupported: AssignmentTarget: {:?}", a.target),
                     };
                     let field = good_ormning_core::sqlite::schema::field::FieldRef {

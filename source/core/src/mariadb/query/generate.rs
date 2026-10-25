@@ -10,6 +10,7 @@ use {
                     MariadbTableInfo,
                     PARAM_LIST,
                     PARAM_MARKER,
+                    PARAM_TABLE,
                 },
             },
             types::{
@@ -68,6 +69,16 @@ pub fn generate_query_functions(
         for (i, part) in res.1.to_string().split(PARAM_MARKER).enumerate() {
             if i % 2 == 0 {
                 text.push_str(part);
+                continue;
+            }
+            if let Some(index) = part.strip_prefix(PARAM_TABLE) {
+                let arg = query_args[index.parse::<usize>().unwrap()].clone();
+                has_list = true;
+                let chunk = std::mem::take(&mut text);
+                dynamic.push(quote!{
+                    query.push_str(#chunk);
+                    good_ormning:: runtime:: mariadb:: push_table_list(&mut query, &mut params, #arg);
+                });
                 continue;
             }
             let (list, index) = match part.strip_prefix(PARAM_LIST) {

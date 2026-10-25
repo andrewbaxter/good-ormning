@@ -176,14 +176,7 @@ impl SelectBody {
                 }
                 let (_, o_tokens): (ExprType, Tokens) = o.0.build(ctx, &path, &scope);
                 out.s(&o_tokens.to_string());
-                match o.1 {
-                    Order::Asc => {
-                        out.s("asc");
-                    },
-                    Order::Desc => {
-                        out.s("desc");
-                    },
-                }
+                out.s(o.1.sql());
             }
         }
         if let Some(l) = &self.limit {

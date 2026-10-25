@@ -136,6 +136,13 @@ impl Display for Binding {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExprParent {
+    Other,
+    Comparison,
+    InList,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BinOp {
     And,
@@ -252,6 +259,22 @@ pub fn check_general_same_type(
                 );
         }
     }
+    if left.arr != right.arr {
+        ctx
+            .errs
+            .err(
+                path,
+                format!("Operator arms types don't match: left is {}an array and right is {}an array", if left.arr {
+                    ""
+                } else {
+                    "not "
+                }, if right.arr {
+                    ""
+                } else {
+                    "not "
+                }),
+            );
+    }
     let mut out = if unified == left.type_.type_ {
         left.clone()
     } else {
@@ -280,6 +303,17 @@ pub fn check_general_same_type_assignable(errs: &mut Errs, path: &rpds::Vector<S
                 left.type_.custom
             ),
         );
+    }
+    if left.arr != right.arr && right.type_.type_ != SimpleSimpleType::AnyNull {
+        errs.err(path, format!("Expression is {}an array but destination is {}an array", if right.arr {
+            ""
+        } else {
+            "not "
+        }, if left.arr {
+            ""
+        } else {
+            "not "
+        }));
     }
     if !left.opt && right.opt {
         errs.err(path, "Expression is optional but destination is not".to_string());
@@ -329,7 +363,7 @@ fn do_bin_op(
                 BinOp::NotIn => "not in",
                 _ => unreachable!(),
             };
-            ctx.op_stack.push(op.clone());
+            ctx.expr_parent = ExprParent::Comparison;
             let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
 
             // `x in ($arr)` - an array parameter needs to be unpacked via rarray
@@ -343,7 +377,6 @@ fn do_bin_op(
             };
             if let Some(arr_param) = arr_param {
                 let (mut right_t, right_tokens) = arr_param.build(ctx, &path.push_back("Operand 1".into()), scope);
-                ctx.op_stack.pop();
                 for (_, t) in right_t.0.iter_mut() {
                     t.arr = false;
                 }
@@ -365,8 +398,8 @@ fn do_bin_op(
                     arr: false,
                 })]), out);
             }
+            ctx.expr_parent = ExprParent::InList;
             let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
-            ctx.op_stack.pop();
             if !left_t.0.is_empty() && !right_t.0.is_empty() {
                 if right_t.0.len() == left_t.0.len() {
                     check_general_same(ctx, path, &left_t, &right_t);
@@ -433,10 +466,10 @@ fn do_bin_op(
                 BinOp::IsNotDistinctFrom => "is not distinct from",
                 _ => unreachable!(),
             };
-            ctx.op_stack.push(op.clone());
+            ctx.expr_parent = ExprParent::Comparison;
             let (left_t, left_tokens) = exprs[0].build(ctx, &path.push_back("Operand 0".into()), scope);
+            ctx.expr_parent = ExprParent::Comparison;
             let (right_t, right_tokens) = exprs[1].build(ctx, &path.push_back("Operand 1".into()), scope);
-            ctx.op_stack.pop();
             if !left_t.0.is_empty() && !right_t.0.is_empty() {
                 if left_t.0.len() == right_t.0.len() {
                     check_general_same(ctx, path, &left_t, &right_t);
@@ -684,6 +717,7 @@ pub enum Expr {
         filter: Option<Box<Expr>>,
         /// `func(distinct args...)` - for aggregates
         distinct: bool,
+        order_by: Vec<(Expr, Order)>,
     },
     Case {
         operand: Option<Box<Expr>>,
@@ -761,42 +795,32 @@ impl Expr {
         path: &rpds::Vector<String>,
         scope: &HashMap<Binding, Type>,
     ) -> (ExprType, Tokens) {
+        let parent = std::mem::replace(&mut ctx.expr_parent, ExprParent::Other);
         return match self {
             Expr::LitArray(res) => {
                 let mut out = Tokens::new();
-                let is_paren =
-                    matches!(
-                        ctx.op_stack.last(),
-                        Some(
-                            BinOp::In | BinOp::NotIn | BinOp::Equals | BinOp::NotEquals | BinOp::LessThan |
-                                BinOp::LessThanEqualTo |
-                                BinOp::GreaterThan |
-                                BinOp::GreaterThanEqualTo |
-                                BinOp::Is |
-                                BinOp::IsNot |
-                                BinOp::IsDistinctFrom |
-                                BinOp::IsNotDistinctFrom
-                        )
-                    );
-                if is_paren {
-                    out.s("(");
-                } else {
-                    out.s("[");
+                if !matches!(parent, ExprParent::Comparison | ExprParent::InList) {
+                    ctx
+                        .errs
+                        .err(
+                            path,
+                            "SQLite doesn't have arrays; lists can only be used with `in` or for comparing rows".to_string(),
+                        );
                 }
+                out.s("(");
                 let mut types = vec![];
                 for (i, res) in res.iter().enumerate() {
                     if i > 0 {
                         out.s(",");
                     }
+                    if parent == ExprParent::InList {
+                        ctx.expr_parent = ExprParent::Comparison;
+                    }
                     let (t, tokens) = res.build(ctx, path, scope);
                     out.s(&tokens.to_string());
                     types.push(t);
                 }
-                if is_paren {
-                    out.s(")");
-                } else {
-                    out.s("]");
-                }
+                out.s(")");
                 return (ExprType(types.into_iter().flat_with_index(|i, t| t.0.into_iter().map(move |(mut k, v)| {
                     if k.id.is_empty() {
                         k.id = format!("_{}", i);
@@ -1106,7 +1130,12 @@ impl Expr {
                                     format!(
                                         "Expression references {:?} but this field isn't available here (available fields: {:?})",
                                         x,
-                                        scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
+                                        {
+                                            let mut fields =
+                                                scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>();
+                                            fields.sort();
+                                            fields
+                                        }
                                     ),
                                 );
                             return (ExprType(vec![]), Tokens::new());
@@ -1163,7 +1192,7 @@ impl Expr {
                 out.s(&tokens.to_string());
                 return (t, out);
             },
-            Expr::Call { func, args, compute_type, filter, distinct } => {
+            Expr::Call { func, args, compute_type, filter, distinct, order_by } => {
                 let mut out = Tokens::new();
                 out.s(func).s("(");
                 if *distinct {
@@ -1177,6 +1206,17 @@ impl Expr {
                     let (t, tokens) = arg.build(ctx, &path.push_back(format!("Call arg {}", i)), scope);
                     out.s(&tokens.to_string());
                     arg_types.push(t);
+                }
+                if !order_by.is_empty() {
+                    out.s("order by");
+                    for (i, (e, o)) in order_by.iter().enumerate() {
+                        if i > 0 {
+                            out.s(",");
+                        }
+                        let (_, tokens) = e.build(ctx, &path.push_back(format!("Call order by {}", i)), scope);
+                        out.s(&tokens.to_string());
+                        out.s(o.sql());
+                    }
                 }
                 out.s(")");
                 if let Some(filter) = filter {
@@ -1215,14 +1255,7 @@ impl Expr {
                         let (_, tokens): (ExprType, Tokens) =
                             e.build(ctx, &path.push_back(format!("Order by {}", i)), scope);
                         out.s(&tokens.to_string());
-                        match o {
-                            Order::Asc => {
-                                out.s("asc");
-                            },
-                            Order::Desc => {
-                                out.s("desc");
-                            },
-                        }
+                        out.s(o.sql());
                     }
                     first = false;
                 }
@@ -1238,7 +1271,7 @@ impl Expr {
             Expr::Select(s) => {
                 let mut out = Tokens::new();
                 out.s("(");
-                let in_set_op = matches!(ctx.op_stack.last(), Some(BinOp::In | BinOp::NotIn));
+                let in_set_op = parent == ExprParent::InList;
                 ctx.outer_scopes.push(scope.clone());
                 let (mut t, tokens) = s.build(ctx, &path.push_back("Subselect".into()), crate::QueryResCount::Many);
                 ctx.outer_scopes.pop();

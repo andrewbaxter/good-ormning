@@ -56,8 +56,14 @@ pub fn convert_delete(
     if from.len() != 1 || !from[0].joins.is_empty() {
         panic!("Delete must have exactly one table, use `delete ... using` for other tables");
     }
+    if !delete.tables.is_empty() || !delete.order_by.is_empty() || delete.limit.is_some() ||
+        !delete.optimizer_hints.is_empty() ||
+        delete.output.is_some() {
+        panic!("Unsupported delete syntax for PostgreSQL: {}", delete);
+    }
     let (table_ref, alias) = match &from[0].relation {
         sql::TableFactor::Table { name, alias, .. } => {
+            crate::convert::check_table_options(&from[0].relation);
             (get_table_ref(name), alias.as_ref().map(|a| a.name.value.clone()))
         },
         _ => panic!("Unsupported: Delete table factor: {:?}", from[0].relation),
@@ -250,7 +256,7 @@ pub fn convert_expr(
                 sql::UnaryOperator::Plus => return convert_expr(input, expr, used_params, custom_types, field_lookup),
                 sql::UnaryOperator::Minus => PrefixOp::Minus,
                 sql::UnaryOperator::Not => PrefixOp::Not,
-                sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
+                sql::UnaryOperator::BitwiseNot => PrefixOp::BitwiseNot,
                 _ => panic!("Unsupported: UnaryOperator: {:?}", op),
             };
             return Expr::PrefixOp {
@@ -314,7 +320,7 @@ pub fn convert_expr(
                 high: Box::new(convert_expr(input, high, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::Case { operand, conditions, else_result } => {
+        sql::Expr::Case { operand, conditions, else_result, .. } => {
             let results = conditions.iter().map(|c| c.result.clone()).collect::<Vec<_>>();
             let conditions = conditions.iter().map(|c| c.condition.clone()).collect::<Vec<_>>();
             return Expr::Case {
@@ -336,10 +342,16 @@ pub fn convert_expr(
                     .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
             };
         },
-        sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
+        sql::Expr::Like { expr, negated, pattern, escape_char, any } => {
+            if *any {
+                panic!("`like any` is not supported: {}", e);
+            }
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
-            let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
+            let escape =
+                escape_char
+                    .as_ref()
+                    .map(|c| Box::new(convert_expr(input, c, used_params, custom_types, field_lookup)));
             let res = Expr::Like {
                 expr: Box::new(l),
                 pattern: Box::new(r),
@@ -355,10 +367,16 @@ pub fn convert_expr(
                 return res;
             }
         },
-        sql::Expr::ILike { expr, negated, pattern, escape_char, .. } => {
+        sql::Expr::ILike { expr, negated, pattern, escape_char, any } => {
+            if *any {
+                panic!("`ilike any` is not supported: {}", e);
+            }
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
-            let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
+            let escape =
+                escape_char
+                    .as_ref()
+                    .map(|c| Box::new(convert_expr(input, c, used_params, custom_types, field_lookup)));
             let res = Expr::Like {
                 expr: Box::new(l),
                 pattern: Box::new(r),
@@ -373,6 +391,19 @@ pub fn convert_expr(
             } else {
                 return res;
             }
+        },
+        sql::Expr::IsJson { expr, kind, unique_keys, negated } => {
+            return Expr::IsJson {
+                expr: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
+                negated: *negated,
+                kind: kind.as_ref().map(|k| match k {
+                    sql::JsonPredicateType::Value => good_ormning_core::pg::query::expr::JsonKind::Value,
+                    sql::JsonPredicateType::Scalar => good_ormning_core::pg::query::expr::JsonKind::Scalar,
+                    sql::JsonPredicateType::Array => good_ormning_core::pg::query::expr::JsonKind::Array,
+                    sql::JsonPredicateType::Object => good_ormning_core::pg::query::expr::JsonKind::Object,
+                }),
+                unique_keys: unique_keys.as_ref().map(|u| matches!(u, sql::JsonKeyUniqueness::WithUniqueKeys)),
+            };
         },
         sql::Expr::IsNull(expr) => {
             return Expr::BinOp {
@@ -414,14 +445,17 @@ pub fn convert_expr(
             );
         },
         sql::Expr::Tuple(exprs) => {
-            return Expr::LitArray(
+            return Expr::Tuple(
                 exprs.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
             );
         },
         sql::Expr::Nested(expr) => {
             return Expr::Paren(Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)));
         },
-        sql::Expr::Cast { expr, data_type, .. } => {
+        sql::Expr::Cast { kind, expr, data_type, format } => {
+            if !matches!(kind, sql::CastKind::Cast | sql::CastKind::DoubleColon) || format.is_some() {
+                panic!("Only `cast(x as type)` and `x::type` are supported: {}", e);
+            }
             let e = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let t = {
                 let (simple_type, custom) = match data_type {
@@ -431,6 +465,10 @@ pub fn convert_expr(
                         None,
                     ),
                     sqlparser::ast::DataType::BigInt(_) => (PgSimpleSimpleType::I64, None),
+                    sqlparser::ast::DataType::Float(sqlparser::ast::ExactNumberInfo::Precision(p)) if *p > 24 => (
+                        PgSimpleSimpleType::F64,
+                        None,
+                    ),
                     sqlparser::ast::DataType::Float(_) | sqlparser::ast::DataType::Real => (
                         PgSimpleSimpleType::F32,
                         None,
@@ -482,25 +520,12 @@ pub fn convert_expr(
         sql::Expr::Collate { expr, collation } => {
             return Expr::Collate(
                 Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
-                collation.0.iter().map(|i| match i {
-                    sqlparser::ast::ObjectNamePart::Identifier(id) => id.value.clone(),
-                }).collect::<Vec<_>>().join("."),
+                collation.0.iter().map(|i| crate::convert::ident_part(i)).collect::<Vec<_>>().join("."),
             );
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
-            let dummy_q = sqlparser::ast::Query {
-                with: None,
-                body: subquery.clone(),
-                order_by: None,
-                limit_clause: None,
-                fetch: None,
-                locks: vec![],
-                for_clause: None,
-                settings: None,
-                format_clause: None,
-            };
-            let r = convert_select_query(input, &dummy_q, used_params, custom_types, field_lookup);
+            let r = convert_select_query(input, subquery, used_params, custom_types, field_lookup);
             return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -514,7 +539,7 @@ pub fn convert_expr(
         sql::Expr::InList { expr, list, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r =
-                Expr::LitArray(
+                Expr::Tuple(
                     list.iter().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)).collect(),
                 );
             return Expr::BinOp {
@@ -568,7 +593,24 @@ pub fn convert_expr(
             let name = f.name.to_string().to_lowercase();
             let mut args = vec![];
             let mut distinct = false;
+            let mut order_by = vec![];
+            crate::convert::check_function_options(f);
             if let sql::FunctionArguments::List(list) = &f.args {
+                for clause in &list.clauses {
+                    match clause {
+                        sql::FunctionArgumentClause::OrderBy(exprs) => {
+                            for o in exprs {
+                                order_by.push(
+                                    (
+                                        convert_expr(input, &o.expr, used_params, custom_types, field_lookup),
+                                        convert_order_options(&o.options),
+                                    ),
+                                );
+                            }
+                        },
+                        _ => panic!("Unsupported function argument clause in {}: {}", name, clause),
+                    }
+                }
                 distinct = matches!(list.duplicate_treatment, Some(sql::DuplicateTreatment::Distinct));
                 for arg in &list.args {
                     match arg {
@@ -588,6 +630,9 @@ pub fn convert_expr(
                     .as_ref()
                     .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup)));
             if let Some(over) = &f.over {
+                if !order_by.is_empty() {
+                    panic!("`order by` inside the arguments of window function {} isn't supported", name);
+                }
                 let mut e = match name.as_str() {
                     "sum" | "count" | "min" | "max" | "avg" => convert_function(&name, args, distinct),
                     "row_number" => fn_row_number(),
@@ -607,10 +652,7 @@ pub fn convert_expr(
                         let mut order_by = vec![];
                         for o in &spec.order_by {
                             let expr = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-                            let dir = match o.options.asc {
-                                Some(true) | None => Order::Asc,
-                                Some(false) => Order::Desc,
-                            };
+                            let dir = convert_order_options(&o.options);
                             order_by.push((expr, dir));
                         }
                         let frame = if let Some(sql_frame) = &spec.window_frame {
@@ -673,9 +715,17 @@ pub fn convert_expr(
                     sql::WindowType::NamedWindow(_) => panic!("Named windows are not supported"),
                 }
             }
+            if !order_by.is_empty() &&
+                !matches!(
+                    name.as_str(),
+                    "sum" | "count" | "min" | "max" | "avg" | "string_agg" | "bool_and" | "bool_or" | "every"
+                ) {
+                panic!("`order by` in the arguments is only supported in aggregate functions, not {}", name);
+            }
             let mut e = convert_function(&name, args, distinct);
-            if let Expr::Call { filter: ref mut f_opt, .. } = e {
+            if let Expr::Call { filter: ref mut f_opt, order_by: ref mut o, .. } = e {
                 *f_opt = filter;
+                *o = order_by;
             }
             return e;
         },
@@ -858,7 +908,9 @@ pub fn convert_returning(
                     e: convert_expr(input, expr, used_params, custom_types, field_lookup),
                     rename: Some(alias.value.clone()),
                 }),
-                sql::SelectItem::Wildcard(_) => {
+                sql::SelectItem::ExprWithAliases { .. } => panic!("Multi-alias select items are not supported"),
+                sql::SelectItem::Wildcard(options) => {
+                    crate::convert::check_wildcard_options(options);
                     if tables.is_empty() {
                         panic!("Can't use a wildcard in a select with no tables");
                     }
@@ -866,10 +918,12 @@ pub fn convert_returning(
                         expand(&mut out, alias, table_ref);
                     }
                 },
-                sql::SelectItem::QualifiedWildcard(sql::SelectItemQualifiedWildcardKind::ObjectName(name), _) => {
-                    let alias = match name.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    };
+                sql::SelectItem::QualifiedWildcard(
+                    sql::SelectItemQualifiedWildcardKind::ObjectName(name),
+                    options,
+                ) => {
+                    crate::convert::check_wildcard_options(options);
+                    let alias = crate::convert::ident_part(name.0.last().unwrap());
                     match tables.iter().find(|(a, _)| *a == alias) {
                         Some((alias, table_ref)) => {
                             expand(&mut out, alias, table_ref);
@@ -904,10 +958,7 @@ fn convert_order_limit(
         };
         for o in exprs {
             let e = convert_expr(input, &o.expr, used_params, custom_types, field_lookup);
-            let dir = match o.options.asc {
-                Some(true) | None => Order::Asc,
-                Some(false) => Order::Desc,
-            };
+            let dir = convert_order_options(&o.options);
             order.push((e, dir));
         }
     }
@@ -937,46 +988,111 @@ pub fn convert_table_factor_pg(
     field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> NamedSelectSource {
     return match tf {
-        sql::TableFactor::Table { name, alias, args, .. } => {
-            if args.is_some() {
-                panic!("Unsupported table-valued function: {}", name);
-            }
-            NamedSelectSource {
-                source: JoinSource::Table(get_table_ref(name)),
-                alias: Some(
-                    alias.as_ref().map(|a| a.name.value.clone()).unwrap_or_else(|| get_table_ref(name).0.clone()),
-                ),
-            }
-        },
-        sql::TableFactor::Derived { subquery, alias, .. } => NamedSelectSource {
-            source: JoinSource::Subsel(
-                Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup)),
-            ),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
-        },
-        sql::TableFactor::Function { name, args, alias, .. } => NamedSelectSource {
-            source: JoinSource::Func(name.to_string(), args.iter().map(|a| match a {
+        sql::TableFactor::Table { name, alias, args: Some(args), with_ordinality, .. } => {
+            crate::convert::check_table_function_options(tf);
+            let args = args.args.iter().map(|a| match a {
                 sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
                     convert_expr(input, e, used_params, custom_types, field_lookup)
                 },
                 _ => panic!("Unsupported function argument: {:?}", a),
-            }).collect()),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
+            }).collect();
+            convert_table_function(tf, name, args, *with_ordinality, alias)
         },
-        sql::TableFactor::UNNEST { alias, array_exprs, .. } => NamedSelectSource {
-            source: JoinSource::Func(
-                "unnest".to_string(),
-                array_exprs
-                    .iter()
-                    .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                    .collect(),
-            ),
-            alias: alias.as_ref().map(|a| a.name.value.clone()),
+        sql::TableFactor::Table { name, alias, .. } => {
+            crate::convert::check_table_options(tf);
+            NamedSelectSource {
+                source: JoinSource::Table(get_table_ref(name)),
+                alias: Some(
+                    crate::convert::plain_alias(tf, alias).unwrap_or_else(|| get_table_ref(name).0.clone()),
+                ),
+            }
+        },
+        sql::TableFactor::Derived { sample: Some(_), .. } => {
+            panic!("Table samples on derived tables aren't supported: {}", tf)
+        },
+        sql::TableFactor::Derived { lateral, subquery, alias, sample: None } => {
+            let subquery = Box::new(convert_select_query(input, subquery, used_params, custom_types, field_lookup));
+            NamedSelectSource {
+                source: if *lateral {
+                    JoinSource::Lateral(subquery)
+                } else {
+                    JoinSource::Subsel(subquery)
+                },
+                alias: crate::convert::plain_alias(tf, alias),
+            }
+        },
+        sql::TableFactor::Function { lateral: _, name, args, with_ordinality, alias } => {
+            let args = args.iter().map(|a| match a {
+                sql::FunctionArg::Unnamed(sql::FunctionArgExpr::Expr(e)) => {
+                    convert_expr(input, e, used_params, custom_types, field_lookup)
+                },
+                _ => panic!("Unsupported function argument: {:?}", a),
+            }).collect();
+            convert_table_function(tf, name, args, *with_ordinality, alias)
+        },
+        sql::TableFactor::UNNEST { with_offset: true, .. } |
+        sql::TableFactor::UNNEST { with_offset_alias: Some(_), .. } => {
+            panic!("Unsupported unnest syntax: {}", tf)
+        },
+        sql::TableFactor::UNNEST {
+            alias,
+            array_exprs,
+            with_ordinality,
+            with_offset: false,
+            with_offset_alias: None,
+        } => {
+            NamedSelectSource {
+                source: JoinSource::Func {
+                    name: "unnest".to_string(),
+                    args: array_exprs
+                        .iter()
+                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                        .collect(),
+                    with_ordinality: *with_ordinality,
+                    columns: table_function_columns(tf, alias),
+                },
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            }
         },
         sql::TableFactor::NestedJoin { .. } => panic!(
             "Parenthesized joins aren't supported in PostgreSQL queries yet, restructure the joins without parentheses"
         ),
         _ => panic!("Unsupported table source: {}", tf),
+    };
+}
+
+fn table_function_columns(tf: &sql::TableFactor, alias: &Option<sql::TableAlias>) -> Vec<String> {
+    let Some(alias) = alias else {
+        return vec![];
+    };
+    return alias.columns.iter().map(|c| {
+        if c.data_type.is_some() {
+            panic!("Column definitions on table functions aren't supported: {}", tf);
+        }
+        return c.name.value.clone();
+    }).collect();
+}
+
+fn convert_table_function(
+    tf: &sql::TableFactor,
+    name: &sql::ObjectName,
+    args: Vec<Expr>,
+    with_ordinality: bool,
+    alias: &Option<sql::TableAlias>,
+) -> NamedSelectSource {
+    let name = match name.0.as_slice() {
+        [sql::ObjectNamePart::Identifier(i)] if i.quote_style.is_none() => i.value.to_lowercase(),
+        [sql::ObjectNamePart::Identifier(i)] => i.value.clone(),
+        _ => panic!("Table functions must be unqualified names: {}", tf),
+    };
+    return NamedSelectSource {
+        source: JoinSource::Func {
+            name: name,
+            args: args,
+            with_ordinality: with_ordinality,
+            columns: table_function_columns(tf, alias),
+        },
+        alias: alias.as_ref().map(|a| a.name.value.clone()),
     };
 }
 
@@ -1009,9 +1125,7 @@ fn convert_sql_joins_pg(
                     };
                     let mut conds = vec![];
                     for c in cols {
-                        let col = match c.0.last().unwrap() {
-                            sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                        };
+                        let col = crate::convert::ident_part(c.0.last().unwrap());
                         conds.push(Expr::BinOp {
                             left: Box::new(Expr::Field(FieldRef {
                                 table_id: left_alias.to_string(),
@@ -1053,7 +1167,7 @@ fn convert_sql_joins_pg(
             sql::JoinOperator::FullOuter(constraint) => {
                 (good_ormning_core::pg::query::select::JoinType::Full, Some(on(constraint, used_params)))
             },
-            sql::JoinOperator::CrossJoin => {
+            sql::JoinOperator::CrossJoin(sql::JoinConstraint::None) => {
                 (good_ormning_core::pg::query::select::JoinType::Cross, None)
             },
             _ => {
@@ -1077,7 +1191,42 @@ pub fn convert_select_query(
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::pg::schema::custom_type::CustomType>,
     field_lookup: &std::collections::HashMap<TableRef, PgTableInfo>,
 ) -> Select {
+    if q.for_clause.is_some() || q.settings.is_some() || q.format_clause.is_some() || !q.pipe_operators.is_empty() {
+        panic!("Unsupported query syntax for PostgreSQL: {}", q);
+    }
     let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
+    if let Some(fetch) = &q.fetch {
+        if fetch.percent {
+            panic!("PostgreSQL doesn't support `fetch ... percent`");
+        }
+        sel.fetch = Some(good_ormning_core::pg::query::select::SelectFetch {
+            quantity: fetch
+                .quantity
+                .as_ref()
+                .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
+            with_ties: fetch.with_ties,
+        });
+    }
+    for lock in &q.locks {
+        sel.lock.push(good_ormning_core::pg::query::select::SelectLock {
+            strength: match lock.lock_type {
+                sql::LockType::Update => good_ormning_core::pg::query::select::SelectLockStrength::Update,
+                sql::LockType::Share => good_ormning_core::pg::query::select::SelectLockStrength::Share,
+            },
+            of: match &lock.of {
+                Some(name) => match name.0.as_slice() {
+                    [part] => vec![crate::convert::ident_part(part)],
+                    _ => panic!("Locked tables must be unqualified table names or aliases: {}", name),
+                },
+                None => vec![],
+            },
+            wait: match lock.nonblock {
+                None => good_ormning_core::pg::query::select::SelectLockWait::Wait,
+                Some(sql::NonBlock::Nowait) => good_ormning_core::pg::query::select::SelectLockWait::Nowait,
+                Some(sql::NonBlock::SkipLocked) => good_ormning_core::pg::query::select::SelectLockWait::SkipLocked,
+            },
+        });
+    }
     if let Some(with) = &q.with {
         sel.with = Some(convert_with(input, with, used_params, custom_types, field_lookup));
     }
@@ -1094,6 +1243,19 @@ fn convert_select_query_expr(
 ) -> Select {
     match expr {
         sql::SetExpr::Select(s) => {
+            if s.top.is_some() || s.into.is_some() || !s.lateral_views.is_empty() || s.prewhere.is_some() ||
+                !s.cluster_by.is_empty() ||
+                !s.distribute_by.is_empty() ||
+                !s.sort_by.is_empty() ||
+                s.qualify.is_some() ||
+                s.value_table_mode.is_some() ||
+                !s.connect_by.is_empty() ||
+                !s.optimizer_hints.is_empty() ||
+                s.select_modifiers.as_ref().is_some_and(|m| m.is_any_set()) ||
+                s.exclude.is_some() ||
+                !matches!(s.flavor, sql::SelectFlavor::Standard) {
+                panic!("Unsupported select syntax for PostgreSQL: {}", s);
+            }
             let table = if s.from.is_empty() {
                 NamedSelectSource {
                     source: JoinSource::Empty,
@@ -1123,6 +1285,9 @@ fn convert_select_query_expr(
             let mut tables: Vec<(String, Option<TableRef>)> = vec![];
             for source in Iterator::chain([&table].into_iter(), join.iter().map(|j| &*j.source)) {
                 let Some(alias) = &source.alias else {
+                    if !matches!(source.source, JoinSource::Empty) {
+                        tables.push(("an unaliased subquery or function".to_string(), None));
+                    }
                     continue;
                 };
                 tables.push((alias.clone(), match &source.source {
@@ -1149,16 +1314,23 @@ fn convert_select_query_expr(
                     .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                 group: match &s.group_by {
                     sql::GroupByExpr::All(_) => panic!("GROUP BY ALL is not supported by PostgreSQL"),
-                    sql::GroupByExpr::Expressions(exprs, _) => exprs
-                        .iter()
-                        .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
-                        .collect(),
+                    sql::GroupByExpr::Expressions(exprs, modifiers) => {
+                        if !modifiers.is_empty() {
+                            panic!("Group by modifiers aren't supported by PostgreSQL: {}", s.group_by);
+                        }
+                        exprs
+                            .iter()
+                            .map(|e| convert_expr(input, e, used_params, custom_types, field_lookup))
+                            .collect()
+                    },
                 },
                 having: s.having.as_ref().map(|e| convert_expr(input, e, used_params, custom_types, field_lookup)),
                 order: order,
                 limit: limit,
                 offset: offset,
                 distinct: matches!(s.distinct, Some(sql::Distinct::Distinct)),
+                fetch: None,
+                lock: vec![],
                 distinct_on: match &s.distinct {
                     Some(sql::Distinct::On(exprs)) => exprs
                         .iter()
@@ -1291,7 +1463,17 @@ pub fn convert_with(
 }
 
 pub fn get_table_ref(name: &sql::ObjectName) -> TableRef {
-    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
-        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-    });
+    return TableRef(crate::convert::ident_part(name.0.last().expect("ObjectName should not be empty")));
+}
+
+fn convert_order_options(o: &sql::OrderByOptions) -> Order {
+    return match (&o.sort, o.nulls_first) {
+        (Some(sql::OrderBySort::Using(_)), _) => panic!("Unsupported: order by using"),
+        (Some(sql::OrderBySort::Asc) | None, None) => Order::Asc,
+        (Some(sql::OrderBySort::Asc) | None, Some(true)) => Order::AscNullsFirst,
+        (Some(sql::OrderBySort::Asc) | None, Some(false)) => Order::AscNullsLast,
+        (Some(sql::OrderBySort::Desc), None) => Order::Desc,
+        (Some(sql::OrderBySort::Desc), Some(true)) => Order::DescNullsFirst,
+        (Some(sql::OrderBySort::Desc), Some(false)) => Order::DescNullsLast,
+    };
 }

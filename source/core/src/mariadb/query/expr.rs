@@ -528,6 +528,64 @@ pub enum Expr {
     },
 }
 
+pub fn list_param_templates(types: &[Type]) -> Vec<&'static str> {
+    return types.iter().map(|t| if t.type_.type_ == SimpleSimpleType::Decimal {
+        "cast(? as decimal(65, 30))"
+    } else {
+        "?"
+    }).collect();
+}
+
+pub fn list_param_values(
+    ctx: &mut MariadbQueryCtx,
+    path: &rpds::Vector<String>,
+    name: &str,
+    types: &[Type],
+) -> Option<proc_macro2::TokenStream> {
+    if types.is_empty() {
+        ctx.errs.err(path, "List parameters need at least one element type".to_string());
+        return None;
+    }
+    if ctx.rust_arg_lookup.contains_key(name) {
+        ctx.errs.err(path, format!("Parameter {} is used both as a list and as a single value", name));
+    }
+    if let Some((prev_types, values)) = ctx.list_params.get(name) {
+        if types != prev_types.as_slice() {
+            ctx
+                .errs
+                .err(
+                    path,
+                    format!("Parameter {} specified with multiple types: {:?}, {:?}", name, types, prev_types),
+                );
+        }
+        return Some(values.clone());
+    }
+    let mut idents = vec![];
+    let mut rust_types = vec![];
+    let mut forwards = vec![];
+    for (i, type_) in types.iter().enumerate() {
+        let element_name = if types.len() == 1 {
+            name.to_string()
+        } else {
+            format!("{}_{}", name, i)
+        };
+        let (ident, rust_type, rust_forward) = param_rust(ctx, path, &element_name, type_)?;
+        idents.push(ident);
+        rust_types.push(rust_type);
+        forwards.push(quote!(good_ormning:: runtime:: mariadb:: to_value(#rust_forward)));
+    }
+    let ident = format_ident!("{}", sanitize_ident(name).1);
+    let (rust_type, pattern) = if types.len() == 1 {
+        (quote!(#(#rust_types) *), quote!(#(#idents) *))
+    } else {
+        (quote!((#(#rust_types,) *)), quote!((#(#idents,) *)))
+    };
+    let values = quote!(#ident.iter().cloned().flat_map(| #pattern |[#(#forwards), *]).collect::< Vec < _ >>());
+    ctx.rust_args.push((name.to_string(), quote!(#ident: &[#rust_type])));
+    ctx.list_params.insert(name.to_string(), (types.to_vec(), values.clone()));
+    return Some(values);
+}
+
 fn param_rust(
     ctx: &mut MariadbQueryCtx,
     path: &rpds::Vector<String>,
@@ -849,77 +907,17 @@ impl Expr {
                             "List parameters can only be used as the list in `in (...)` or `not in (...)`".to_string(),
                         );
                 }
-                if types.is_empty() {
-                    ctx.errs.err(&path, "List parameters need at least one element type".to_string());
+                let Some(values) = list_param_values(ctx, &path, name, types) else {
                     return (ExprType(vec![]), Tokens::new_mariadb());
-                }
-                if ctx.rust_arg_lookup.contains_key(name) {
-                    ctx.errs.err(&path, format!("Parameter {} is used both as a list and as a single value", name));
-                }
-                let forward = match ctx.list_params.get(name) {
-                    Some((prev_types, forward)) => {
-                        if types != prev_types {
-                            ctx
-                                .errs
-                                .err(
-                                    &path,
-                                    format!(
-                                        "Parameter {} specified with multiple types: {:?}, {:?}",
-                                        name,
-                                        types,
-                                        prev_types
-                                    ),
-                                );
-                        }
-                        forward.clone()
-                    },
-                    None => {
-                        let mut idents = vec![];
-                        let mut rust_types = vec![];
-                        let mut forwards = vec![];
-                        for (i, type_) in types.iter().enumerate() {
-                            let element_name = if types.len() == 1 {
-                                name.clone()
-                            } else {
-                                format!("{}_{}", name, i)
-                            };
-                            let Some((ident, rust_type, rust_forward)) =
-                                param_rust(ctx, &path, &element_name, type_) else {
-                                    return (ExprType(vec![]), Tokens::new_mariadb());
-                                };
-                            idents.push(ident);
-                            rust_types.push(rust_type);
-                            forwards.push(quote!(good_ormning:: runtime:: mariadb:: to_value(#rust_forward)));
-                        }
-                        let ident = format_ident!("{}", sanitize_ident(name).1);
-                        let template = types.iter().map(|t| if t.type_.type_ == SimpleSimpleType::Decimal {
-                            "cast(? as decimal(65, 30))"
-                        } else {
-                            "?"
-                        }).collect::<Vec<_>>();
-                        let width = types.len();
-                        let (rust_type, template) = if width == 1 {
-                            (quote!(#(#rust_types) *), template.join(""))
-                        } else {
-                            (quote!((#(#rust_types,) *)), format!("({})", template.join(", ")))
-                        };
-                        let pattern = if width == 1 {
-                            quote!(#(#idents) *)
-                        } else {
-                            quote!((#(#idents,) *))
-                        };
-                        let forward =
-                            quote!(
-                                #ident.iter().cloned().flat_map(| #pattern |[#(#forwards), *]).collect::< Vec < _ >>(),
-                                #template,
-                                #width
-                            );
-                        ctx.rust_args.push((name.clone(), quote!(#ident: &[#rust_type])));
-                        ctx.list_params.insert(name.clone(), (types.clone(), forward.clone()));
-                        forward
-                    },
                 };
-                ctx.query_args.push(forward);
+                let width = types.len();
+                let template = list_param_templates(types);
+                let template = if width == 1 {
+                    template.join("")
+                } else {
+                    format!("({})", template.join(", "))
+                };
+                ctx.query_args.push(quote!(#values, #template, #width));
                 out.s(&format!("{}{}{}{}", PARAM_MARKER, PARAM_LIST, ctx.query_args.len() - 1, PARAM_MARKER));
                 return (
                     ExprType(types.iter().map(|t| (ExprValName::local(name.clone()), t.clone())).collect()),
@@ -981,7 +979,12 @@ impl Expr {
                                     format!(
                                         "Expression references {:?} but this field isn't available here (available fields: {:?})",
                                         x,
-                                        scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>()
+                                        {
+                                            let mut fields =
+                                                scope.iter().map(|e| e.0.to_string()).collect::<Vec<String>>();
+                                            fields.sort();
+                                            fields
+                                        }
                                     ),
                                 );
                             return (ExprType(vec![]), Tokens::new_mariadb());

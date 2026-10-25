@@ -3026,6 +3026,108 @@ async fn test_fixes_pg() -> Result<(), loga::Error> {
         r#"select string_agg("t"."name", ',') as "g" from "t" where "t"."name" = 'a'"#;
         &mut db
     ).await?, Some("a".to_string()));
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" order by nullif("t"."n", 2) asc nulls first, "t"."name""#;
+        &mut db
+    ).await?, vec!["b".to_string(), "c".to_string(), "a".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" order by nullif("t"."n", 2) desc nulls last, "t"."name""#;
+        &mut db
+    ).await?, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select string_agg("t"."name", ',' order by nullif("t"."n", 2) nulls first, "t"."name" desc) as "g" from "t""#;
+        &mut db
+    ).await?, Some("c,b,a".to_string()));
+    assert_eq!(
+        good_ormning::pg::good_query_many!(
+            dbm,
+            "pg_gen_fixes",
+            r#"select "x"."name", "l"."c" from "t" as "x", lateral (select count(*) as "c" from "t" as "y" where "y"."n" = "x"."n") as "l" order by "x"."name""#;
+            &mut db
+        ).await?.into_iter().map(|r| (r.name, r.c)).collect::<Vec<_>>(),
+        vec![("a".to_string(), 1), ("b".to_string(), 2), ("c".to_string(), 2)]
+    );
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "x"."name", "g"."i" from "t" as "x" cross join generate_series(1, "x"."n") as "g"("i") where "x"."name" = 'b' order by "g"."i""#;
+        &mut db
+    ).await?.into_iter().map(|r| (r.name, r.i)).collect::<Vec<_>>(), vec![("b".to_string(), 1), ("b".to_string(), 2)]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "u"."v", "u"."i" from unnest(array['x', 'y']) with ordinality as "u"("v", "i") order by "u"."i""#;
+        &mut db
+    ).await?.into_iter().map(|r| (r.v, r.i)).collect::<Vec<_>>(), vec![("x".to_string(), 1), ("y".to_string(), 2)]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "g"."g", "g"."ordinality" from generate_series(5, 6) with ordinality as "g" order by "g"."g""#;
+        &mut db
+    ).await?.into_iter().map(|r| (r.g, r.ordinality)).collect::<Vec<_>>(), vec![(5, 1), (6, 2)]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" in (select array_to_string(array['a', 'x'], '') as "s") or "t"."name" = array_to_string(array['b'], '') order by "t"."name""#;
+        &mut db
+    ).await?, vec!["b".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."n" = any(array[2, 9]) order by "t"."name""#;
+        &mut db
+    ).await?, vec!["b".to_string(), "c".to_string()]);
+    let r = good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select '{"a": 1}' is json object as "a", '[1]' is json object as "b", 'x' is not json as "c", '{"a": 1, "a": 2}' is json with unique keys as "d", "t"."name" is json scalar as "e" from "t" where "t"."name" = 'a'"#;
+        &mut db
+    ).await?;
+    assert_eq!((r.a, r.b, r.c, r.d, r.e), (true, false, true, false, false));
+    assert_eq!(good_ormning::pg::good_query_one!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select string_agg("t"."name", ',' order by "t"."name" desc) as "g" from "t""#;
+        &mut db
+    ).await?, Some("c,b,a".to_string()));
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" order by "t"."name" offset 1 rows fetch first 1 rows only"#;
+        &mut db
+    ).await?, vec!["b".to_string()]);
+    let mut names = good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" order by "t"."n" fetch first 1 rows with ties"#;
+        &mut db
+    ).await?;
+    names.sort();
+    assert_eq!(names, vec!["b".to_string(), "c".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" = 'a' for update"#;
+        &mut db
+    ).await?, vec!["a".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "x"."name" from "t" as "x" where "x"."name" = 'a' for share of "x" skip locked"#;
+        &mut db
+    ).await?, vec!["a".to_string()]);
+    assert_eq!(good_ormning::pg::good_query_many!(
+        dbm,
+        "pg_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" = 'a' for update of "t" nowait"#;
+        &mut db
+    ).await?, vec!["a".to_string()]);
 
     // One with multiple results is an error
     assert!(good_ormning::pg::good_query_one!(

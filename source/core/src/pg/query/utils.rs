@@ -17,7 +17,6 @@ use {
     proc_macro2::TokenStream,
     std::collections::HashMap,
     super::expr::{
-        BinOp,
         Expr,
         ExprType,
         ExprValName,
@@ -295,7 +294,7 @@ pub struct PgFieldInfo {
 pub struct PgQueryCtx {
     pub default_time_library: Option<crate::utils::TimeLibrary>,
     pub errs: Errs,
-    pub op_stack: Vec<BinOp>,
+    pub expr_parent: super::expr::ExprParent,
     pub outer_scopes: Vec<HashMap<ExprValName, Type>>,
     pub query_args: Vec<TokenStream>,
     pub rust_arg_lookup: HashMap<String, (usize, Type)>,
@@ -314,7 +313,7 @@ impl PgQueryCtx {
             rust_arg_lookup: Default::default(),
             rust_args: Default::default(),
             query_args: Default::default(),
-            op_stack: Default::default(),
+            expr_parent: super::expr::ExprParent::Other,
             outer_scopes: Default::default(),
         };
     }

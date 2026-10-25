@@ -28,11 +28,12 @@ good-ormning-core = { version = "0.7.0", path = "../core" }
 flowcontrol = ">=0"
 tempfile = "3.27.0"
 pglite-oxide = { git = "https://github.com/f0rr0/pglite-oxide", rev = "f5cb76cfbf8a513307fe6b343556b58c81e599cf" }
-deadpool-postgres = { version = "0.12", features = ["rt_tokio_1"] }
-deadpool-sqlite = { version = "0.12", features = ["rt_tokio_1"] }
+deadpool-postgres = { version = "0.14", features = ["rt_tokio_1"] }
+deadpool-sqlite = { version = "0.14", features = ["rt_tokio_1"] }
 
 [dev-dependencies]
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
+serde_json = "1"
 
 [build-dependencies]
 "good-ormning" = { path = "..", features = [

@@ -175,7 +175,7 @@ pub fn convert_expr(
                     PrefixOp::Minus
                 },
                 sql::UnaryOperator::Not => PrefixOp::Not,
-                sql::UnaryOperator::PGBitwiseNot => PrefixOp::BitwiseNot,
+                sql::UnaryOperator::BitwiseNot => PrefixOp::BitwiseNot,
                 _ => panic!("Unsupported: UnaryOperator: {:?}", op),
             };
             return Expr::PrefixOp {
@@ -239,7 +239,7 @@ pub fn convert_expr(
                 high: Box::new(convert_expr(input, high, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::Case { operand, conditions, else_result } => {
+        sql::Expr::Case { operand, conditions, else_result, .. } => {
             let results = conditions.iter().map(|c| c.result.clone()).collect::<Vec<_>>();
             let conditions = conditions.iter().map(|c| c.condition.clone()).collect::<Vec<_>>();
             return Expr::Case {
@@ -261,10 +261,16 @@ pub fn convert_expr(
                     .map(|e| Box::new(convert_expr(input, e, used_params, custom_types, field_lookup))),
             };
         },
-        sql::Expr::Like { expr, negated, pattern, escape_char, .. } => {
+        sql::Expr::Like { expr, negated, pattern, escape_char, any } => {
+            if *any {
+                panic!("`like any` is not supported: {}", e);
+            }
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
             let r = convert_expr(input, pattern, used_params, custom_types, field_lookup);
-            let escape = escape_char.as_ref().map(|c| Box::new(Expr::LitString(c.to_string())));
+            let escape =
+                escape_char
+                    .as_ref()
+                    .map(|c| Box::new(convert_expr(input, c, used_params, custom_types, field_lookup)));
             return Expr::Like {
                 expr: Box::new(l),
                 negated: *negated,
@@ -333,7 +339,13 @@ pub fn convert_expr(
                         MariadbSimpleSimpleType::U64,
                         None,
                     ),
-                    sqlparser::ast::DataType::Float(_) => (MariadbSimpleSimpleType::F32, None),
+                    sqlparser::ast::DataType::Float(info) => match info {
+                        sqlparser::ast::ExactNumberInfo::Precision(p) if *p > 24 => (
+                            MariadbSimpleSimpleType::F64,
+                            None,
+                        ),
+                        _ => (MariadbSimpleSimpleType::F32, None),
+                    },
                     sqlparser::ast::DataType::Double(_) | sqlparser::ast::DataType::DoublePrecision => (
                         MariadbSimpleSimpleType::F64,
                         None,
@@ -368,6 +380,9 @@ pub fn convert_expr(
                                 type_args.push(*p as u32);
                             },
                             sqlparser::ast::ExactNumberInfo::PrecisionAndScale(p, s) => {
+                                if *s < 0 {
+                                    panic!("Negative decimal scale isn't supported by MariaDB: {}", data_type);
+                                }
                                 type_args.push(*p as u32);
                                 type_args.push(*s as u32);
                             },
@@ -400,25 +415,12 @@ pub fn convert_expr(
         sql::Expr::Collate { expr, collation } => {
             return Expr::Collate(
                 Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
-                collation.0.iter().map(|i| match i {
-                    sqlparser::ast::ObjectNamePart::Identifier(id) => id.value.clone(),
-                }).collect::<Vec<_>>().join("."),
+                collation.0.iter().map(|i| crate::convert::ident_part(i)).collect::<Vec<_>>().join("."),
             );
         },
         sql::Expr::InSubquery { expr, subquery, negated } => {
             let l = convert_expr(input, expr, used_params, custom_types, field_lookup);
-            let dummy_q = sqlparser::ast::Query {
-                with: None,
-                body: subquery.clone(),
-                order_by: None,
-                limit_clause: None,
-                fetch: None,
-                locks: vec![],
-                for_clause: None,
-                settings: None,
-                format_clause: None,
-            };
-            let r = convert_select_query(input, &dummy_q, used_params, custom_types, field_lookup);
+            let r = convert_select_query(input, subquery, used_params, custom_types, field_lookup);
             return Expr::BinOp {
                 left: Box::new(l),
                 op: if *negated {
@@ -495,15 +497,20 @@ pub fn convert_expr(
                                 group_concat_order.push(
                                     (
                                         convert_expr(input, &o.expr, used_params, custom_types, field_lookup),
-                                        match o.options.asc {
-                                            Some(true) | None => Order::Asc,
-                                            Some(false) => Order::Desc,
+                                        match o.options.sort {
+                                            Some(sqlparser::ast::OrderBySort::Asc) | None => Order::Asc,
+                                            Some(sqlparser::ast::OrderBySort::Desc) => Order::Desc,
+                                            Some(sqlparser::ast::OrderBySort::Using(_)) => panic!(
+                                                "Unsupported: order by using"
+                                            ),
                                         },
                                     ),
                                 );
                             }
                         },
-                        sql::FunctionArgumentClause::Separator(sql::Value::SingleQuotedString(sep)) if
+                        sql::FunctionArgumentClause::Separator(
+                            sql::ValueWithSpan { value: sql::Value::SingleQuotedString(sep), .. },
+                        ) if
                             name == "group_concat" => {
                             group_concat_separator = Some(sep.clone());
                         },
@@ -533,10 +540,7 @@ pub fn convert_expr(
             if f.filter.is_some() {
                 panic!("MariaDB doesn't support `filter (where ...)` on aggregates");
             }
-            if !f.within_group.is_empty() || f.null_treatment.is_some() ||
-                !matches!(f.parameters, sql::FunctionArguments::None) {
-                panic!("Unsupported function syntax: {}", f);
-            }
+            crate::convert::check_function_options(f);
             if name == "group_concat" {
                 if f.over.is_some() {
                     panic!("MariaDB doesn't support `group_concat` as a window function");
@@ -655,8 +659,8 @@ pub fn convert_expr(
                 expr: Box::new(convert_expr(input, expr, used_params, custom_types, field_lookup)),
             };
         },
-        sql::Expr::TypedString { data_type, value } => {
-            let sql::Value::SingleQuotedString(v) = value else {
+        sql::Expr::TypedString(sql::TypedString { data_type, value, .. }) => {
+            let sql::Value::SingleQuotedString(v) = &value.value else {
                 panic!("Unsupported typed literal: {}", e);
             };
             match data_type {
@@ -923,9 +927,10 @@ fn convert_window_spec(
         if o.options.nulls_first.is_some() {
             panic!("MariaDB doesn't support `nulls first`/`nulls last`");
         }
-        let dir = match o.options.asc {
-            Some(true) | None => Order::Asc,
-            Some(false) => Order::Desc,
+        let dir = match o.options.sort {
+            Some(sqlparser::ast::OrderBySort::Asc) | None => Order::Asc,
+            Some(sqlparser::ast::OrderBySort::Desc) => Order::Desc,
+            Some(sqlparser::ast::OrderBySort::Using(_)) => panic!("Unsupported: order by using"),
         };
         order_by.push((expr, dir));
     }
@@ -955,14 +960,6 @@ fn convert_window_spec(
         order_by: order_by,
         frame: frame,
     };
-}
-
-fn check_wildcard_options(options: &sql::WildcardAdditionalOptions) {
-    if options.opt_ilike.is_some() || options.opt_exclude.is_some() || options.opt_except.is_some() ||
-        options.opt_replace.is_some() ||
-        options.opt_rename.is_some() {
-        panic!("MariaDB doesn't support wildcard modifiers: {}", options);
-    }
 }
 
 pub fn convert_returning(
@@ -1010,8 +1007,9 @@ pub fn convert_returning(
                     e: convert_expr(input, expr, used_params, custom_types, field_lookup),
                     rename: Some(alias.value.clone()),
                 }),
+                sql::SelectItem::ExprWithAliases { .. } => panic!("Multi-alias select items are not supported"),
                 sql::SelectItem::Wildcard(options) => {
-                    check_wildcard_options(options);
+                    crate::convert::check_wildcard_options(options);
                     if tables.is_empty() {
                         panic!("Can't use a wildcard in a select with no tables");
                     }
@@ -1032,10 +1030,8 @@ pub fn convert_returning(
                     sql::SelectItemQualifiedWildcardKind::ObjectName(name),
                     options,
                 ) => {
-                    check_wildcard_options(options);
-                    let alias = match name.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    };
+                    crate::convert::check_wildcard_options(options);
+                    let alias = crate::convert::ident_part(name.0.last().unwrap());
                     match tables.iter().find(|(a, _)| *a == alias) {
                         Some((alias, table_ref)) => {
                             expand(&mut out, alias, table_ref, false);
@@ -1078,9 +1074,10 @@ fn convert_order_limit(
             if o.options.nulls_first.is_some() {
                 panic!("MariaDB doesn't support `nulls first`/`nulls last`");
             }
-            let dir = match o.options.asc {
-                Some(true) | None => Order::Asc,
-                Some(false) => Order::Desc,
+            let dir = match o.options.sort {
+                Some(sqlparser::ast::OrderBySort::Asc) | None => Order::Asc,
+                Some(sqlparser::ast::OrderBySort::Desc) => Order::Desc,
+                Some(sqlparser::ast::OrderBySort::Using(_)) => panic!("Unsupported: order by using"),
             };
             order.push((e, dir));
         }
@@ -1112,6 +1109,42 @@ fn convert_table_factor(
     field_lookup: &std::collections::HashMap<TableRef, MariadbTableInfo>,
 ) -> NamedSelectSource {
     return match tf {
+        sql::TableFactor::Table { name, alias, args: Some(args), with_ordinality, .. } => {
+            crate::convert::check_table_function_options(tf);
+            match name.0.as_slice() {
+                [sql::ObjectNamePart::Identifier(i)] if i.value.eq_ignore_ascii_case("unnest") => { },
+                _ => panic!("Unsupported table-valued function: {}", name),
+            }
+            let param = match args.args.as_slice() {
+                [
+                    sql::FunctionArg::Unnamed(
+                        sql::FunctionArgExpr::Expr(
+                            sql::Expr::Value(v @ sql::ValueWithSpan { value: sql::Value::Placeholder(_), .. }),
+                        ),
+                    ),
+                ] => v,
+                _ => panic!("`unnest` takes a single list parameter: {}", tf),
+            };
+            let (param, types, arr) = convert_param(input, param, used_params, custom_types);
+            if !arr {
+                panic!("`unnest` takes a list (`arr`) parameter: {}", tf);
+            }
+            let columns = alias.as_ref().map(|a| a.columns.iter().map(|c| {
+                if c.data_type.is_some() {
+                    panic!("Column definitions on `unnest` aren't supported: {}", tf);
+                }
+                return c.name.value.clone();
+            }).collect()).unwrap_or_default();
+            NamedSelectSource {
+                source: JoinSource::Unnest {
+                    param: param,
+                    types: types,
+                    with_ordinality: *with_ordinality,
+                    columns: columns,
+                },
+                alias: alias.as_ref().map(|a| a.name.value.clone()),
+            }
+        },
         sql::TableFactor::Table { name, alias, .. } => {
             check_plain_table(tf);
             NamedSelectSource {
@@ -1121,9 +1154,12 @@ fn convert_table_factor(
                 ),
             }
         },
-        sql::TableFactor::Derived { lateral, subquery, alias } => {
+        sql::TableFactor::Derived { lateral, subquery, alias, sample } => {
             if *lateral {
                 panic!("MariaDB doesn't support lateral derived tables: {}", tf);
+            }
+            if sample.is_some() {
+                panic!("MariaDB doesn't support table samples: {}", tf);
             }
             if alias.as_ref().map(|a| !a.columns.is_empty()).unwrap_or(false) {
                 panic!("Derived table column lists aren't supported, name the columns in the subquery: {}", tf);
@@ -1193,9 +1229,11 @@ pub fn convert_sql_joins(
                     );
                 },
                 sql::JoinConstraint::Using(cols) => {
-                    return Some(JoinCondition::Using(cols.iter().map(|c| match c.0.last().unwrap() {
-                        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-                    }).collect()));
+                    return Some(
+                        JoinCondition::Using(
+                            cols.iter().map(|c| crate::convert::ident_part(c.0.last().unwrap())).collect(),
+                        ),
+                    );
                 },
                 sql::JoinConstraint::Natural => {
                     return Some(JoinCondition::Natural);
@@ -1215,7 +1253,7 @@ pub fn convert_sql_joins(
             sql::JoinOperator::Right(constraint) | sql::JoinOperator::RightOuter(constraint) => {
                 (JoinType::Right, on(constraint, used_params))
             },
-            sql::JoinOperator::CrossJoin => {
+            sql::JoinOperator::CrossJoin(sql::JoinConstraint::None) => {
                 (JoinType::Cross, None)
             },
             sql::JoinOperator::FullOuter(_) => panic!("MariaDB doesn't support full outer joins"),
@@ -1239,7 +1277,7 @@ pub fn convert_select_query(
     custom_types: &std::collections::BTreeMap<String, good_ormning_core::mariadb::schema::custom_type::CustomType>,
     field_lookup: &std::collections::HashMap<TableRef, MariadbTableInfo>,
 ) -> Select {
-    if q.for_clause.is_some() || q.settings.is_some() || q.format_clause.is_some() {
+    if q.for_clause.is_some() || q.settings.is_some() || q.format_clause.is_some() || !q.pipe_operators.is_empty() {
         panic!("Unsupported query syntax for MariaDB: {}", q);
     }
     let mut sel = convert_select_query_expr(input, q, &q.body, used_params, custom_types, field_lookup);
@@ -1321,7 +1359,10 @@ fn convert_select_query_expr(
                 !s.sort_by.is_empty() ||
                 s.qualify.is_some() ||
                 s.value_table_mode.is_some() ||
-                s.connect_by.is_some() ||
+                !s.connect_by.is_empty() ||
+                !s.optimizer_hints.is_empty() ||
+                s.select_modifiers.as_ref().is_some_and(|m| m.is_any_set()) ||
+                s.exclude.is_some() ||
                 !matches!(s.flavor, sql::SelectFlavor::Standard) {
                 panic!("Unsupported select syntax for MariaDB: {}", s);
             }
@@ -1451,6 +1492,7 @@ fn convert_select_query_expr(
                 distinct: match &s.distinct {
                     None => false,
                     Some(sql::Distinct::Distinct) => true,
+                    Some(sql::Distinct::All) => false,
                     Some(sql::Distinct::On(_)) => panic!("MariaDB doesn't support `distinct on`"),
                 },
                 junctions: vec![],
@@ -1569,7 +1611,5 @@ pub fn get_table_ref(name: &sql::ObjectName) -> TableRef {
     if name.0.len() != 1 {
         panic!("Tables in other databases aren't supported: {}", name);
     }
-    return TableRef(match name.0.last().expect("ObjectName should not be empty") {
-        sqlparser::ast::ObjectNamePart::Identifier(i) => i.value.clone(),
-    });
+    return TableRef(crate::convert::ident_part(name.0.last().expect("ObjectName should not be empty")));
 }

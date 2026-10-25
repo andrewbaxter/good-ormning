@@ -145,6 +145,15 @@ impl NamedSelectSource {
                     };
                     vec![(Binding::local("value".into()), value_t)]
                 } else {
+                    ctx
+                        .errs
+                        .err(
+                            &path.push_back("From".to_string()),
+                            format!(
+                                "Unsupported table function {}, its output columns aren't known (supported: rarray)",
+                                name
+                            ),
+                        );
                     vec![]
                 }
             },
@@ -254,6 +263,23 @@ impl NamedSelectSource {
 pub enum Order {
     Asc,
     Desc,
+    AscNullsFirst,
+    AscNullsLast,
+    DescNullsFirst,
+    DescNullsLast,
+}
+
+impl Order {
+    pub fn sql(&self) -> &'static str {
+        return match self {
+            Order::Asc => "asc",
+            Order::Desc => "desc",
+            Order::AscNullsFirst => "asc nulls first",
+            Order::AscNullsLast => "asc nulls last",
+            Order::DescNullsFirst => "desc nulls first",
+            Order::DescNullsLast => "desc nulls last",
+        };
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -427,14 +453,7 @@ impl QueryBody for Select {
                 let path = path.push_back(format!("Order by {}", i));
                 let (_, tokens): (ExprType, Tokens) = e.build(ctx, &path, &order_scope);
                 out.s(&tokens.to_string());
-                match o {
-                    Order::Asc => {
-                        out.s("asc");
-                    },
-                    Order::Desc => {
-                        out.s("desc");
-                    },
-                }
+                out.s(o.sql());
             }
         }
         for (clause, e) in [("limit", &self.limit), ("offset", &self.offset)] {

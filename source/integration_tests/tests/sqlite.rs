@@ -3554,6 +3554,30 @@ fn test_fixes_sqlite() -> Result<(), loga::Error> {
             (0i64, "2".to_string(), "C".to_string(), 1i64, 7.0f64),
         ]
     );
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t" order by nullif("t"."n", 2) asc nulls last, "t"."name""#;
+        &mut db
+    )?, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t" order by nullif("t"."n", 2) desc nulls first, "t"."name""#;
+        &mut db
+    )?, vec!["b".to_string(), "c".to_string(), "a".to_string()]);
+    assert_eq!(good_ormning::sqlite::good_query_one!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select group_concat("t"."name", ',' order by "t"."name" desc) as "g" from "t""#;
+        &mut db
+    )?, Some("c,b,a".to_string()));
+    assert_eq!(good_ormning::sqlite::good_query_many!(
+        dbm,
+        "sqlite_gen_fixes",
+        r#"select "t"."name" from "t" where "t"."name" glob '[ab]' order by "t"."name""#;
+        &mut db
+    )?, vec!["a".to_string(), "b".to_string()]);
 
     // One with multiple results is an error
     assert!(good_ormning::sqlite::good_query_one!(

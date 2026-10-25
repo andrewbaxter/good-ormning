@@ -16,13 +16,13 @@ jiff = ["dep:jiff"]
 [dependencies]
 chrono = { version = "0.4", optional = true, features = ["serde"] }
 jiff = { version = "0.2", optional = true, features = ["serde"] }
-flowcontrol = "0.2.2"
+flowcontrol = "0.2.3"
 hex = "0.4"
 proc-macro2 = "1"
 quote = "1"
 rpds = "1"
 dyn-clone = "1.0"
-syn = "2"
+syn = "3"
 serde = { version = "1", features = ["derive"] }
 
 [lints.clippy]

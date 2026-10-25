@@ -431,6 +431,60 @@ pub fn push_in_list(query: &mut String, params: &mut Vec<Value>, values: Vec<Val
     }
 }
 
+pub fn push_table_list(
+    query: &mut String,
+    params: &mut Vec<Value>,
+    values: Vec<Value>,
+    templates: &[&str],
+    names: &[&str],
+    with_ordinality: bool,
+) {
+    let push_name = |query: &mut String, name: &str| {
+        query.push_str(" as `");
+        query.push_str(&name.replace('`', "``"));
+        query.push('`');
+    };
+    let width = templates.len();
+    let rows = values.len() / width;
+    query.push('(');
+    if rows == 0 {
+        query.push_str("select ");
+        for (i, name) in names.iter().enumerate() {
+            if i > 0 {
+                query.push_str(", ");
+            }
+            query.push_str("null");
+            push_name(query, name);
+        }
+        query.push_str(" from dual where false");
+    } else {
+        for row in 0 .. rows {
+            if row > 0 {
+                query.push_str(" union all ");
+            }
+            query.push_str("select ");
+            for (i, template) in templates.iter().enumerate() {
+                if i > 0 {
+                    query.push_str(", ");
+                }
+                query.push_str(template);
+                if row == 0 {
+                    push_name(query, names[i]);
+                }
+            }
+            if with_ordinality {
+                query.push_str(", ");
+                query.push_str(&(row + 1).to_string());
+                if row == 0 {
+                    push_name(query, names[width]);
+                }
+            }
+        }
+        params.extend(values);
+    }
+    query.push(')');
+}
+
 fn to_params(params: Vec<Value>) -> Params {
     if params.is_empty() {
         return Params::Empty;

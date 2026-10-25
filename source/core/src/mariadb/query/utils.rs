@@ -378,6 +378,7 @@ pub struct MariadbFieldInfo {
 
 pub const PARAM_MARKER: char = '\u{1}';
 pub const PARAM_LIST: char = 'L';
+pub const PARAM_TABLE: char = 'T';
 
 pub struct MariadbQueryCtx {
     pub default_time_library: Option<crate::utils::TimeLibrary>,

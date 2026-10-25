@@ -544,6 +544,8 @@ pub fn new_select(table: &TableHandle) -> SelectBuilder {
         offset: None,
         distinct: false,
         distinct_on: vec![],
+        fetch: None,
+        lock: vec![],
         junctions: vec![],
     } };
 }
@@ -581,6 +583,8 @@ pub fn new_select_from(source: NamedSelectSource) -> SelectBuilder {
         offset: None,
         distinct: false,
         distinct_on: vec![],
+        fetch: None,
+        lock: vec![],
         junctions: vec![],
     } };
 }
