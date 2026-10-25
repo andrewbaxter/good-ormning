@@ -8,7 +8,7 @@ package.readme = "../readme.md"
 
 [package]
 name = "good-ormning"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 license.workspace = true
 description.workspace = true
@@ -67,8 +67,8 @@ tokio = { version = "1", features = [
 loga = { version = "0.5", optional = true }
 sqlparser = { version = "0.63.0", optional = true }
 convert_case = "0.12.0"
-good-ormning-core = { version = "0.7.0", path = "core" }
-good-ormning-macros = { version = "0.7.0", path = "macros" }
+good-ormning-core = { version = "0.8.0", path = "core" }
+good-ormning-macros = { version = "0.8.0", path = "macros" }
 
 [[bin]]
 name = "good-ormning-import"
